@@ -73,12 +73,55 @@
 
 /* Header */
 .ytdl-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 1.25rem;
   width: 100%;
   max-width: 700px;
   justify-content: center;
+}
+
+/* System Status Widget */
+.ytdl-system-status {
+  width: 100%;
+  max-width: 800px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  align-items: center;
+  backdrop-filter: blur(10px);
+  gap: 1.5rem;
+  overflow: hidden;
+}
+
+.ytdl-status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  cursor: default;
+}
+
+.ytdl-status-item strong {
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+.text-danger {
+  color: #ef4444 !important;
+}
+
+@media (max-width: 600px) {
+  .ytdl-system-status {
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+  }
 }
 
 .ytdl-logo-ring {
@@ -115,14 +158,24 @@
   margin-top: 4px;
 }
 
-.ytdl-reset-btn {
-  margin-left: auto;
+.ytdl-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ytdl-reset-btn,
+.ytdl-settings-btn {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
+  color: #fff;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -130,13 +183,16 @@
   transition: all 0.2s;
 }
 
-.ytdl-reset-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  transform: rotate(90deg);
+.ytdl-reset-btn:hover,
+.ytdl-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: rotate(15deg);
 }
 
-/* Input Card */
+.ytdl-settings-btn:hover {
+  transform: rotate(45deg);
+}
+
 .ytdl-url-card {
   width: 100%;
   max-width: 700px;
@@ -148,12 +204,134 @@
   align-items: center;
   gap: 0.75rem;
   backdrop-filter: blur(20px);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: all 0.3s;
 }
 
-.ytdl-url-card:focus-within {
-  border-color: rgba(255, 0, 0, 0.4);
-  box-shadow: 0 0 0 4px rgba(255, 0, 0, 0.1);
+.ytdl-url-card.youtube-active {
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.1);
+}
+
+.ytdl-url-card.youtube-active:focus-within {
+  border-color: rgba(239, 68, 68, 0.8);
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+}
+
+.ytdl-back-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 0.5rem;
+}
+
+.ytdl-back-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  transform: translateX(-3px);
+}
+
+.ytdl-url-card.music-active {
+  border-color: rgba(217, 70, 239, 0.4);
+  box-shadow: 0 0 20px rgba(217, 70, 239, 0.1);
+}
+
+.ytdl-url-card.music-active:focus-within {
+  border-color: rgba(217, 70, 239, 0.8);
+  box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.2);
+}
+
+.ytdl-url-card.music-active .ytdl-url-icon {
+  color: #d946ef;
+}
+
+.ytdl-url-card.music-active .ytdl-fetch-btn {
+  background: linear-gradient(135deg, #d946ef, #c026d3);
+  box-shadow: 0 4px 15px rgba(217, 70, 239, 0.3);
+}
+
+/* Two Path Mode Selector */
+.ytdl-mode-selector {
+  display: flex;
+  gap: 2rem;
+  width: 100%;
+  max-width: 800px;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.ytdl-mode-card {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 3rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+}
+
+.ytdl-mode-card h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.5rem 0;
+  color: #f8fafc;
+}
+
+.ytdl-mode-card p {
+  color: #94a3b8;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.ytdl-mode-icon {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.youtube-mode:hover {
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.4);
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(239, 68, 68, 0.15);
+}
+
+.youtube-mode:hover .ytdl-mode-icon {
+  color: #ef4444;
+  transform: scale(1.2);
+}
+
+.music-mode:hover {
+  background: rgba(217, 70, 239, 0.05);
+  border-color: rgba(217, 70, 239, 0.4);
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(217, 70, 239, 0.15);
+}
+
+.music-mode:hover .ytdl-mode-icon {
+  color: #d946ef;
+  transform: scale(1.2);
+}
+
+@media (max-width: 600px) {
+  .ytdl-mode-selector {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .ytdl-mode-card {
+    padding: 2rem 1.5rem;
+  }
 }
 
 .ytdl-url-icon {
@@ -643,6 +821,12 @@
 }
 
 /* Job Actions */
+.ytdl-path-picker {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .ytdl-job-actions {
   display: flex;
   gap: 1rem;
@@ -760,11 +944,42 @@
   align-items: center;
   gap: 0.5rem;
   text-decoration: none;
+  border: none;
+  cursor: pointer;
   transition: all 0.2s;
 }
 
 .ytdl-save-btn:hover { background: #4ade80; transform: translateY(-1px); }
 .ytdl-save-btn.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+.ytdl-new-dl-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-radius: 10px;
+  padding: 0 1.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ytdl-new-dl-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.ytdl-ready-filename {
+  font-size: 1rem;
+  color: #94a3b8;
+  font-weight: 600;
+  text-align: center;
+  margin: 0;
+  word-break: break-all;
+}
 
 /* Modal */
 .ytdl-modal-overlay {
@@ -1089,4 +1304,127 @@
   .ytdl-dl-actions { grid-template-columns: 1fr; width: 100%; }
   .ytdl-playlist-panel { margin-top: 1rem; }
   .ytdl-playlist-preview-row { grid-template-columns: 20px minmax(0, 1fr) auto; }
+}
+
+.ytdl-library-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(20px);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.ytdl-library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  max-width: 1200px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+.ytdl-library-header h2 {
+  font-size: 2rem;
+  color: #fff;
+  margin: 0;
+}
+
+.ytdl-library-header .ytdl-modal-cancel {
+  flex: 0 0 auto;
+  padding: 0.5rem 1.5rem;
+}
+
+.ytdl-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.ytdl-library-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.ytdl-library-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ytdl-lib-thumb {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ytdl-lib-thumb-fallback {
+  width: 100%;
+  height: 140px;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ytdl-lib-info {
+  padding: 1.25rem;
+}
+
+.ytdl-lib-title {
+  color: #fff;
+  font-size: 1rem;
+  margin: 0 0 0.5rem 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ytdl-lib-meta {
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.ytdl-lib-open-btn {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background 0.2s;
+}
+
+.ytdl-lib-open-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ytdl-time-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
 }
