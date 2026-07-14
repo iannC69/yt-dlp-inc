@@ -1048,6 +1048,140 @@ function youtubeDownloaderPlugin() {
           res.end(JSON.stringify({ error: 'Failed to retrieve system status' }))
         }
       })
+
+      // ── Spotify Info (oEmbed) ──
+      server.middlewares.use('/api/spotify-info', async (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        const spotUrl = urlObj.searchParams.get('url')
+        if (!spotUrl) {
+          res.statusCode = 400
+          return res.end(JSON.stringify({ error: 'Missing url param' }))
+        }
+        try {
+          const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(spotUrl)}`
+          const https = await import('https')
+          const data = await new Promise((resolve, reject) => {
+            https.get(oembedUrl, (r) => {
+              let body = ''
+              r.on('data', c => body += c)
+              r.on('end', () => {
+                try { resolve(JSON.parse(body)) } catch (e) { reject(e) }
+              })
+            }).on('error', reject)
+          })
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({
+            title: data.title,
+            author_name: data.author_name,
+            thumbnail_url: data.thumbnail_url,
+            provider_name: data.provider_name,
+            type: data.type,
+          }))
+        } catch (err) {
+          res.statusCode = 500
+          res.end(JSON.stringify({ error: `Could not fetch Spotify info: ${err.message}` }))
+        }
+      })
+
+      // ── Spotify Download (SSE) ──
+      server.middlewares.use('/api/spotify-download', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        const spotUrl = urlObj.searchParams.get('url')
+        const format = urlObj.searchParams.get('format') || 'audio:mp3:0'
+        if (!spotUrl) {
+          res.statusCode = 400
+          return res.end(JSON.stringify({ error: 'Missing url param' }))
+        }
+
+        res.setHeader('Content-Type', 'text/event-stream')
+        res.setHeader('Cache-Control', 'no-cache')
+        res.setHeader('Connection', 'keep-alive')
+
+        const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`)
+
+        const downloadsDir = ensureDownloadsDir()
+
+        // Parse format string: audio:mp3:0
+        const parts = format.split(':')
+        const audioFmt = ['mp3', 'wav', 'vorbis'].includes(parts[1]) ? parts[1] : 'mp3'
+        const audioQuality = /^\d+$/.test(parts[2] || '') ? parts[2] : '0'
+
+        const outputTemplate = path.join(downloadsDir, '%(title)s.%(ext)s')
+
+        const runDownload = async () => {
+          let searchQuery = spotUrl
+          try {
+            const https = (await import('https')).default
+            const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(spotUrl)}`
+            const info = await new Promise((resolve, reject) => {
+              https.get(oembedUrl, (r) => {
+                let body = ''
+                r.on('data', c => body += c)
+                r.on('end', () => { try { resolve(JSON.parse(body)) } catch(e) { reject(e) } })
+              }).on('error', reject)
+            })
+            searchQuery = `ytsearch1:${info.title} ${info.author_name}`
+          } catch (e) {
+            searchQuery = `ytsearch1:${spotUrl}`
+          }
+
+          send({ status: `Searching: "${searchQuery.replace('ytsearch1:', '')}"`, progress: 5 })
+
+          const dlArgs = [
+            searchQuery,
+            '-x',
+            '--audio-format', audioFmt,
+            '--embed-metadata',
+            '--embed-thumbnail',
+            '--add-metadata',
+            '-o', outputTemplate,
+            '--ffmpeg-location', ffmpegDir,
+          ]
+          if (audioFmt !== 'wav') dlArgs.push('--audio-quality', audioQuality)
+
+          const proc = spawn(binPath, dlArgs)
+          let stderr = ''
+          let finalFilename = ''
+
+          const onLine = (text) => {
+            const destMatch = text.match(/Destination:\s*(.*)/)
+            if (destMatch) finalFilename = path.basename(destMatch[1].trim())
+            const mergeMatch = text.match(/Merging formats into "(.*)"/)
+            if (mergeMatch) finalFilename = path.basename(mergeMatch[1].trim())
+            const progressMatch = text.match(/\[download\]\s+([\d.]+)%/)
+            if (progressMatch) {
+              send({ progress: Math.min(parseFloat(progressMatch[1]), 95), status: 'Downloading...' })
+            }
+          }
+
+          proc.stdout.on('data', c => c.toString().split('\n').forEach(l => onLine(l)))
+          proc.stderr.on('data', c => { stderr += c.toString(); c.toString().split('\n').forEach(l => onLine(l)) })
+
+          proc.on('close', (code) => {
+            if (code !== 0) {
+              const friendlyErr = parseYtDlpError(stderr) || `Download failed (code ${code})`
+              send({ done: true, error: friendlyErr })
+              res.end()
+              return
+            }
+            const filename = finalFilename || 'download'
+            const downloadUrl = `/api/ytdl/download-file?file=${encodeURIComponent(filename)}`
+            saveToHistory({ title: filename, format: `audio:${audioFmt}`, filename })
+            send({ done: true, finalFilename: filename, downloadUrl, progress: 100 })
+            scheduleDownloadCleanup(path.join(downloadsDir, filename))
+            res.end()
+          })
+
+          req.on('close', () => { try { proc.kill() } catch {} })
+        }
+
+        runDownload().catch(err => {
+          send({ done: true, error: err.message })
+          res.end()
+        })
+      })
     }
   }
 }

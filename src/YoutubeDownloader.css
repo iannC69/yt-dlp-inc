@@ -17,8 +17,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 .ytdl-page {
-  min-height: 100vh;
-  background: var(--theme-bg); /* Very dark slate/blue */
+  min-height: 100%;
+  background: var(--theme-bg);
   font-family: 'Inter', sans-serif;
   color: #e2e8f0;
   position: relative;
@@ -94,20 +94,65 @@
 /* Header */
 .ytdl-header {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
   width: 100%;
-  max-width: 700px;
-  justify-content: center;
+  max-width: 800px;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
 }
 
-/* Header Actions */
+.ytdl-header-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.6rem;
+}
+
+/* YouTube platform badge pill */
+.ytdl-platform-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--theme-primary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ytdl-title {
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  padding: 0.1em 0.05em;
+  background: linear-gradient(135deg, #fff 0%, var(--theme-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
+}
+
+.ytdl-subtitle {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Header Actions — right column */
 .ytdl-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  padding-top: 0.25rem;
 }
 
 .ytdl-icon-btn,
@@ -182,49 +227,7 @@
   }
 }
 
-.ytdl-logo-ring {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-primary) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  flex-shrink: 0;
-  box-shadow: 0 0 30px color-mix(in srgb, var(--theme-primary) 30%, transparent);
-}
-
-.ytdl-title-box {
-  display: flex;
-  flex-direction: column;
-}
-
-.ytdl-title {
-  font-size: 2rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, #fff, #cbd5e1);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  line-height: 1.1;
-}
-
-.ytdl-subtitle {
-  font-size: 0.95rem;
-  color: #94a3b8;
-  margin-top: 4px;
-}
-
-.ytdl-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-}
+/* .ytdl-logo-ring removed — replaced by badge pill hero */
 
 .ytdl-reset-btn,
 .ytdl-settings-btn {
