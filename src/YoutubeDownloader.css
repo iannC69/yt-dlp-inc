@@ -1,3 +1,13 @@
+
+:root {
+  --theme-primary: #ef4444;
+  --theme-secondary: #3b82f6;
+  --theme-success: #10b981;
+  --theme-warning: #f59e0b;
+  --theme-music: #d946ef;
+  --theme-bg: #080a0f;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 /* ============================================
@@ -8,12 +18,22 @@
 
 .ytdl-page {
   min-height: 100vh;
-  background: #080a0f; /* Very dark slate/blue */
+  background: var(--theme-bg); /* Very dark slate/blue */
   font-family: 'Inter', sans-serif;
   color: #e2e8f0;
   position: relative;
   overflow-x: hidden;
   width: 100%;
+  
+  filter: hue-rotate(var(--theme-hue));
+  transition: filter 0.8s ease;
+}
+
+/* Reverse Hue Shift for Images */
+.ytdl-thumbnail,
+.ytdl-lib-thumb {
+  filter: hue-rotate(calc(var(--theme-hue) * -1));
+  transition: filter 0.8s ease;
 }
 
 /* Animated background blobs */
@@ -38,7 +58,7 @@
 .ytdl-bg-glow::before {
   width: 700px;
   height: 700px;
-  background: radial-gradient(circle, #ff0000, transparent 70%);
+  background: radial-gradient(circle, var(--theme-primary), transparent 70%);
   top: -150px;
   left: -200px;
 }
@@ -46,7 +66,7 @@
 .ytdl-bg-glow::after {
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, #3b82f6, transparent 70%);
+  background: radial-gradient(circle, var(--theme-secondary), transparent 70%);
   bottom: -100px;
   right: -150px;
   animation-delay: -7s;
@@ -82,6 +102,44 @@
   justify-content: center;
 }
 
+/* Header Actions */
+.ytdl-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.ytdl-icon-btn,
+.ytdl-reset-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.ytdl-icon-btn:hover,
+.ytdl-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.ytdl-icon-btn:active,
+.ytdl-reset-btn:active {
+  transform: translateY(0);
+}
+
 /* System Status Widget */
 .ytdl-system-status {
   width: 100%;
@@ -114,7 +172,7 @@
 }
 
 .text-danger {
-  color: #ef4444 !important;
+  color: var(--theme-primary) !important;
 }
 
 @media (max-width: 600px) {
@@ -128,13 +186,13 @@
   width: 64px;
   height: 64px;
   border-radius: 20px;
-  background: linear-gradient(135deg, #ff0000 0%, #ff4b4b 100%);
+  background: linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-primary) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   flex-shrink: 0;
-  box-shadow: 0 0 30px rgba(255, 0, 0, 0.3);
+  box-shadow: 0 0 30px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
 
 .ytdl-title-box {
@@ -208,13 +266,13 @@
 }
 
 .ytdl-url-card.youtube-active {
-  border-color: rgba(239, 68, 68, 0.4);
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.1);
+  border-color: color-mix(in srgb, var(--theme-primary) 40%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--theme-primary) 10%, transparent);
 }
 
 .ytdl-url-card.youtube-active:focus-within {
-  border-color: rgba(239, 68, 68, 0.8);
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+  border-color: color-mix(in srgb, var(--theme-primary) 80%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-primary) 20%, transparent);
 }
 
 .ytdl-back-btn {
@@ -239,22 +297,22 @@
 }
 
 .ytdl-url-card.music-active {
-  border-color: rgba(217, 70, 239, 0.4);
-  box-shadow: 0 0 20px rgba(217, 70, 239, 0.1);
+  border-color: color-mix(in srgb, var(--theme-music) 40%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--theme-music) 10%, transparent);
 }
 
 .ytdl-url-card.music-active:focus-within {
-  border-color: rgba(217, 70, 239, 0.8);
-  box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.2);
+  border-color: color-mix(in srgb, var(--theme-music) 80%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-music) 20%, transparent);
 }
 
 .ytdl-url-card.music-active .ytdl-url-icon {
-  color: #d946ef;
+  color: var(--theme-music);
 }
 
 .ytdl-url-card.music-active .ytdl-fetch-btn {
-  background: linear-gradient(135deg, #d946ef, #c026d3);
-  box-shadow: 0 4px 15px rgba(217, 70, 239, 0.3);
+  background: linear-gradient(135deg, var(--theme-music), #c026d3);
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--theme-music) 30%, transparent);
 }
 
 /* Two Path Mode Selector */
@@ -301,26 +359,26 @@
 }
 
 .youtube-mode:hover {
-  background: rgba(239, 68, 68, 0.05);
-  border-color: rgba(239, 68, 68, 0.4);
+  background: color-mix(in srgb, var(--theme-primary) 5%, transparent);
+  border-color: color-mix(in srgb, var(--theme-primary) 40%, transparent);
   transform: translateY(-5px);
-  box-shadow: 0 20px 40px rgba(239, 68, 68, 0.15);
+  box-shadow: 0 20px 40px color-mix(in srgb, var(--theme-primary) 15%, transparent);
 }
 
 .youtube-mode:hover .ytdl-mode-icon {
-  color: #ef4444;
+  color: var(--theme-primary);
   transform: scale(1.2);
 }
 
 .music-mode:hover {
-  background: rgba(217, 70, 239, 0.05);
-  border-color: rgba(217, 70, 239, 0.4);
+  background: color-mix(in srgb, var(--theme-music) 5%, transparent);
+  border-color: color-mix(in srgb, var(--theme-music) 40%, transparent);
   transform: translateY(-5px);
-  box-shadow: 0 20px 40px rgba(217, 70, 239, 0.15);
+  box-shadow: 0 20px 40px color-mix(in srgb, var(--theme-music) 15%, transparent);
 }
 
 .music-mode:hover .ytdl-mode-icon {
-  color: #d946ef;
+  color: var(--theme-music);
   transform: scale(1.2);
 }
 
@@ -335,7 +393,7 @@
 }
 
 .ytdl-url-icon {
-  color: #ef4444;
+  color: var(--theme-primary);
   padding-left: 0.75rem;
 }
 
@@ -353,7 +411,7 @@
 .ytdl-url-input::placeholder { color: #64748b; }
 
 .ytdl-fetch-btn {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: linear-gradient(135deg, var(--theme-primary), var(--theme-primary));
   border: none;
   border-radius: 14px;
   color: #fff;
@@ -365,12 +423,12 @@
   align-items: center;
   gap: 0.5rem;
   transition: all 0.2s;
-  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
 
 .ytdl-fetch-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--theme-primary) 40%, transparent);
 }
 
 .ytdl-fetch-btn:disabled {
@@ -386,8 +444,8 @@
   align-items: center;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--theme-primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-primary) 20%, transparent);
   border-radius: 14px;
   color: #fca5a5;
   font-weight: 500;
@@ -523,10 +581,10 @@
 /* Playlist Section */
 .ytdl-playlist-panel {
   margin: 1.5rem 2rem 0;
-  border: 1px solid rgba(251, 191, 36, 0.2);
+  border: 1px solid color-mix(in srgb, var(--theme-warning) 20%, transparent);
   background:
-    radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.12), transparent 42%),
-    rgba(245, 158, 11, 0.045);
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--theme-warning) 12%, transparent), transparent 42%),
+    color-mix(in srgb, var(--theme-warning) 4.5%, transparent);
   border-radius: 16px;
   padding: 1.25rem;
   color: #e2e8f0;
@@ -545,8 +603,8 @@
   place-items: center;
   border-radius: 12px;
   color: #fbbf24;
-  background: rgba(251, 191, 36, 0.12);
-  border: 1px solid rgba(251, 191, 36, 0.18);
+  background: color-mix(in srgb, var(--theme-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-warning) 18%, transparent);
   flex-shrink: 0;
 }
 
@@ -592,7 +650,7 @@
   gap: 0.5rem;
   margin: 1rem 0 0;
   padding-top: 1rem;
-  border-top: 1px solid rgba(251, 191, 36, 0.12);
+  border-top: 1px solid color-mix(in srgb, var(--theme-warning) 12%, transparent);
 }
 
 .ytdl-playlist-preview-row {
@@ -605,7 +663,7 @@
 }
 
 .ytdl-playlist-preview-row > span {
-  color: rgba(251, 191, 36, 0.8);
+  color: color-mix(in srgb, var(--theme-warning) 80%, transparent);
   font-size: 0.7rem;
   font-weight: 800;
 }
@@ -632,7 +690,7 @@
   font-weight: 600;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px dashed rgba(251, 191, 36, 0.2);
+  border-top: 1px dashed color-mix(in srgb, var(--theme-warning) 20%, transparent);
 }
 
 .ytdl-playlist-utility span {
@@ -657,7 +715,7 @@
 }
 
 .ytdl-dl-btn {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: linear-gradient(135deg, var(--theme-primary), var(--theme-primary));
   color: #fff;
   border: none;
   border-radius: 16px;
@@ -669,18 +727,18 @@
   justify-content: center;
   gap: 0.75rem;
   cursor: pointer;
-  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 8px 25px color-mix(in srgb, var(--theme-primary) 30%, transparent);
   transition: all 0.25s;
 }
 
 .ytdl-dl-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--theme-primary) 40%, transparent);
 }
 
 .ytdl-playlist-dl-btn {
   background: linear-gradient(135deg, #f43f5e, #be123c);
-  box-shadow: 0 10px 30px rgba(225, 29, 72, 0.32);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--theme-music) 32%, transparent);
 }
 
 .ytdl-single-dl-btn {
@@ -746,12 +804,12 @@
 }
 
 .ytdl-step.active .ytdl-step-dot {
-  background: #3b82f6;
-  box-shadow: 0 0 10px #3b82f6;
+  background: var(--theme-secondary);
+  box-shadow: 0 0 10px var(--theme-secondary);
 }
 
 .ytdl-step.active::after {
-  background: rgba(59, 130, 246, 0.5);
+  background: color-mix(in srgb, var(--theme-secondary) 50%, transparent);
 }
 
 /* Progress Block */
@@ -795,7 +853,7 @@
 
 .ytdl-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ef4444, #f97316);
+  background: linear-gradient(90deg, var(--theme-primary), var(--theme-warning));
   border-radius: 5px;
   transition: width 0.3s ease;
 }
@@ -805,12 +863,12 @@
 }
 
 .ytdl-progress-fill.paused-fill {
-  background: linear-gradient(90deg, #f59e0b, #d97706);
+  background: linear-gradient(90deg, var(--theme-warning), #d97706);
   animation: none;
 }
 
 .paused-text {
-  color: #f59e0b !important;
+  color: var(--theme-warning) !important;
   font-weight: 600;
 }
 
@@ -848,35 +906,35 @@
 }
 
 .ytdl-job-btn.pause {
-  background: rgba(245, 158, 11, 0.15);
+  background: color-mix(in srgb, var(--theme-warning) 15%, transparent);
   color: #fcd34d;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  border: 1px solid color-mix(in srgb, var(--theme-warning) 30%, transparent);
 }
 
 .ytdl-job-btn.pause:hover:not(:disabled) {
-  background: rgba(245, 158, 11, 0.25);
+  background: color-mix(in srgb, var(--theme-warning) 25%, transparent);
   transform: translateY(-1px);
 }
 
 .ytdl-job-btn.resume {
-  background: rgba(16, 185, 129, 0.15);
+  background: color-mix(in srgb, var(--theme-success) 15%, transparent);
   color: #6ee7b7;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  border: 1px solid color-mix(in srgb, var(--theme-success) 30%, transparent);
 }
 
 .ytdl-job-btn.resume:hover {
-  background: rgba(16, 185, 129, 0.25);
+  background: color-mix(in srgb, var(--theme-success) 25%, transparent);
   transform: translateY(-1px);
 }
 
 .ytdl-job-btn.cancel {
-  background: rgba(239, 68, 68, 0.15);
+  background: color-mix(in srgb, var(--theme-primary) 15%, transparent);
   color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border: 1px solid color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
 
 .ytdl-job-btn.cancel:hover {
-  background: rgba(239, 68, 68, 0.25);
+  background: color-mix(in srgb, var(--theme-primary) 25%, transparent);
   transform: translateY(-1px);
 }
 
@@ -888,8 +946,8 @@
 /* Complete Block */
 .ytdl-complete-block {
   width: 100%;
-  background: rgba(34, 197, 94, 0.08);
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: color-mix(in srgb, var(--theme-success) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-success) 20%, transparent);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
@@ -898,8 +956,8 @@
 }
 
 .ytdl-complete-icon {
-  color: #22c55e;
-  filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.3));
+  color: var(--theme-success);
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--theme-success) 30%, transparent));
 }
 
 .ytdl-complete-info { flex: 1; }
@@ -932,10 +990,10 @@
   outline: none;
 }
 
-.ytdl-name-input:focus { border-color: #22c55e; }
+.ytdl-name-input:focus { border-color: var(--theme-success); }
 
 .ytdl-save-btn {
-  background: #22c55e;
+  background: var(--theme-success);
   color: #000;
   border-radius: 10px;
   padding: 0 1.5rem;
@@ -1096,9 +1154,9 @@
 }
 
 .ytdl-format-card.selected {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: #ef4444;
-  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.15);
+  background: color-mix(in srgb, var(--theme-primary) 8%, transparent);
+  border-color: var(--theme-primary);
+  box-shadow: 0 8px 25px color-mix(in srgb, var(--theme-primary) 15%, transparent);
 }
 
 .ytdl-format-card.selected::after {
@@ -1198,8 +1256,8 @@
 }
 
 .ytdl-track-item.selected {
-  background: rgba(239, 68, 68, 0.05);
-  border-color: rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--theme-primary) 5%, transparent);
+  border-color: color-mix(in srgb, var(--theme-primary) 20%, transparent);
 }
 
 .ytdl-track-checkbox {
@@ -1224,11 +1282,11 @@
 }
 
 .ytdl-track-item.selected .ytdl-track-checkbox {
-  border-color: #ef4444;
+  border-color: var(--theme-primary);
 }
 
 .ytdl-track-item.selected .ytdl-track-checkbox::before {
-  background: #ef4444;
+  background: var(--theme-primary);
 }
 
 .ytdl-track-index {
@@ -1278,7 +1336,7 @@
 
 .ytdl-modal-confirm {
   flex: 2;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: linear-gradient(135deg, var(--theme-primary), var(--theme-primary));
   border: none;
   color: #fff;
   padding: 0.9rem;
@@ -1291,7 +1349,7 @@
 
 .ytdl-modal-confirm:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
 
 /* Responsive */
@@ -1428,3 +1486,218 @@
   filter: invert(1);
   cursor: pointer;
 }
+
+/* Clipboard Toast */
+.ytdl-clipboard-toast {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--theme-success) 90%, transparent);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--theme-success) 30%, transparent);
+  z-index: 100;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
+/* =========================================================
+   SETTINGS MODAL & THEME BUILDER (HUGE CSS UPGRADES)
+   ========================================================= */
+
+.ytdl-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.ytdl-setting-group {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1rem;
+  transition: all 0.3s ease;
+}
+
+.ytdl-setting-group:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.ytdl-setting-label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 0.25rem;
+}
+
+.ytdl-setting-desc {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+.ytdl-path-picker {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Theme Builder Pickers */
+.ytdl-theme-pickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.ytdl-color-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.ytdl-color-picker-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.ytdl-color-picker-item label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.ytdl-color-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.35rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+}
+
+.ytdl-color-input-wrapper:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ytdl-color-input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ytdl-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.ytdl-color-input::-webkit-color-swatch {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.ytdl-color-input::-moz-color-swatch {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.ytdl-color-hex {
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.ytdl-color-picker-reset {
+  justify-content: flex-end;
+  background: transparent;
+  border: none;
+  padding: 0;
+  align-items: stretch;
+}
+.ytdl-color-picker-reset:hover {
+  transform: none;
+  border-color: transparent;
+}
+.ytdl-color-picker-reset .ytdl-btn {
+  height: 100%;
+}
+
+/* Base Buttons */
+.ytdl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  height: 36px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.ytdl-btn-primary {
+  background: var(--theme-primary);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--theme-primary) 30%, transparent);
+}
+
+.ytdl-btn-primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--theme-primary) 40%, transparent);
+}
+
+.ytdl-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.ytdl-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.ytdl-btn-outline {
+  background: rgba(255, 255, 255, 0.03);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ytdl-btn-outline:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+}
+

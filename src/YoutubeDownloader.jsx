@@ -2,25 +2,25 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Film, Loader2, AlertCircle, CheckCircle2,
-  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Settings, FolderOpen, Activity, Cpu, Library, CalendarClock, ArrowLeft
+  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Settings, FolderOpen, Activity, Cpu, Library, CalendarClock, ArrowLeft, Palette
 } from 'lucide-react';
 import './YoutubeDownloader.css';
 
 const RESOLUTIONS = [
-  { id: '4k',    label: '4K',    sub: '2160p',   minH: 2160, format: 'bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]' },
-  { id: '1440p', label: '2K',    sub: '1440p',   minH: 1440, format: 'bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440]' },
+  { id: '4k', label: '4K', sub: '2160p', minH: 2160, format: 'bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160]' },
+  { id: '1440p', label: '2K', sub: '1440p', minH: 1440, format: 'bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440]' },
   { id: '1080p', label: '1080p', sub: 'Full HD', minH: 1080, format: 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]' },
-  { id: '720p',  label: '720p',  sub: 'HD',      minH: 720,  format: 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]'  },
-  { id: '480p',  label: '480p',  sub: 'SD',      minH: 480,  format: 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]'  },
-  { id: '360p',  label: '360p',  sub: 'Low',     minH: 360,  format: 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]'  },
+  { id: '720p', label: '720p', sub: 'HD', minH: 720, format: 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]' },
+  { id: '480p', label: '480p', sub: 'SD', minH: 480, format: 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]' },
+  { id: '360p', label: '360p', sub: 'Low', minH: 360, format: 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]' },
 ];
 
 const AUDIO_FORMATS = [
-  { id: 'mp3_320', label: '320kbps MP3', sub: 'Cea mai bună', quality: '0',  audioFmt: 'mp3' },
-  { id: 'mp3_192', label: '192kbps MP3', sub: 'Standard',     quality: '5',  audioFmt: 'mp3' },
-  { id: 'mp3_128', label: '128kbps MP3', sub: 'Compresat',   quality: '9',  audioFmt: 'mp3' },
-  { id: 'ogg',     label: 'OGG Vorbis',  sub: 'Format deschis',  quality: '0',  audioFmt: 'vorbis' },
-  { id: 'wav',     label: 'WAV',         sub: 'Fără pierderi',     quality: '0',  audioFmt: 'wav' },
+  { id: 'mp3_320', label: '320kbps MP3', sub: 'Cea mai bună', quality: '0', audioFmt: 'mp3' },
+  { id: 'mp3_192', label: '192kbps MP3', sub: 'Standard', quality: '5', audioFmt: 'mp3' },
+  { id: 'mp3_128', label: '128kbps MP3', sub: 'Compresat', quality: '9', audioFmt: 'mp3' },
+  { id: 'ogg', label: 'OGG Vorbis', sub: 'Format deschis', quality: '0', audioFmt: 'vorbis' },
+  { id: 'wav', label: 'WAV', sub: 'Fără pierderi', quality: '0', audioFmt: 'wav' },
 ];
 
 function formatBytes(bytes) {
@@ -81,7 +81,7 @@ const YoutubeDownloader = () => {
   const [mediaType, setMediaType] = useState('video');
   const [selectedRes, setSelectedRes] = useState('1080p');
   const [selectedAudio, setSelectedAudio] = useState('mp3_320');
-  
+
   const [selectedTracks, setSelectedTracks] = useState(new Set());
 
   const [downloading, setDownloading] = useState(false);
@@ -97,12 +97,24 @@ const YoutubeDownloader = () => {
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [pendingScope, setPendingScope] = useState('single');
   const [currentJobId, setCurrentJobId] = useState(null);
-  
-  const [step, setStep] = useState(0); 
+  const [clipboardToast, setClipboardToast] = useState(false);
+  const defaultTheme = { primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' };
+  const [customTheme, setCustomTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ytdl_custom_theme');
+      return saved ? JSON.parse(saved) : defaultTheme;
+    } catch { return defaultTheme; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ytdl_custom_theme', JSON.stringify(customTheme));
+  }, [customTheme]);
+
+  const eventSourceRef = useRef(null);
   const [systemStatus, setSystemStatus] = useState(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [customPath, setCustomPath] = useState('');
-  
+
   const [appMode, setAppMode] = useState(null);
   const [showLibrary, setShowLibrary] = useState(false);
   const [historyData, setHistoryData] = useState([]);
@@ -112,16 +124,33 @@ const YoutubeDownloader = () => {
     try {
       const res = await fetch('/api/ytdl/history');
       if (res.ok) setHistoryData(await res.json());
-    } catch(e) {}
+    } catch (e) { }
   };
-  
-  const eventSourceRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/ytdl/get-config').then(r => r.json()).then(data => {
       if (data.customPath) setCustomPath(data.customPath);
-    }).catch(()=>{});
+    }).catch(() => { });
   }, []);
+
+  // Smart Clipboard Auto-Detect
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (downloading || downloadComplete || info || !appMode) return;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && isYouTubeUrl(text) && text !== url) {
+          setUrl(text);
+          setClipboardToast(true);
+          setTimeout(() => setClipboardToast(false), 3000);
+        }
+      } catch (err) {
+        // Ignore if clipboard access is denied or unavailable
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [url, downloading, downloadComplete, info, appMode]);
 
   const handleSelectFolder = async () => {
     try {
@@ -130,11 +159,18 @@ const YoutubeDownloader = () => {
       if (data.success) {
         setCustomPath(data.path);
       }
-    } catch(e) {}
+    } catch (e) { }
   };
 
   const handleOpenFolder = async (target = '') => {
-    fetch(`/api/ytdl/open-folder?target=${encodeURIComponent(target)}`);
+    try {
+      const res = await fetch(`/api/ytdl/open-folder?target=${encodeURIComponent(target)}`);
+      if (!res.ok) {
+        alert("Eroare: Fișierul nu a fost găsit. A fost mutat sau șters?");
+      }
+    } catch (e) {
+      alert("Eroare la deschiderea folderului.");
+    }
   };
 
   useEffect(() => {
@@ -142,7 +178,7 @@ const YoutubeDownloader = () => {
       try {
         const res = await fetch('/api/ytdl/system-status');
         if (res.ok) setSystemStatus(await res.json());
-      } catch (e) {}
+      } catch (e) { }
     };
     fetchStatus();
     const interval = setInterval(fetchStatus, 5000);
@@ -152,25 +188,25 @@ const YoutubeDownloader = () => {
   useEffect(() => {
     const savedJobId = localStorage.getItem('ytdl_job_id');
     const savedScope = localStorage.getItem('ytdl_job_scope');
-    
+
     if (savedJobId) {
       const savedUrl = localStorage.getItem('ytdl_url');
       const savedInfo = localStorage.getItem('ytdl_info');
       if (savedUrl) setUrl(savedUrl);
       if (savedInfo) {
-        try { 
+        try {
           const parsedInfo = JSON.parse(savedInfo);
-          setInfo(parsedInfo); 
+          setInfo(parsedInfo);
           let safeName = (parsedInfo.title || 'video').replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 60);
           if (parsedInfo.playlist) {
-             const allIndices = new Set(parsedInfo.playlist.entries.map(e => e.index));
-             setSelectedTracks(allIndices);
-             if (parsedInfo.playlist.title) {
-               safeName = parsedInfo.playlist.title.replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 60);
-             }
+            const allIndices = new Set(parsedInfo.playlist.entries.map(e => e.index));
+            setSelectedTracks(allIndices);
+            if (parsedInfo.playlist.title) {
+              safeName = parsedInfo.playlist.title.replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 60);
+            }
           }
           setOutputName(safeName);
-        } catch (e) {}
+        } catch (e) { }
       }
 
       setDownloadScope(savedScope || 'single');
@@ -183,9 +219,9 @@ const YoutubeDownloader = () => {
     setDownloading(true);
     setStep(1);
     setDownloadStatus('Se reia conexiunea cu serverul...');
-    
+
     if (eventSourceRef.current) eventSourceRef.current.close();
-    
+
     const eventSource = new EventSource(`/api/ytdl/job-status?jobId=${jobId}`);
     eventSourceRef.current = eventSource;
 
@@ -232,11 +268,19 @@ const YoutubeDownloader = () => {
           setCurrentJobId(null);
           localStorage.removeItem('ytdl_job_id');
           localStorage.removeItem('ytdl_job_scope');
-          
+
           if (data.finalFilename) {
             setFinalFilename(data.finalFilename);
             if (data.isArchive) {
-               window.location.href = `/api/download-file?file=${encodeURIComponent(data.finalFilename)}`;
+              fetch(`/api/download-file?file=${encodeURIComponent(data.finalFilename)}`, { method: 'HEAD' })
+                .then(res => {
+                  if (res.ok) {
+                    window.location.href = `/api/download-file?file=${encodeURIComponent(data.finalFilename)}`;
+                  } else {
+                    alert("Eroare: Fișierul ZIP nu a fost găsit sau a expirat.");
+                  }
+                })
+                .catch(() => alert("Eroare: Nu s-a putut iniția descărcarea arhivei."));
             }
           }
         }
@@ -263,7 +307,6 @@ const YoutubeDownloader = () => {
     setProgress(0);
     setStep(0);
 
-    // Smart Format Detection
     if (isMusicUrl(url)) {
       setMediaType('audio');
       setDownloadFormat('audio');
@@ -277,7 +320,7 @@ const YoutubeDownloader = () => {
       const res = await fetch(`/api/ytdl/info?url=${encodeURIComponent(url)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch info');
-      
+
       let playlist = null;
       if (isPlaylistUrl(url)) {
         const playlistRes = await fetch('/api/ytdl/collection-info?url=' + encodeURIComponent(url));
@@ -335,36 +378,36 @@ const YoutubeDownloader = () => {
       if (downloadSourceMode === 'smart') {
         let items = [];
         if (scope === 'single') {
-           items.push(`ytsearch1:${info.uploader || ''} ${info.title} official audio`);
+          items.push(`ytsearch1:${info.uploader || ''} ${info.title} official audio`);
         } else {
-           const selectedEntries = info.playlist.entries.filter(e => selectedTracks.has(e.index));
-           items = selectedEntries.map(e => `ytsearch1:${e.uploader || ''} ${e.title} official audio`);
+          const selectedEntries = info.playlist.entries.filter(e => selectedTracks.has(e.index));
+          items = selectedEntries.map(e => `ytsearch1:${e.uploader || ''} ${e.title} official audio`);
         }
-        
+
         const res = await fetch('/api/ytdl/smart-download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-          url: info.url || url,
-          items,
-          format: mediaType,
-          scope,
-          title: info.title,
-          thumbnail: info.thumbnail,
-          formatStr: computedFormat || downloadFormat,
-          scheduleTime: scheduleTime || null
-        })
-      });
+            url: info.url || url,
+            items,
+            format: mediaType,
+            scope,
+            title: info.title,
+            thumbnail: info.thumbnail,
+            formatStr: computedFormat || downloadFormat,
+            scheduleTime: scheduleTime || null
+          })
+        });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Server error');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Server error');
 
-      if (data.scheduled) {
-        setDownloading(false);
-        setDownloadComplete(true);
-        setFinalFilename(`[Programat la ${scheduleTime}]`);
-        return;
-      }
+        if (data.scheduled) {
+          setDownloading(false);
+          setDownloadComplete(true);
+          setFinalFilename(`[Programat la ${scheduleTime}]`);
+          return;
+        }
         jobId = data.jobId;
       } else {
         const endpoint = scope === 'playlist' ? '/api/ytdl/collection-download' : '/api/ytdl/download';
@@ -376,23 +419,23 @@ const YoutubeDownloader = () => {
           jobId: Date.now().toString()
         });
         if (scope === 'playlist') {
-           queryParams.append('selectedItems', Array.from(selectedTracks).sort((a,b)=>a-b).join(','));
+          queryParams.append('selectedItems', Array.from(selectedTracks).sort((a, b) => a - b).join(','));
         }
         if (scheduleTime) {
-           queryParams.append('scheduleTime', scheduleTime);
+          queryParams.append('scheduleTime', scheduleTime);
         }
         jobId = queryParams.get('jobId');
-        
+
         const res = await fetch(`${endpoint}?${queryParams.toString()}`);
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
-           const data = await res.json();
-           if (data.scheduled) {
-             setDownloading(false);
-             setDownloadComplete(true);
-             setFinalFilename(`[Programat la ${scheduleTime}]`);
-             return;
-           }
+          const data = await res.json();
+          if (data.scheduled) {
+            setDownloading(false);
+            setDownloadComplete(true);
+            setFinalFilename(`[Programat la ${scheduleTime}]`);
+            return;
+          }
         }
       }
 
@@ -415,9 +458,9 @@ const YoutubeDownloader = () => {
 
     setShowOptionsModal(false);
     if (!url) return;
-    
+
     setDownloadStatus(pendingScope === 'playlist' ? 'Se pregătește playlistul...' : 'Se pregătește descărcarea...');
-    
+
     if (pendingScope === 'playlist' && info?.playlist?.title) {
       setOutputName(info.playlist.title.replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 60) || 'youtube_playlist');
     }
@@ -431,10 +474,10 @@ const YoutubeDownloader = () => {
       formatStr = `video:${resOpt.format}`;
     }
     setDownloadFormat(formatStr);
-    
+
     handleDownload(pendingScope, formatStr);
   };
-  
+
   const handleJobAction = async (action) => {
     if (!currentJobId) return;
     try {
@@ -486,7 +529,11 @@ const YoutubeDownloader = () => {
   };
 
   return (
-    <div className="ytdl-page">
+    <div className="ytdl-page" style={{
+      '--theme-primary': customTheme.primary,
+      '--theme-secondary': customTheme.secondary,
+      '--theme-bg': customTheme.bgBase
+    }}>
       <div className="ytdl-bg-glow" />
 
       <div className="ytdl-layout">
@@ -500,10 +547,13 @@ const YoutubeDownloader = () => {
             <Film size={34} fill="currentColor" />
           </div>
           <div className="ytdl-title-box">
-            <h1 className="ytdl-title">YouTube Downloader</h1>
-            <p className="ytdl-subtitle">Descarcă videoclipuri 4K și MP3-uri la calitate maximă</p>
+            <h1 className="ytdl-title">Media Downloader</h1>
+            <p className="ytdl-subtitle">Platforma avansată de preluare media</p>
           </div>
           <div className="ytdl-header-actions">
+            <button className="ytdl-icon-btn" onClick={() => setShowSettingsModal(true)} title="Setări și Temă">
+              <Palette size={20} />
+            </button>
             {info && !downloading && (
               <button className="ytdl-reset-btn" onClick={handleReset} title="Resetare">
                 <RefreshCw size={18} />
@@ -520,7 +570,7 @@ const YoutubeDownloader = () => {
 
         <AnimatePresence>
           {systemStatus && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               className="ytdl-system-status"
@@ -540,7 +590,7 @@ const YoutubeDownloader = () => {
               <div className="ytdl-status-item" title="Rata de succes a descărcărilor">
                 <CheckCircle2 size={16} />
                 <span>Succes: <strong>
-                  {systemStatus.totalHits > 0 
+                  {systemStatus.totalHits > 0
                     ? ((systemStatus.successfulDownloads / Math.max(1, systemStatus.successfulDownloads + systemStatus.failedDownloads)) * 100).toFixed(0) + '%'
                     : '100%'}
                 </strong></span>
@@ -548,7 +598,7 @@ const YoutubeDownloader = () => {
               <div className="ytdl-status-item" title="Spațiu liber pe disc">
                 <HardDrive size={16} />
                 <span>
-                  Liber: 
+                  Liber:
                   <strong className={systemStatus.freeSpace < 1073741824 ? 'text-danger' : ''}>
                     {' '}{formatBytes(systemStatus.freeSpace)}
                   </strong>
@@ -573,7 +623,7 @@ const YoutubeDownloader = () => {
               <h2>YouTube Video</h2>
               <p>Descarcă videoclipuri MP4 la calitatea maximă disponibilă. (Până la 4K)</p>
             </div>
-            
+
             <div className="ytdl-mode-card music-mode" onClick={() => selectAppMode('music')}>
               <Music size={48} className="ytdl-mode-icon" />
               <h2>YouTube Music</h2>
@@ -591,14 +641,26 @@ const YoutubeDownloader = () => {
             style={{ position: 'relative' }}
           >
             {!info && (
-              <button 
-                className="ytdl-back-btn" 
-                onClick={() => setAppMode(null)} 
+              <button
+                className="ytdl-back-btn"
+                onClick={() => setAppMode(null)}
                 title="Înapoi la meniu"
               >
                 <ArrowLeft size={20} />
               </button>
             )}
+
+            {clipboardToast && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="ytdl-clipboard-toast"
+              >
+                Link detectat din clipboard!
+              </motion.div>
+            )}
+
             <div className="ytdl-url-icon"><Link2 size={24} /></div>
             <input
               type="text"
@@ -672,11 +734,11 @@ const YoutubeDownloader = () => {
                     <div className="ytdl-video-meta">
                       <h2 className="ytdl-video-title">{info.title}</h2>
                       <div className="ytdl-video-channel">
-                        <span style={{fontWeight: 700, color: '#f1f5f9'}}>{info.uploader}</span> • YouTube
+                        <span style={{ fontWeight: 700, color: '#f1f5f9' }}>{info.uploader}</span> • YouTube
                       </div>
                       <div className="ytdl-video-stats">
                         <span className="ytdl-stat-chip">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                           {formatViews(info.viewCount) || 'Multe'}
                         </span>
                         <span className="ytdl-stat-chip">
@@ -701,7 +763,7 @@ const YoutubeDownloader = () => {
                           <small>VIDEO{info.playlist.downloadableCount !== 1 && 'S'}</small>
                         </div>
                       </div>
-                      
+
                       <div className="ytdl-playlist-preview">
                         {info.playlist.entries.slice(0, 5).map((entry, i) => (
                           <div key={i} className="ytdl-playlist-preview-row">
@@ -740,18 +802,18 @@ const YoutubeDownloader = () => {
                       <h3 className="ytdl-modal-title">
                         Setări descărcare {pendingScope === 'playlist' && 'Playlist'}
                       </h3>
-                      
+
                       <div className="ytdl-settings">
                         <div className="ytdl-setting-group">
                           <span className="ytdl-setting-label">Sursă:</span>
                           <div className="ytdl-type-tabs">
-                            <button 
+                            <button
                               className={`ytdl-type-tab ${downloadSourceMode === 'standard' ? 'active' : ''}`}
                               onClick={() => setDownloadSourceMode('standard')}
                             >
                               Standard (Link exact)
                             </button>
-                            <button 
+                            <button
                               className={`ytdl-type-tab ${downloadSourceMode === 'smart' ? 'active' : ''}`}
                               onClick={() => setDownloadSourceMode('smart')}
                               disabled={appMode === 'youtube'}
@@ -777,7 +839,7 @@ const YoutubeDownloader = () => {
                             </button>
                           </div>
                         </div>
-  
+
                         <div className="ytdl-formats-grid">
                           {mediaType === 'video' ? (
                             RESOLUTIONS.map(resOpt => (
@@ -817,8 +879,8 @@ const YoutubeDownloader = () => {
                               {info.playlist.entries.map((entry) => {
                                 const isSelected = selectedTracks.has(entry.index);
                                 return (
-                                  <div 
-                                    key={entry.index} 
+                                  <div
+                                    key={entry.index}
                                     className={`ytdl-track-item ${isSelected ? 'selected' : ''}`}
                                     onClick={() => toggleTrack(entry.index)}
                                   >
@@ -833,13 +895,13 @@ const YoutubeDownloader = () => {
                           </div>
                         )}
 
-                        <div className="ytdl-setting-group" style={{marginTop: '1rem'}}>
-                          <span className="ytdl-setting-label"><CalendarClock size={16} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'4px'}}/> Programare Descărcare (Opțional)</span>
+                        <div className="ytdl-setting-group" style={{ marginTop: '1rem' }}>
+                          <span className="ytdl-setting-label"><CalendarClock size={16} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px' }} /> Programare Descărcare (Opțional)</span>
                           <p className="ytdl-setting-desc">Lăsați gol pentru descărcare imediată, sau setați o oră la care serverul să înceapă procesul automat.</p>
-                          <input 
-                            type="time" 
-                            className="ytdl-url-input ytdl-time-input" 
-                            style={{width: '100%', cursor: 'text'}}
+                          <input
+                            type="time"
+                            className="ytdl-url-input ytdl-time-input"
+                            style={{ width: '100%', cursor: 'text' }}
                             value={scheduleTime}
                             onChange={(e) => setScheduleTime(e.target.value)}
                           />
@@ -850,8 +912,8 @@ const YoutubeDownloader = () => {
                         <button className="ytdl-modal-cancel" onClick={() => setShowOptionsModal(false)}>
                           Anulează
                         </button>
-                        <button 
-                          className="ytdl-modal-confirm" 
+                        <button
+                          className="ytdl-modal-confirm"
                           onClick={startDownload}
                           disabled={pendingScope === 'playlist' && selectedTracks.size === 0}
                         >
@@ -866,7 +928,7 @@ const YoutubeDownloader = () => {
               <div className="ytdl-action-area">
                 <AnimatePresence mode="wait">
                   {info && !downloadComplete && !downloading && (
-                    <motion.div 
+                    <motion.div
                       key="actions"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -903,18 +965,18 @@ const YoutubeDownloader = () => {
 
                       <div className="ytdl-progress-header">
                         <span className="ytdl-progress-label">
-                          {isPaused ? <Pause size={16} /> : <Loader2 className="spin" size={16} />} 
+                          {isPaused ? <Pause size={16} /> : <Loader2 className="spin" size={16} />}
                           {downloadScope === 'playlist' ? 'Descărcare playlist în curs...' : 'Descărcare în curs...'}
                         </span>
                         <span>{progress.toFixed(1)}%</span>
                       </div>
-                      
+
                       {downloadStatus && (
                         <div className={`ytdl-progress-detail ${isPaused ? 'paused-text' : ''}`}>
                           {downloadStatus}
                         </div>
                       )}
-                      
+
                       <div className="ytdl-progress-track">
                         <motion.div
                           className={`ytdl-progress-fill ${step === 3 ? 'pulsing' : ''} ${isPaused ? 'paused-fill' : ''}`}
@@ -923,7 +985,7 @@ const YoutubeDownloader = () => {
                           transition={{ ease: 'linear' }}
                         />
                       </div>
-                      
+
                       <div className="ytdl-job-actions">
                         {isPaused ? (
                           <button className="ytdl-job-btn resume" onClick={() => handleJobAction('resume')}>
@@ -951,33 +1013,33 @@ const YoutubeDownloader = () => {
                       <div className="ytdl-complete-icon"><CheckCircle2 size={36} /></div>
                       <div className="ytdl-complete-info">
                         <span className="ytdl-complete-title">
-                          {downloadScope === 'playlist' 
-                            ? 'Playlist descărcat cu succes!' 
+                          {downloadScope === 'playlist'
+                            ? 'Playlist descărcat cu succes!'
                             : 'Descărcare finalizată!'}
                         </span>
-                        
+
                         {downloadScope === 'playlist' ? (
                           <div className="ytdl-archive-notice">
                             Fișierele au fost salvate cu succes.
                           </div>
                         ) : (
-                          <div className="ytdl-name-input-row" style={{justifyContent: 'center', margin: '1rem 0'}}>
+                          <div className="ytdl-name-input-row" style={{ justifyContent: 'center', margin: '1rem 0' }}>
                             <p className="ytdl-ready-filename">{finalFilename}</p>
                           </div>
                         )}
-                        
-                        <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
+
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                           {scheduleTime === '' && (
-                            <button 
-                              className="ytdl-save-btn" 
-                              style={{width: 'auto', padding: '0.8rem 1.5rem'}}
+                            <button
+                              className="ytdl-save-btn"
+                              style={{ width: 'auto', padding: '0.8rem 1.5rem' }}
                               onClick={() => handleOpenFolder(finalFilename)}
                             >
                               <FolderOpen size={20} /> Deschide în Explorer
                             </button>
                           )}
-                          
-                          <button className="ytdl-new-dl-btn" onClick={handleReset} style={{marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem'}}>
+
+                          <button className="ytdl-new-dl-btn" onClick={handleReset} style={{ marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem' }}>
                             <RefreshCw size={18} /> Alt videoclip
                           </button>
                         </div>
@@ -1004,15 +1066,15 @@ const YoutubeDownloader = () => {
               </div>
               <div className="ytdl-library-grid">
                 {historyData.length === 0 ? (
-                  <div style={{color: '#94a3b8', textAlign: 'center', marginTop: '2rem'}}>Nicio descărcare recentă.</div>
+                  <div style={{ color: '#94a3b8', textAlign: 'center', marginTop: '2rem' }}>Nicio descărcare recentă.</div>
                 ) : (
                   historyData.map((item) => (
                     <div key={item.id} className="ytdl-library-card">
                       {item.thumbnail && item.thumbnail !== 'undefined' && item.thumbnail !== 'null' ? (
-                        <img 
-                          src={item.thumbnail} 
-                          alt="thumbnail" 
-                          className="ytdl-lib-thumb" 
+                        <img
+                          src={item.thumbnail}
+                          alt="thumbnail"
+                          className="ytdl-lib-thumb"
                           onError={(e) => {
                             if (!e.target.dataset.triedLocal) {
                               e.target.dataset.triedLocal = 'true';
@@ -1024,18 +1086,18 @@ const YoutubeDownloader = () => {
                           }}
                         />
                       ) : (
-                        <img 
-                          src={`/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`} 
-                          alt="thumbnail" 
-                          className="ytdl-lib-thumb" 
+                        <img
+                          src={`/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
+                          alt="thumbnail"
+                          className="ytdl-lib-thumb"
                           onError={(e) => {
                             e.target.style.display = 'none';
                             e.target.nextElementSibling.style.display = 'flex';
                           }}
                         />
                       )}
-                      <div 
-                        className="ytdl-lib-thumb-fallback" 
+                      <div
+                        className="ytdl-lib-thumb-fallback"
                         style={{ display: 'none' }}
                       >
                         <Film size={32} color="rgba(255,255,255,0.2)" />
@@ -1073,29 +1135,85 @@ const YoutubeDownloader = () => {
                 className="ytdl-modal ytdl-settings-modal"
               >
                 <h3 className="ytdl-modal-title">Setări Aplicație</h3>
-                
+
                 <div className="ytdl-settings">
                   <div className="ytdl-setting-group">
                     <span className="ytdl-setting-label">Director descărcări (Local)</span>
                     <p className="ytdl-setting-desc">Alege folderul exact unde vrei să se salveze fișierele automat. Aplicația va ocoli browserul!</p>
-                    
+
                     <div className="ytdl-path-picker">
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value={customPath || 'Mod Implicit (Folderul Aplicației/downloads)'} 
+                      <input
+                        type="text"
+                        readOnly
+                        value={customPath || 'Mod Implicit (Folderul Aplicației/downloads)'}
                         className="ytdl-url-input"
-                        style={{ flex: 1, margin: 0, cursor: 'default' }}
+                        title={customPath}
                       />
-                      <button className="ytdl-fetch-btn" onClick={handleSelectFolder} style={{ width: 'auto', padding: '0 1.5rem' }}>
+                      <button className="ytdl-btn ytdl-btn-secondary" onClick={handleSelectFolder}>
                         <FolderOpen size={18} /> Alege Folder
                       </button>
+                    </div>
+                  </div>
+
+                  <div className="ytdl-setting-group">
+                    <span className="ytdl-setting-label">Personalizare Temă (Culori Hex)</span>
+                    <p className="ytdl-setting-desc">Alege culorile exacte pentru interfață. Se aplică instantaneu.</p>
+
+                    <div className="ytdl-theme-pickers">
+                      <div className="ytdl-color-picker-item">
+                        <label>Accent Principal</label>
+                        <div className="ytdl-color-input-wrapper">
+                          <input
+                            type="color"
+                            value={customTheme.primary}
+                            onChange={(e) => setCustomTheme(prev => ({ ...prev, primary: e.target.value }))}
+                            className="ytdl-color-input"
+                          />
+                          <span className="ytdl-color-hex">{customTheme.primary.toUpperCase()}</span>
+                        </div>
+                      </div>
+
+                      <div className="ytdl-color-picker-item">
+                        <label>Accent Secundar</label>
+                        <div className="ytdl-color-input-wrapper">
+                          <input
+                            type="color"
+                            value={customTheme.secondary}
+                            onChange={(e) => setCustomTheme(prev => ({ ...prev, secondary: e.target.value }))}
+                            className="ytdl-color-input"
+                          />
+                          <span className="ytdl-color-hex">{customTheme.secondary.toUpperCase()}</span>
+                        </div>
+                      </div>
+
+                      <div className="ytdl-color-picker-item">
+                        <label>Culoare Fundal</label>
+                        <div className="ytdl-color-input-wrapper">
+                          <input
+                            type="color"
+                            value={customTheme.bgBase}
+                            onChange={(e) => setCustomTheme(prev => ({ ...prev, bgBase: e.target.value }))}
+                            className="ytdl-color-input"
+                          />
+                          <span className="ytdl-color-hex">{customTheme.bgBase.toUpperCase()}</span>
+                        </div>
+                      </div>
+
+                      <div className="ytdl-color-picker-item ytdl-color-picker-reset">
+                        <button
+                          className="ytdl-btn ytdl-btn-outline"
+                          onClick={() => setCustomTheme({ primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' })}
+                          title="Resetează la culorile implicite"
+                        >
+                          <RefreshCw size={16} /> Resetare
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="ytdl-modal-actions">
-                  <button className="ytdl-modal-confirm" style={{ background: '#3b82f6' }} onClick={() => setShowSettingsModal(false)}>
+                  <button className="ytdl-btn ytdl-btn-primary ytdl-modal-confirm" onClick={() => setShowSettingsModal(false)}>
                     Gata
                   </button>
                 </div>

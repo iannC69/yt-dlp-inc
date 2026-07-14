@@ -6,8 +6,12 @@ import { fileURLToPath } from 'url'
 import { spawn } from 'child_process'
 import crypto from 'crypto'
 import os from 'os'
+import ffmpegStatic from 'ffmpeg-static'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const binPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
+// Use ffmpeg-static for bundled ffmpeg binary; fall back to local bin/ if present
+const ffmpegBin = ffmpegStatic || path.resolve(__dirname, 'bin', 'ffmpeg.exe')
+const ffmpegDir = path.dirname(ffmpegBin)
 
 function isYouTubeUrl(url) {
   return /^(https?:\/\/)?(www\.|music\.)?(youtube\.com|youtu\.be)\/.+/.test(url)
@@ -381,6 +385,10 @@ function youtubeDownloaderPlugin() {
         const target = urlObj.searchParams.get('target')
         if (target) {
           const targetPath = path.join(ensureDownloadsDir(), target)
+          if (!fs.existsSync(targetPath)) {
+             res.statusCode = 404;
+             return res.end(JSON.stringify({ success: false, error: 'File not found' }));
+          }
           spawn('explorer.exe', ['/select,', targetPath])
         } else {
           spawn('explorer.exe', [ensureDownloadsDir()])
@@ -599,12 +607,11 @@ function youtubeDownloaderPlugin() {
             const batchFile = path.join(targetDir, `batch-${jobId}.txt`)
             fs.writeFileSync(batchFile, items.join('\n'), 'utf8')
 
-            const ffmpegPath = path.resolve(__dirname, 'bin')
             let args = []
             if (format === 'audio') {
-              args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegPath]
+              args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir]
             } else {
-              args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegPath]
+              args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir]
             }
 
             args.push(
@@ -684,7 +691,6 @@ function youtubeDownloaderPlugin() {
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
-        const ffmpegPath = path.resolve(__dirname, 'bin')
         const downloadsDir = ensureDownloadsDir()
         let args
 
@@ -693,17 +699,17 @@ function youtubeDownloaderPlugin() {
           const audioFmt = parts[1] || 'mp3'
           const audioQuality = parts[2] || '0'
           if (audioFmt === 'wav') {
-            args = ['-x', '--audio-format', 'wav', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegPath, videoUrl]
+            args = ['-x', '--audio-format', 'wav', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
           } else if (audioFmt === 'vorbis') {
-            args = ['-x', '--audio-format', 'vorbis', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegPath, videoUrl]
+            args = ['-x', '--audio-format', 'vorbis', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
           } else {
-            args = ['-x', '--audio-format', 'mp3', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegPath, videoUrl]
+            args = ['-x', '--audio-format', 'mp3', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
           }
         } else if (format.startsWith('video:')) {
           const formatStr = format.substring(6)
-          args = ['-f', formatStr, '--merge-output-format', 'mp4', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegPath, videoUrl]
+          args = ['-f', formatStr, '--merge-output-format', 'mp4', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
         } else {
-          args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegPath, videoUrl]
+          args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
         }
 
         args.push(
@@ -874,11 +880,11 @@ function youtubeDownloaderPlugin() {
           const parts = format.split(':')
           const audioFormat = ['mp3', 'wav', 'vorbis'].includes(parts[1]) ? parts[1] : 'mp3'
           const audioQuality = /^\d+$/.test(parts[2] || '') ? parts[2] : '0'
-          args = ['-x', '--audio-format', audioFormat, '-o', outputTemplate, '--ffmpeg-location', path.resolve(__dirname, 'bin')]
+          args = ['-x', '--audio-format', audioFormat, '-o', outputTemplate, '--ffmpeg-location', ffmpegDir]
           if (audioFormat !== 'wav') args.splice(3, 0, '--audio-quality', audioQuality)
         } else {
           const videoFormat = format.startsWith('video:') ? format.substring(6) : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-          args = ['-f', videoFormat, '--merge-output-format', 'mp4', '-o', outputTemplate, '--ffmpeg-location', path.resolve(__dirname, 'bin')]
+          args = ['-f', videoFormat, '--merge-output-format', 'mp4', '-o', outputTemplate, '--ffmpeg-location', ffmpegDir]
         }
 
         args.push(
@@ -932,16 +938,14 @@ function youtubeDownloaderPlugin() {
           return res.end('Invalid filename')
         }
 
-        const filePath = path.join(__dirname, 'downloads', file)
+        const filePath = path.join(ensureDownloadsDir(), file)
         if (!fs.existsSync(filePath)) {
           res.statusCode = 404
           return res.end('File not found')
         }
 
-        const ffmpegPath = path.resolve(__dirname, 'bin', 'ffmpeg.exe')
         const args = ['-i', filePath, '-map', '0:v', '-c:v', 'copy', '-f', 'image2pipe', '-']
-        
-        const proc = spawn(ffmpegPath, args)
+        const proc = spawn(ffmpegBin, args)
         let hasOutput = false;
 
         proc.stdout.on('data', (chunk) => {
@@ -981,7 +985,7 @@ function youtubeDownloaderPlugin() {
           return res.end('Invalid filename')
         }
 
-        const filePath = path.join(__dirname, 'downloads', file)
+        const filePath = path.join(ensureDownloadsDir(), file)
         if (!fs.existsSync(filePath)) {
           res.statusCode = 404
           return res.end('File not found or expired')
