@@ -23,6 +23,37 @@ const AUDIO_FORMATS = [
   { id: 'wav', label: 'WAV', sub: 'Fără pierderi', quality: '0', audioFmt: 'wav' },
 ];
 
+// ── Clickable Suggestion Chips ──────────────────────────────────────────────
+const SUGGESTIONS = [
+  // Popular music
+  { label: 'Bohemian Rhapsody', url: 'https://www.youtube.com/watch?v=fJ9rUzIMcZQ', tag: 'Music', color: '#a855f7' },
+  { label: 'Blinding Lights', url: 'https://www.youtube.com/watch?v=4NRXx6U8ABQ', tag: 'Music', color: '#a855f7' },
+  { label: 'Shape of You', url: 'https://www.youtube.com/watch?v=JGwWNGJdvx8', tag: 'Music', color: '#a855f7' },
+  { label: 'Stairway to Heaven', url: 'https://www.youtube.com/watch?v=QkF3oxziUI4', tag: 'Music', color: '#a855f7' },
+  { label: 'Hotel California', url: 'https://www.youtube.com/watch?v=BciS5krYL80', tag: 'Music', color: '#a855f7' },
+  { label: 'Smells Like Teen Spirit', url: 'https://www.youtube.com/watch?v=hTWKbfoikeg', tag: 'Music', color: '#a855f7' },
+  { label: 'Lose Yourself', url: 'https://www.youtube.com/watch?v=_Yhyp-_hX2s', tag: 'Rap', color: '#f59e0b' },
+  { label: 'HUMBLE. - Kendrick Lamar', url: 'https://www.youtube.com/watch?v=tvTRZJ-4EyI', tag: 'Rap', color: '#f59e0b' },
+  // Popular videos
+  { label: 'Gangnam Style', url: 'https://www.youtube.com/watch?v=9bZkp7q19f0', tag: 'Viral', color: '#ef4444' },
+  { label: 'Baby Shark', url: 'https://www.youtube.com/watch?v=XqZsoesa55w', tag: 'Viral', color: '#ef4444' },
+  { label: 'Despacito', url: 'https://www.youtube.com/watch?v=kTJczUoc26U', tag: 'Music', color: '#a855f7' },
+  // Playlists
+  { label: 'Lo-Fi Hip Hop Playlist', url: 'https://www.youtube.com/playlist?list=PLofht4PTcKYnaH8w5olJCI-pPmIBOOFAy', tag: 'Playlist', color: '#10b981' },
+  { label: 'Top 50 Global', url: 'https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI', tag: 'Playlist', color: '#10b981' },
+  // Podcasts / long form
+  { label: 'Joe Rogan #2228', url: 'https://www.youtube.com/watch?v=3dg9CgjBXSc', tag: 'Podcast', color: '#3b82f6' },
+  { label: 'Lex Fridman - Elon Musk', url: 'https://www.youtube.com/watch?v=DxREm3s1scA', tag: 'Podcast', color: '#3b82f6' },
+  // Tutorials
+  { label: 'Learn React in 1 Hour', url: 'https://www.youtube.com/watch?v=SqcY0GlETPk', tag: 'Tutorial', color: '#06b6d4' },
+  { label: 'Python Full Course', url: 'https://www.youtube.com/watch?v=eWRfhZUzrAc', tag: 'Tutorial', color: '#06b6d4' },
+  { label: 'Git & GitHub Crash Course', url: 'https://www.youtube.com/watch?v=RGOj5yH7evk', tag: 'Tutorial', color: '#06b6d4' },
+  // YouTube Music
+  { label: 'Eminem – Without Me', url: 'https://music.youtube.com/watch?v=YVkUvmDQ3HY', tag: 'YT Music', color: '#ec4899' },
+  { label: 'Arctic Monkeys – R U Mine?', url: 'https://music.youtube.com/watch?v=f1gkGmOQJPE', tag: 'YT Music', color: '#ec4899' },
+  { label: 'Daft Punk – Get Lucky', url: 'https://music.youtube.com/watch?v=5NV6Rdv1a3I', tag: 'YT Music', color: '#ec4899' },
+];
+
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const k = 1024;
@@ -690,6 +721,37 @@ const YoutubeDownloader = () => {
                 : <><Zap size={20} fill="currentColor" /> Procesează</>
               }
             </button>
+          </motion.div>
+        )}
+
+        {/* ── Suggestion Chips ───────────────────────────────── */}
+        {appMode !== null && !info && !loadingInfo && !downloading && !downloadComplete && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+            className="ytdl-suggestions-wrap"
+          >
+            <span className="ytdl-suggestions-label">Try these:</span>
+            <div className="ytdl-suggestions-chips">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s.url}
+                  className="ytdl-suggestion-chip"
+                  style={{ '--chip-color': s.color }}
+                  onClick={() => {
+                    setUrl(s.url);
+                    setTimeout(() => fetchInfo(), 100);
+                  }}
+                  title={s.url}
+                >
+                  <span className="ytdl-chip-tag" style={{ background: s.color + '22', color: s.color, borderColor: s.color + '44' }}>
+                    {s.tag}
+                  </span>
+                  <span className="ytdl-chip-label">{s.label}</span>
+                </button>
+              ))}
+            </div>
           </motion.div>
         )}
 
