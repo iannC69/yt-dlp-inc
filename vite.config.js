@@ -7,6 +7,7 @@ import { spawn } from 'child_process'
 import crypto from 'crypto'
 import os from 'os'
 import ffmpegStatic from 'ffmpeg-static'
+import NodeID3 from 'node-id3'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const binPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
 // Use ffmpeg-static for bundled ffmpeg binary; fall back to local bin/ if present
@@ -43,7 +44,7 @@ function getConfig() {
   if (fs.existsSync(configPath)) {
     try {
       return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } catch(e) {}
+    } catch (e) { }
   }
   return { customPath: '' };
 }
@@ -72,7 +73,7 @@ const metrics = {
 const historyPath = path.resolve(__dirname, 'history.json')
 function getHistory() {
   if (fs.existsSync(historyPath)) {
-    try { return JSON.parse(fs.readFileSync(historyPath, 'utf8')); } catch(e) {}
+    try { return JSON.parse(fs.readFileSync(historyPath, 'utf8')); } catch (e) { }
   }
   return [];
 }
@@ -86,7 +87,7 @@ function saveToHistory(entry) {
 const scheduledPath = path.resolve(__dirname, 'scheduled.json')
 function getScheduled() {
   if (fs.existsSync(scheduledPath)) {
-    try { return JSON.parse(fs.readFileSync(scheduledPath, 'utf8')); } catch(e) {}
+    try { return JSON.parse(fs.readFileSync(scheduledPath, 'utf8')); } catch (e) { }
   }
   return [];
 }
@@ -109,7 +110,7 @@ setInterval(() => {
       job.started = true;
       changed = true;
       console.log(`Starting scheduled job: ${job.id}`);
-      
+
       // Simulate internal API call to start job
       try {
         const jobId = job.id;
@@ -130,7 +131,7 @@ setInterval(() => {
             args.push('-f', job.formatStr || 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4] / bv*+ba/b');
           }
           args.push('-o', '%(title)s.%(ext)s');
-          
+
           activeJobs.set(jobId, {
             id: jobId, type: 'single', args, clients: new Set(),
             downloadsDir: targetDir,
@@ -138,7 +139,7 @@ setInterval(() => {
           });
           spawnYtDlp(jobId);
         }
-      } catch(err) {
+      } catch (err) {
         console.error('Failed to start scheduled job:', err);
       }
     }
@@ -235,7 +236,7 @@ function spawnYtDlp(jobId) {
       const progress = totalItems
         ? ((currentItem - 1) / totalItems) * 100 + ((itemProgress ? Number(itemProgress[1]) : 0) / totalItems)
         : 0
-        
+
       broadcast(jobId, {
         progress: Math.min(progress, 95),
         currentItem,
@@ -252,7 +253,7 @@ function spawnYtDlp(jobId) {
       const progressMatch = text.match(/\[download\]\s+([\d.]+)%/)
       let progress = job.state.progress;
       if (progressMatch) progress = parseFloat(progressMatch[1])
-      
+
       broadcast(jobId, { raw: text, progress, filename: finalFilename })
     }
   };
@@ -278,20 +279,20 @@ function spawnYtDlp(jobId) {
     if (job.isPaused) return; // Just paused, wait for resume
 
     if (code !== 0) {
-       const knownError = parseYtDlpError(fullStderr);
-       if (knownError) {
-         if (job.collectionDir) {
-           try { fs.rmSync(job.collectionDir, { recursive: true, force: true }) } catch { /* ignore */ }
-         }
-         return finishJob(jobId, { error: knownError });
-       }
+      const knownError = parseYtDlpError(fullStderr);
+      if (knownError) {
+        if (job.collectionDir) {
+          try { fs.rmSync(job.collectionDir, { recursive: true, force: true }) } catch { /* ignore */ }
+        }
+        return finishJob(jobId, { error: knownError });
+      }
     }
 
     if (job.type === 'single') {
       if (code !== 0) {
-         finishJob(jobId, { error: 'Eroare la descărcare. Cod: ' + code });
+        finishJob(jobId, { error: 'Eroare la descărcare. Cod: ' + code });
       } else {
-         finishJob(jobId, { code, finalFilename });
+        finishJob(jobId, { code, finalFilename });
       }
     } else {
       // Playlist completion
@@ -362,11 +363,11 @@ function youtubeDownloaderPlugin() {
               Write-Output $folderBrowser.SelectedPath
           }
         `;
-        
+
         const child = spawn('powershell', ['-NoProfile', '-Command', psScript])
         let stdout = ''
         child.stdout.on('data', chunk => { stdout += chunk.toString() })
-        
+
         child.on('close', code => {
           const selected = stdout.trim()
           if (selected) {
@@ -381,13 +382,13 @@ function youtubeDownloaderPlugin() {
       server.middlewares.use('/api/ytdl/open-folder', (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
-        
+
         const target = urlObj.searchParams.get('target')
         if (target) {
           const targetPath = path.join(ensureDownloadsDir(), target)
           if (!fs.existsSync(targetPath)) {
-             res.statusCode = 404;
-             return res.end(JSON.stringify({ success: false, error: 'File not found' }));
+            res.statusCode = 404;
+            return res.end(JSON.stringify({ success: false, error: 'File not found' }));
           }
           spawn('explorer.exe', ['/select,', targetPath])
         } else {
@@ -400,12 +401,12 @@ function youtubeDownloaderPlugin() {
       server.middlewares.use('/api/ytdl/history', (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
-        
+
         if (req.method === 'DELETE') {
-           fs.writeFileSync(historyPath, '[]', 'utf8')
-           return res.end(JSON.stringify({ success: true }))
+          fs.writeFileSync(historyPath, '[]', 'utf8')
+          return res.end(JSON.stringify({ success: true }))
         }
-        
+
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(getHistory()))
       })
@@ -414,7 +415,7 @@ function youtubeDownloaderPlugin() {
       server.middlewares.use('/api/ytdl/scheduled', (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
-        
+
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(getScheduled().filter(j => !j.started)))
       })
@@ -511,7 +512,7 @@ function youtubeDownloaderPlugin() {
           '--playlist-items', '1',
           videoUrl
         ]
-        
+
         const cookiesPath = path.resolve(__dirname, 'cookies.txt')
         if (fs.existsSync(cookiesPath)) {
           args.splice(args.length - 1, 0, '--cookies', cookiesPath)
@@ -543,11 +544,11 @@ function youtubeDownloaderPlugin() {
           try {
             const info = JSON.parse(dataStr)
             const availableHeights = new Set()
-            ;(info.formats || []).forEach(f => {
-              if (f.height && f.vcodec && f.vcodec !== 'none') {
-                availableHeights.add(f.height)
-              }
-            })
+              ; (info.formats || []).forEach(f => {
+                if (f.height && f.vcodec && f.vcodec !== 'none') {
+                  availableHeights.add(f.height)
+                }
+              })
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify({
               title: info.title,
@@ -580,10 +581,10 @@ function youtubeDownloaderPlugin() {
           try {
             const data = JSON.parse(body)
             const { items, format, scope, title, scheduleTime, formatStr } = data
-            
+
             if (!items || !items.length) {
-               res.statusCode = 400
-               return res.end(JSON.stringify({error: 'No items provided'}))
+              res.statusCode = 400
+              return res.end(JSON.stringify({ error: 'No items provided' }))
             }
 
             if (scheduleTime) {
@@ -591,7 +592,7 @@ function youtubeDownloaderPlugin() {
               let runAt = new Date();
               runAt.setHours(sh, sm, 0, 0);
               if (runAt <= new Date()) runAt.setDate(runAt.getDate() + 1);
-              
+
               addScheduledJob({ type: 'single', items, format, scope, title, formatStr, runAt: runAt.toISOString() });
               res.setHeader('Content-Type', 'application/json')
               return res.end(JSON.stringify({ scheduled: true, runAt: runAt.toISOString() }))
@@ -621,7 +622,7 @@ function youtubeDownloaderPlugin() {
               '--embed-thumbnail',
               '--extractor-args', 'youtube:player_client=web_music,default'
             )
-            
+
             const cookiesPath = path.resolve(__dirname, 'cookies.txt')
             if (fs.existsSync(cookiesPath)) {
               args.push('--cookies', cookiesPath)
@@ -670,7 +671,7 @@ function youtubeDownloaderPlugin() {
         const scheduleTime = urlObj.searchParams.get('scheduleTime')
         const title = urlObj.searchParams.get('title') || ''
         const thumbnail = urlObj.searchParams.get('thumbnail') || ''
-        
+
         if (!videoUrl) {
           res.statusCode = 400
           return res.end('No URL')
@@ -681,7 +682,7 @@ function youtubeDownloaderPlugin() {
           let runAt = new Date();
           runAt.setHours(sh, sm, 0, 0);
           if (runAt <= new Date()) runAt.setDate(runAt.getDate() + 1);
-          
+
           addScheduledJob({ type: 'single', url: videoUrl, format, scheduleTime, runAt: runAt.toISOString(), title, thumbnail });
           res.setHeader('Content-Type', 'application/json')
           return res.end(JSON.stringify({ scheduled: true }))
@@ -713,9 +714,9 @@ function youtubeDownloaderPlugin() {
         }
 
         args.push(
-          '--no-playlist', 
-          '--newline', 
-          '--embed-metadata', 
+          '--no-playlist',
+          '--newline',
+          '--embed-metadata',
           '--embed-thumbnail',
           '--extractor-args', 'youtube:player_client=web_music,default'
         )
@@ -763,7 +764,7 @@ function youtubeDownloaderPlugin() {
               '--playlist-end', String(COLLECTION_LIMIT + 1),
               videoUrl
             ]
-            
+
             const cookiesPath = path.resolve(__dirname, 'cookies.txt')
             if (fs.existsSync(cookiesPath)) {
               args.splice(args.length - 1, 0, '--cookies', cookiesPath)
@@ -832,7 +833,7 @@ function youtubeDownloaderPlugin() {
       server.middlewares.use('/api/ytdl/collection-download', (req, res, next) => {
         const urlObj = new URL(req.url, 'http://' + req.headers.host)
         if (urlObj.pathname !== '/') return next()
-        
+
         const jobId = urlObj.searchParams.get('jobId')
         if (!jobId) {
           res.statusCode = 400
@@ -860,7 +861,7 @@ function youtubeDownloaderPlugin() {
           let runAt = new Date();
           runAt.setHours(sh, sm, 0, 0);
           if (runAt <= new Date()) runAt.setDate(runAt.getDate() + 1);
-          
+
           addScheduledJob({ type: 'playlist', url: videoUrl, format, selectedItems, scheduleTime, runAt: runAt.toISOString(), title, thumbnail });
           res.setHeader('Content-Type', 'application/json')
           return res.end(JSON.stringify({ scheduled: true }))
@@ -905,7 +906,7 @@ function youtubeDownloaderPlugin() {
         }
 
         const expectedCount = selectedItems.split(',').length
-        
+
         activeJobs.set(jobId, {
           id: jobId,
           type: 'playlist',
@@ -920,7 +921,7 @@ function youtubeDownloaderPlugin() {
         })
 
         spawnYtDlp(jobId)
-        
+
         req.on('close', () => {
           const job = activeJobs.get(jobId)
           if (job) job.clients.delete(res)
@@ -965,7 +966,7 @@ function youtubeDownloaderPlugin() {
             res.end()
           }
         })
-        
+
         proc.on('error', () => {
           if (!hasOutput) {
             res.statusCode = 500
@@ -1028,7 +1029,7 @@ function youtubeDownloaderPlugin() {
           const downloadsDir = ensureDownloadsDir()
           const stat = fs.statfsSync(downloadsDir)
           const freeSpaceBytes = stat.bfree * stat.bsize
-          
+
           const totalMem = os.totalmem()
           const freeMem = os.freemem()
 
@@ -1049,7 +1050,7 @@ function youtubeDownloaderPlugin() {
         }
       })
 
-      // ── Spotify Info (oEmbed) ──
+      // ── Spotify Info (Rich Metadata) ──
       server.middlewares.use('/api/spotify-info', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
@@ -1058,38 +1059,187 @@ function youtubeDownloaderPlugin() {
           res.statusCode = 400
           return res.end(JSON.stringify({ error: 'Missing url param' }))
         }
-        try {
-          const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(spotUrl)}`
-          const https = await import('https')
-          const data = await new Promise((resolve, reject) => {
-            https.get(oembedUrl, (r) => {
-              let body = ''
-              r.on('data', c => body += c)
-              r.on('end', () => {
-                try { resolve(JSON.parse(body)) } catch (e) { reject(e) }
-              })
-            }).on('error', reject)
-          })
+
+        // Detect type from URL
+        const typeMatch = spotUrl.match(/spotify\.com\/(track|album|playlist|artist)\//)
+        const spotifyType = typeMatch ? typeMatch[1] : 'track'
+
+        if (spotifyType === 'artist') {
           res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({
-            title: data.title,
-            author_name: data.author_name,
-            thumbnail_url: data.thumbnail_url,
-            provider_name: data.provider_name,
-            type: data.type,
-          }))
+          return res.end(JSON.stringify({ error: 'artist_not_supported' }))
+        }
+
+        try {
+          res.setHeader('Content-Type', 'application/json')
+
+          // ── Helper: oEmbed (gives us title + thumbnail for ANY valid Spotify URL) ──
+          const oembedRaw = await fetch(
+            `https://open.spotify.com/oembed?url=${encodeURIComponent(spotUrl)}`,
+            { headers: { 'User-Agent': 'curl/7.68.0', 'Accept': 'application/json' } }
+          )
+          const oembed = oembedRaw.ok ? await oembedRaw.json() : null
+          const trackIdMatch = spotUrl.match(/spotify\.com\/(?:track|album|playlist)\/([a-zA-Z0-9]+)/)
+          const spotifyId = trackIdMatch ? trackIdMatch[1] : null
+
+          if (!oembed && !spotifyId) {
+            res.statusCode = 400
+            return res.end(JSON.stringify({ error: 'Invalid or unavailable Spotify URL. Make sure the track/album/playlist is public.' }))
+          }
+
+          const oembedTitle = oembed?.title || 'Unknown'
+          const oembedThumb = oembed?.thumbnail_url || ''
+
+          if (spotifyType === 'track') {
+            // Try getPreview via factory
+            let richTitle = oembedTitle, richArtist = '', richAlbum = '', richRelease = '', richDurationMs = 0, richPopularity = 0, richThumb = oembedThumb
+            try {
+              const SpotifyInfo = require('spotify-url-info')
+              const { getPreview } = SpotifyInfo(fetch)
+              const preview = await getPreview(spotUrl)
+              richTitle = preview.title || oembedTitle
+              richArtist = preview.artist || ''
+              richAlbum = preview.album || ''
+              richRelease = preview.date ? preview.date.split('T')[0] : ''
+              richDurationMs = preview.duration || 0
+              richThumb = preview.image || oembedThumb
+            } catch { /* preview failed */ }
+
+            // If Spotify artist is missing, use iTunes Search API as a robust fallback
+            if (!richArtist) {
+              try {
+                const itunesRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(oembedTitle)}&entity=song&limit=1`)
+                if (itunesRes.ok) {
+                  const itunesData = await itunesRes.json()
+                  if (itunesData.results?.[0]) {
+                    richArtist = itunesData.results[0].artistName
+                    richAlbum = richAlbum || itunesData.results[0].collectionName
+                  }
+                }
+              } catch { }
+            }
+
+            // Use yt-dlp ytsearch1 to find duration from the track title + artist
+            const ytResult = await new Promise((resolve) => {
+              const searchQuery = `ytsearch1:${oembedTitle} ${richArtist} official audio`
+              const proc = spawn(binPath, [searchQuery, '--dump-json', '--no-download', '--no-playlist', '--quiet'])
+              let out = '', err = ''
+              proc.stdout.on('data', c => out += c)
+              proc.stderr.on('data', c => err += c)
+              proc.on('close', code => {
+                if (code !== 0 || !out.trim()) return resolve(null)
+                try { resolve(JSON.parse(out.trim().split('\n').find(l => l.startsWith('{')) || '')) } catch { resolve(null) }
+              })
+              proc.on('error', () => resolve(null))
+              setTimeout(() => { try { proc.kill() } catch { } resolve(null) }, 15000)
+            })
+
+            const artist = richArtist || ytResult?.uploader || ytResult?.channel || ''
+            const durationMs = richDurationMs || (ytResult?.duration ? ytResult.duration * 1000 : 0)
+            const thumbnail = richThumb || ytResult?.thumbnail || oembedThumb
+
+            return res.end(JSON.stringify({
+              type: 'track',
+              title: richTitle,
+              artist,
+              album: richAlbum,
+              releaseDate: richRelease,
+              durationMs,
+              popularity: richPopularity,
+              thumbnail,
+              trackCount: 1,
+              tracks: [{ title: richTitle, artist, durationMs, trackNumber: 1 }],
+            }))
+          }
+
+          // For albums and playlists: use spotify-url-info factory correctly
+          // require('spotify-url-info')(fetch) returns { getData, getPreview, getTracks, getDetails }
+          let richData = null
+          try {
+            const SpotifyInfo = require('spotify-url-info')
+            const { getData } = SpotifyInfo(fetch)
+            richData = await getData(spotUrl)
+          } catch (e) {
+            console.warn('spotify-url-info getData failed:', e.message)
+          }
+
+          if (spotifyType === 'album') {
+            const title = richData?.name || oembedTitle
+            const artist = richData?.artists?.map(a => a.name).join(', ') || ''
+            const releaseDate = richData?.release_date || ''
+            const thumbnail = richData?.images?.[0]?.url || oembedThumb
+            const rawTracks = richData?.tracks?.items || []
+            const trackCount = richData?.total_tracks || rawTracks.length || 0
+            const totalDurationMs = rawTracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0)
+            const tracks = rawTracks.map((t, i) => ({
+              index: i + 1,
+              title: t.name || `Track ${i + 1}`,
+              artist: t.artists?.map(a => a.name).join(', ') || artist,
+              durationMs: t.duration_ms || 0,
+              trackNumber: t.track_number || i + 1,
+            }))
+            return res.end(JSON.stringify({ type: 'album', title, artist, releaseDate, thumbnail, trackCount, totalDurationMs, tracks }))
+          }
+
+          if (spotifyType === 'playlist') {
+            const title = richData?.name || oembedTitle
+            const owner = richData?.owner?.display_name || ''
+            const description = richData?.description || ''
+            const thumbnail = richData?.images?.[0]?.url || oembedThumb
+            const rawTracks = (richData?.tracks?.items || []).filter(item => item?.track)
+            const trackCount = richData?.tracks?.total || rawTracks.length || 0
+            const totalDurationMs = rawTracks.reduce((sum, item) => sum + (item?.track?.duration_ms || 0), 0)
+            const tracks = rawTracks.map((item, i) => ({
+              index: i + 1,
+              title: item.track?.name || `Track ${i + 1}`,
+              artist: item.track?.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
+              album: item.track?.album?.name || '',
+              durationMs: item.track?.duration_ms || 0,
+            }))
+            return res.end(JSON.stringify({ type: 'playlist', title, owner, description, thumbnail, trackCount, totalDurationMs, tracks }))
+          }
+
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: 'Unsupported Spotify URL type' }))
         } catch (err) {
+          console.error('Spotify info error:', err)
           res.statusCode = 500
           res.end(JSON.stringify({ error: `Could not fetch Spotify info: ${err.message}` }))
         }
       })
 
-      // ── Spotify Download (SSE) ──
+
+
+
+      // ── Spotify Active Downloads map (for cancel support) ──
+      const spotifyActiveDownloads = new Map()
+
+      // ── Spotify Cancel ──
+      server.middlewares.use('/api/spotify-cancel', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        const downloadId = urlObj.searchParams.get('downloadId')
+        if (!downloadId) {
+          res.statusCode = 400
+          return res.end(JSON.stringify({ error: 'Missing downloadId' }))
+        }
+        const dl = spotifyActiveDownloads.get(downloadId)
+        if (dl) {
+          dl.cancelled = true
+          if (dl.proc) { try { dl.proc.kill() } catch { } }
+          spotifyActiveDownloads.delete(downloadId)
+        }
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ success: true }))
+      })
+
+      // ── Spotify Download (SSE, Multi-Track) ──
       server.middlewares.use('/api/spotify-download', (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
         const spotUrl = urlObj.searchParams.get('url')
         const format = urlObj.searchParams.get('format') || 'audio:mp3:0'
+        const downloadId = urlObj.searchParams.get('downloadId') || Date.now().toString()
+
         if (!spotUrl) {
           res.statusCode = 400
           return res.end(JSON.stringify({ error: 'Missing url param' }))
@@ -1099,85 +1249,441 @@ function youtubeDownloaderPlugin() {
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
-        const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`)
+        const send = (data) => { try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch { } }
 
-        const downloadsDir = ensureDownloadsDir()
+        const dlState = { cancelled: false, proc: null }
+        spotifyActiveDownloads.set(downloadId, dlState)
 
-        // Parse format string: audio:mp3:0
         const parts = format.split(':')
         const audioFmt = ['mp3', 'wav', 'vorbis'].includes(parts[1]) ? parts[1] : 'mp3'
         const audioQuality = /^\d+$/.test(parts[2] || '') ? parts[2] : '0'
 
-        const outputTemplate = path.join(downloadsDir, '%(title)s.%(ext)s')
+        // Download a single track: searches YouTube directly with ytsearch1 and fallback queries
+        const downloadTrack = (trackTitle, trackArtist, albumName, trackNum, totalTracks, outputDir, trackAlbumArtUrl) => {
+          return new Promise((resolve) => {
+            if (dlState.cancelled) return resolve({ skipped: true })
+
+            const safeName = `${String(trackNum).padStart(2, '0')} - ${trackTitle.replace(/[\\/:*?"<>|]/g, '_').substring(0, 120)}`
+            const outputTemplate = path.join(outputDir, `${safeName}.%(ext)s`)
+
+            // Search queries in priority order — using ytsearch1 downloads the first result directly
+            const queries = [
+              `ytsearch1:${trackTitle} ${trackArtist} official audio`,
+              `ytsearch1:${trackTitle} ${trackArtist} audio`,
+              `ytsearch1:${trackTitle} ${trackArtist}`,
+            ]
+
+            const tryQuery = (idx) => {
+              if (dlState.cancelled) return resolve({ skipped: true })
+              if (idx >= queries.length) return resolve({ error: `No match found for: ${trackTitle} — ${trackArtist}` })
+
+              const dlArgs = [
+                queries[idx],
+                '-x',
+                '--audio-format', audioFmt,
+                '--newline',
+                '--no-playlist',
+                '-o', outputTemplate,
+                '--ffmpeg-location', ffmpegDir,
+              ]
+              if (audioFmt !== 'wav') dlArgs.push('--audio-quality', audioQuality)
+
+              // No youtube thumbnail embedding for mp3 since node-id3 handles it natively
+              if (audioFmt !== 'mp3') {
+                const metaTitle = trackTitle.replace(/"/g, "'")
+                const metaArtist = trackArtist.replace(/"/g, "'")
+                const metaAlbum = (albumName || '').replace(/"/g, "'")
+                dlArgs.push('--postprocessor-args', `ffmpeg:-metadata title="${metaTitle}" -metadata artist="${metaArtist}" -metadata album="${metaAlbum}" -metadata track="${trackNum}/${totalTracks}"`)
+              }
+
+              const proc = spawn(binPath, dlArgs)
+              dlState.proc = proc
+              let finalFilename = ''
+              let stderr = ''
+
+              proc.stdout.on('data', c => {
+                const text = c.toString()
+                const dest = text.match(/Destination:\s*(.*)/)
+                if (dest) finalFilename = path.basename(dest[1].trim())
+                const merge = text.match(/Merging formats into "(.*?)"/)
+                if (merge) finalFilename = path.basename(merge[1].trim())
+                const already = text.match(/\]\s+(.*?)\s+has already been downloaded/)
+                if (already) finalFilename = path.basename(already[1].trim())
+                const pct = text.match(/\[download\]\s+([\d.]+)%/)
+                if (pct) {
+                  send({
+                    trackProgress: Math.min(parseFloat(pct[1]), 95),
+                    status: `Downloading: ${trackTitle}`,
+                    currentTrack: trackNum,
+                  })
+                }
+              })
+              proc.stderr.on('data', c => {
+                const text = c.toString()
+                stderr += text
+                // yt-dlp sometimes sends progress to stderr too
+                const pct = text.match(/\[download\]\s+([\d.]+)%/)
+                if (pct) {
+                  send({
+                    trackProgress: Math.min(parseFloat(pct[1]), 95),
+                    status: `Downloading: ${trackTitle}`,
+                    currentTrack: trackNum,
+                  })
+                }
+              })
+
+              proc.on('close', async code => {
+                if (dlState.cancelled) return resolve({ skipped: true })
+                if (code !== 0) {
+                  const ytErr = parseYtDlpError(stderr)
+                  if (ytErr) return resolve({ error: ytErr, trackTitle })
+                  console.warn(`Query ${idx} failed for "${trackTitle}", trying next...`)
+                  return tryQuery(idx + 1)
+                }
+                // If finalFilename not captured from output, scan the outputDir for the file
+                if (!finalFilename) {
+                  try {
+                    const files = fs.readdirSync(outputDir)
+                    const match = files.find(f => f.startsWith(safeName))
+                    if (match) finalFilename = match
+                  } catch { }
+                }
+
+                // Embed Spotify cover art and metadata using node-id3 (only works for MP3)
+                if (finalFilename && audioFmt === 'mp3') {
+                  try {
+                    let imageObj = undefined
+                    if (trackAlbumArtUrl) {
+                      const res = await fetch(trackAlbumArtUrl)
+                      const buffer = await res.arrayBuffer()
+                      imageObj = {
+                        mime: "image/jpeg",
+                        type: { id: 3, name: "front cover" },
+                        description: "Cover",
+                        imageBuffer: Buffer.from(buffer)
+                      }
+                    }
+                    const tags = {
+                      title: trackTitle,
+                      artist: trackArtist,
+                      album: albumName,
+                      trackNumber: `${trackNum}/${totalTracks}`
+                    }
+                    if (imageObj) tags.image = imageObj
+
+                    const filePath = path.join(outputDir, finalFilename)
+                    NodeID3.update(tags, filePath)
+                  } catch (err) {
+                    console.error('Failed to embed spotify cover art:', err.message)
+                  }
+                }
+
+                resolve({ filename: finalFilename, trackTitle })
+              })
+              proc.on('error', () => tryQuery(idx + 1))
+            }
+
+            tryQuery(0)
+          })
+        }
 
         const runDownload = async () => {
-          let searchQuery = spotUrl
+          const downloadsDir = ensureDownloadsDir()
+
+          // Fetch rich info
+          send({ status: 'Fetching track info from Spotify...', progress: 2 })
+
+          let tracks = []
+          let collectionTitle = ''
+          let collectionArtist = ''
+          let albumArtUrl = ''
+          let spotifyType = 'track'
+
           try {
-            const https = (await import('https')).default
-            const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(spotUrl)}`
-            const info = await new Promise((resolve, reject) => {
-              https.get(oembedUrl, (r) => {
-                let body = ''
-                r.on('data', c => body += c)
-                r.on('end', () => { try { resolve(JSON.parse(body)) } catch(e) { reject(e) } })
-              }).on('error', reject)
-            })
-            searchQuery = `ytsearch1:${info.title} ${info.author_name}`
+            const trackIdMatch = spotUrl.match(/spotify\.com\/(?:track|album|playlist)\/([a-zA-Z0-9]+)/)
+            const typeMatch = spotUrl.match(/spotify\.com\/(track|album|playlist)\//)
+            spotifyType = typeMatch ? typeMatch[1] : 'track'
+            const spotifyId = trackIdMatch ? trackIdMatch[1] : null
+
+            // 1. Always fetch oEmbed first — gives title + thumbnail as baseline
+            let oembedData = null
+            try {
+              const oembedRaw = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(spotUrl)}`, {
+                headers: { 'User-Agent': 'curl/7.68.0', 'Accept': 'application/json' }
+              })
+              if (oembedRaw.ok) oembedData = await oembedRaw.json()
+            } catch { }
+
+            const oembedTitle = oembedData?.title || 'Unknown'
+            const oembedThumb = oembedData?.thumbnail_url || ''
+
+            if (!oembedData && !spotifyId) {
+              throw new Error('Invalid or unavailable Spotify URL.')
+            }
+
+            if (spotifyType === 'track') {
+              // Try getPreview via factory
+              let richArtist = '', richAlbum = '', richDurationMs = 0
+              try {
+                const SpotifyInfo = require('spotify-url-info')
+                const { getPreview } = SpotifyInfo(fetch)
+                const preview = await getPreview(spotUrl)
+                richArtist = preview.artist || ''
+                richAlbum = preview.album || ''
+                richDurationMs = preview.duration || 0
+              } catch { }
+
+              // Fallback to iTunes API for missing artist
+              if (!richArtist) {
+                try {
+                  const itunesRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(oembedTitle)}&entity=song&limit=1`)
+                  if (itunesRes.ok) {
+                    const itunesData = await itunesRes.json()
+                    if (itunesData.results?.[0]) {
+                      richArtist = itunesData.results[0].artistName
+                      richAlbum = richAlbum || itunesData.results[0].collectionName
+                    }
+                  }
+                } catch { }
+              }
+
+              // Get yt-dlp search data with accurate artist
+              const ytResult = await new Promise((resolve) => {
+                const searchQuery = `ytsearch1:${oembedTitle} ${richArtist} official audio`
+                const proc = spawn(binPath, [searchQuery, '--dump-json', '--no-download', '--no-playlist', '--quiet'])
+                let out = '', err = ''
+                proc.stdout.on('data', c => out += c)
+                proc.stderr.on('data', c => err += c)
+                proc.on('close', code => {
+                  if (code !== 0 || !out.trim()) return resolve(null)
+                  try { resolve(JSON.parse(out.trim().split('\n').find(l => l.startsWith('{')) || '')) } catch { resolve(null) }
+                })
+                proc.on('error', () => resolve(null))
+                setTimeout(() => { try { proc.kill() } catch { } resolve(null) }, 15000)
+              })
+
+              collectionTitle = oembedTitle
+              collectionArtist = richArtist || ytResult?.uploader || ytResult?.channel || oembedData?.author_name || 'Unknown Artist'
+              albumArtUrl = oembedThumb || ytResult?.thumbnail || ''
+              const durationMs = richDurationMs || (ytResult?.duration ? ytResult.duration * 1000 : 0)
+
+              tracks = [{ title: collectionTitle, artist: collectionArtist, album: richAlbum, trackNum: 1, durationMs }]
+            } else {
+              // Album or Playlist
+              let richData = null
+              try {
+                const SpotifyInfo = require('spotify-url-info')
+                const { getData } = SpotifyInfo(fetch)
+                richData = await getData(spotUrl)
+              } catch (e) {
+                console.warn('spotify-url-info getData failed:', e.message)
+                throw new Error(`Could not fetch ${spotifyType} tracklist.`)
+              }
+
+              if (spotifyType === 'album') {
+                collectionTitle = richData?.name || oembedTitle || 'Album'
+                collectionArtist = richData?.artists?.map(a => a.name).join(', ') || oembedData?.author_name || ''
+                albumArtUrl = richData?.images?.[0]?.url || oembedThumb || ''
+                const rawTracks = richData?.tracks?.items || []
+                if (rawTracks.length === 0) throw new Error('Could not fetch album tracklist.')
+                tracks = rawTracks.map((t, i) => ({
+                  title: t.name || `Track ${i + 1}`,
+                  artist: t.artists?.map(a => a.name).join(', ') || collectionArtist,
+                  album: collectionTitle,
+                  trackNum: t.track_number || i + 1,
+                  durationMs: t.duration_ms || 0,
+                }))
+              } else if (spotifyType === 'playlist') {
+                collectionTitle = richData?.name || oembedTitle || 'Playlist'
+                collectionArtist = richData?.owner?.display_name || oembedData?.author_name || ''
+                albumArtUrl = richData?.images?.[0]?.url || oembedThumb || ''
+                const rawTracks = (richData?.tracks?.items || []).filter(item => item?.track)
+                if (rawTracks.length === 0) throw new Error('Could not fetch playlist tracks.')
+                tracks = rawTracks.map((item, i) => ({
+                  title: item.track?.name || `Track ${i + 1}`,
+                  artist: item.track?.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
+                  album: item.track?.album?.name || collectionTitle,
+                  trackNum: i + 1,
+                  durationMs: item.track?.duration_ms || 0,
+                }))
+              }
+            }
           } catch (e) {
-            searchQuery = `ytsearch1:${spotUrl}`
-          }
-
-          send({ status: `Searching: "${searchQuery.replace('ytsearch1:', '')}"`, progress: 5 })
-
-          const dlArgs = [
-            searchQuery,
-            '-x',
-            '--audio-format', audioFmt,
-            '--embed-metadata',
-            '--embed-thumbnail',
-            '--add-metadata',
-            '-o', outputTemplate,
-            '--ffmpeg-location', ffmpegDir,
-          ]
-          if (audioFmt !== 'wav') dlArgs.push('--audio-quality', audioQuality)
-
-          const proc = spawn(binPath, dlArgs)
-          let stderr = ''
-          let finalFilename = ''
-
-          const onLine = (text) => {
-            const destMatch = text.match(/Destination:\s*(.*)/)
-            if (destMatch) finalFilename = path.basename(destMatch[1].trim())
-            const mergeMatch = text.match(/Merging formats into "(.*)"/)
-            if (mergeMatch) finalFilename = path.basename(mergeMatch[1].trim())
-            const progressMatch = text.match(/\[download\]\s+([\d.]+)%/)
-            if (progressMatch) {
-              send({ progress: Math.min(parseFloat(progressMatch[1]), 95), status: 'Downloading...' })
+            console.error('Spotify metadata fetch failed during download:', e.message)
+            send({ status: 'Using basic track info...', progress: 3 })
+            // Hard fallback if everything above fails, but at least oembed gave us title
+            if (!collectionTitle) {
+              const oembedRaw = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(spotUrl)}`)
+              if (oembedRaw.ok) {
+                const oembed = await oembedRaw.json()
+                collectionTitle = oembed.title || 'Track'
+                collectionArtist = oembed.author_name || ''
+                albumArtUrl = oembed.thumbnail_url || ''
+              }
+            }
+            if (!collectionTitle) collectionTitle = 'Track'
+            if (!collectionArtist) collectionArtist = 'Unknown Artist'
+            spotifyType = 'track'
+            if (tracks.length === 0) {
+              tracks = [{ title: collectionTitle, artist: collectionArtist, album: '', trackNum: 1, durationMs: 0 }]
             }
           }
 
-          proc.stdout.on('data', c => c.toString().split('\n').forEach(l => onLine(l)))
-          proc.stderr.on('data', c => { stderr += c.toString(); c.toString().split('\n').forEach(l => onLine(l)) })
+          if (tracks.length === 0) {
+            throw new Error('No tracks found in this Spotify URL')
+          }
 
-          proc.on('close', (code) => {
-            if (code !== 0) {
-              const friendlyErr = parseYtDlpError(stderr) || `Download failed (code ${code})`
-              send({ done: true, error: friendlyErr })
+          const totalTracks = tracks.length
+          send({ status: `Found ${totalTracks} track${totalTracks > 1 ? 's' : ''} — starting download...`, progress: 5, totalTracks })
+
+          // For single tracks: download to downloadsDir directly
+          // For albums/playlists: download to named subfolder, then ZIP
+          let outputDir = downloadsDir
+          let collectionDir = null
+          const isCollection = spotifyType === 'album' || spotifyType === 'playlist'
+
+          if (isCollection) {
+            const safeFolderName = collectionTitle.replace(/[\\/:*?"<>|]/g, '_').substring(0, 80)
+            collectionDir = path.join(downloadsDir, `spotify-${spotifyType}-${safeFolderName}-${Date.now()}`)
+            fs.mkdirSync(collectionDir, { recursive: true })
+            outputDir = collectionDir
+          }
+
+          const completedTracks = []
+          const failedTracks = []
+
+          for (let i = 0; i < tracks.length; i++) {
+            if (dlState.cancelled) {
+              if (collectionDir) try { fs.rmSync(collectionDir, { recursive: true, force: true }) } catch { }
+              send({ done: true, error: 'Download cancelled by user.' })
               res.end()
               return
             }
-            const filename = finalFilename || 'download'
-            const downloadUrl = `/api/ytdl/download-file?file=${encodeURIComponent(filename)}`
-            saveToHistory({ title: filename, format: `audio:${audioFmt}`, filename })
-            send({ done: true, finalFilename: filename, downloadUrl, progress: 100 })
-            scheduleDownloadCleanup(path.join(downloadsDir, filename))
-            res.end()
-          })
 
-          req.on('close', () => { try { proc.kill() } catch {} })
+            const track = tracks[i]
+            const overallProgress = Math.round(5 + (i / totalTracks) * 85)
+
+            send({
+              status: `Searching: ${track.title} — ${track.artist}`,
+              progress: overallProgress,
+              currentTrack: i + 1,
+              totalTracks,
+              trackTitle: track.title,
+              trackArtist: track.artist,
+              trackProgress: 0,
+            })
+
+            try {
+              const result = await downloadTrack(
+                track.title,
+                track.artist,
+                track.album || collectionTitle,
+                track.trackNum,
+                totalTracks,
+                outputDir,
+                albumArtUrl
+              )
+
+              if (result.skipped) break
+              if (result.error) {
+                failedTracks.push({ ...track, error: result.error })
+                send({ trackError: result.error, currentTrack: i + 1, trackTitle: track.title })
+              } else {
+                completedTracks.push(result.filename)
+                send({
+                  trackDone: true,
+                  currentTrack: i + 1,
+                  totalTracks,
+                  trackTitle: track.title,
+                  progress: Math.round(5 + ((i + 1) / totalTracks) * 85),
+                })
+              }
+            } catch (e) {
+              failedTracks.push({ ...track, error: e.message })
+              send({ trackError: e.message, currentTrack: i + 1, trackTitle: track.title })
+            }
+          }
+
+          if (dlState.cancelled) return
+
+          spotifyActiveDownloads.delete(downloadId)
+
+          if (isCollection) {
+            // ZIP the collection folder
+            send({ status: 'Creating ZIP archive...', progress: 92 })
+            const safeZipName = collectionTitle.replace(/[\\/:*?"<>|]/g, '_').substring(0, 60)
+            const zipFilename = `spotify-${spotifyType}-${safeZipName}.zip`
+            const zipPath = path.join(downloadsDir, zipFilename)
+            try {
+              await createZipFromDirectory(collectionDir, zipPath)
+              fs.rmSync(collectionDir, { recursive: true, force: true })
+              scheduleDownloadCleanup(zipPath)
+              saveToHistory({
+                title: collectionTitle,
+                artist: collectionArtist,
+                format: `audio:${audioFmt}`,
+                filename: zipFilename,
+                source: 'spotify',
+                spotifyType,
+                trackCount: completedTracks.length,
+                isArchive: true,
+              })
+              send({
+                done: true,
+                progress: 100,
+                finalFilename: zipFilename,
+                downloadUrl: `/api/download-file?file=${encodeURIComponent(zipFilename)}`,
+                completedTracks: completedTracks.length,
+                failedTracks: failedTracks.length,
+                isArchive: true,
+                collectionTitle,
+              })
+              res.end()
+            } catch (zipErr) {
+              try { fs.rmSync(collectionDir, { recursive: true, force: true }) } catch { }
+              send({ done: true, error: `ZIP creation failed: ${zipErr.message}` })
+              res.end()
+            }
+          } else {
+            // Single track
+            const filename = completedTracks[0]
+            if (!filename) {
+              const errMsg = failedTracks[0]?.error || 'No matching track found on YouTube'
+              send({ done: true, error: errMsg })
+              res.end()
+              return
+            }
+            const filePath = path.join(downloadsDir, filename)
+            scheduleDownloadCleanup(filePath)
+            saveToHistory({
+              title: collectionTitle,
+              artist: collectionArtist,
+              format: `audio:${audioFmt}`,
+              filename,
+              source: 'spotify',
+              spotifyType: 'track',
+            })
+            send({
+              done: true,
+              progress: 100,
+              finalFilename: filename,
+              downloadUrl: `/api/download-file?file=${encodeURIComponent(filename)}`,
+              completedTracks: 1,
+              failedTracks: 0,
+              collectionTitle,
+            })
+            res.end()
+          }
         }
 
+        req.on('close', () => {
+          dlState.cancelled = true
+          if (dlState.proc) { try { dlState.proc.kill() } catch { } }
+          spotifyActiveDownloads.delete(downloadId)
+        })
+
         runDownload().catch(err => {
+          spotifyActiveDownloads.delete(downloadId)
           send({ done: true, error: err.message })
           res.end()
         })
