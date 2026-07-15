@@ -1,6 +1,48 @@
 [
   {
     "title": "you seem pretty sad for a girl so in love",
+    "artist": "",
+    "format": "audio:mp3",
+    "filename": "spotify-album-you seem pretty sad for a girl so in love.zip",
+    "source": "spotify",
+    "spotifyType": "album",
+    "trackCount": 13,
+    "isArchive": true,
+    "id": "1784113704107",
+    "date": "2026-07-15T11:08:24.107Z"
+  },
+  {
+    "title": "DeBÍ TiRAR MáS FOToS",
+    "artist": "Unknown Artist",
+    "format": "audio:mp3",
+    "filename": "01 - DeBÍ TiRAR MáS FOToS.mp3",
+    "source": "spotify",
+    "spotifyType": "track",
+    "id": "1784113024949",
+    "date": "2026-07-15T10:57:04.949Z"
+  },
+  {
+    "title": "DeBÍ TiRAR MáS FOToS",
+    "artist": "Unknown Artist",
+    "format": "audio:mp3",
+    "filename": "01 - DeB� TiRAR M�S FOToS.mp3",
+    "source": "spotify",
+    "spotifyType": "track",
+    "id": "1784112902968",
+    "date": "2026-07-15T10:55:02.968Z"
+  },
+  {
+    "title": "DeBÍ TiRAR MáS FOToS",
+    "artist": "Unknown Artist",
+    "format": "audio:mp3",
+    "filename": "01 - DeB� TiRAR M�S FOToS.mp3",
+    "source": "spotify",
+    "spotifyType": "track",
+    "id": "1784112877603",
+    "date": "2026-07-15T10:54:37.603Z"
+  },
+  {
+    "title": "you seem pretty sad for a girl so in love",
     "artist": "Unknown Artist",
     "format": "audio:mp3",
     "filename": "01 - you seem pretty sad for a girl so in love.mp3",

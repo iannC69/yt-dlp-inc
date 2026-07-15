@@ -8,6 +8,7 @@ import crypto from 'crypto'
 import os from 'os'
 import ffmpegStatic from 'ffmpeg-static'
 import NodeID3 from 'node-id3'
+import spotifyUrlInfo from 'spotify-url-info'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const binPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
 // Use ffmpeg-static for bundled ffmpeg binary; fall back to local bin/ if present
@@ -1151,51 +1152,61 @@ function youtubeDownloaderPlugin() {
             }))
           }
 
-          // For albums and playlists: use spotify-url-info factory correctly
-          // require('spotify-url-info')(fetch) returns { getData, getPreview, getTracks, getDetails }
-          let richData = null
-          try {
-            const SpotifyInfo = require('spotify-url-info')
-            const { getData } = SpotifyInfo(fetch)
-            richData = await getData(spotUrl)
-          } catch (e) {
-            console.warn('spotify-url-info getData failed:', e.message)
-          }
-
+          // Album or Playlist fallback via oEmbed + getTracks/iTunes
           if (spotifyType === 'album') {
-            const title = richData?.name || oembedTitle
-            const artist = richData?.artists?.map(a => a.name).join(', ') || ''
-            const releaseDate = richData?.release_date || ''
-            const thumbnail = richData?.images?.[0]?.url || oembedThumb
-            const rawTracks = richData?.tracks?.items || []
-            const trackCount = richData?.total_tracks || rawTracks.length || 0
-            const totalDurationMs = rawTracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0)
-            const tracks = rawTracks.map((t, i) => ({
-              index: i + 1,
-              title: t.name || `Track ${i + 1}`,
-              artist: t.artists?.map(a => a.name).join(', ') || artist,
-              durationMs: t.duration_ms || 0,
-              trackNumber: t.track_number || i + 1,
-            }))
-            return res.end(JSON.stringify({ type: 'album', title, artist, releaseDate, thumbnail, trackCount, totalDurationMs, tracks }))
-          }
-
-          if (spotifyType === 'playlist') {
-            const title = richData?.name || oembedTitle
-            const owner = richData?.owner?.display_name || ''
-            const description = richData?.description || ''
-            const thumbnail = richData?.images?.[0]?.url || oembedThumb
-            const rawTracks = (richData?.tracks?.items || []).filter(item => item?.track)
-            const trackCount = richData?.tracks?.total || rawTracks.length || 0
-            const totalDurationMs = rawTracks.reduce((sum, item) => sum + (item?.track?.duration_ms || 0), 0)
-            const tracks = rawTracks.map((item, i) => ({
-              index: i + 1,
-              title: item.track?.name || `Track ${i + 1}`,
-              artist: item.track?.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
-              album: item.track?.album?.name || '',
-              durationMs: item.track?.duration_ms || 0,
-            }))
-            return res.end(JSON.stringify({ type: 'playlist', title, owner, description, thumbnail, trackCount, totalDurationMs, tracks }))
+            const itunesTracks = await fetchItunesTracks(oembedTitle, oembed?.author_name || '')
+            let trackCount = 1
+            let totalDurationMs = 0
+            let tracks = [{ index: 1, title: oembedTitle, artist: oembed?.author_name || '', durationMs: 0, trackNumber: 1, thumbnail: oembedThumb }]
+            
+            if (itunesTracks && itunesTracks.length > 0) {
+              trackCount = itunesTracks.length
+              totalDurationMs = itunesTracks.reduce((acc, t) => acc + (t.trackTimeMillis || 0), 0)
+              tracks = itunesTracks.map((t, i) => {
+                let thumb = t.artworkUrl100 || oembedThumb
+                if (thumb) thumb = thumb.replace('100x100bb', '600x600bb')
+                return {
+                  index: i + 1,
+                  title: t.trackName || `Track ${i + 1}`,
+                  artist: t.artistName || oembed?.author_name || '',
+                  durationMs: t.trackTimeMillis || 0,
+                  trackNumber: t.trackNumber || i + 1,
+                  thumbnail: thumb,
+                }
+              })
+            }
+            return res.end(JSON.stringify({ type: 'album', title: oembedTitle, artist: oembed?.author_name || '', thumbnail: oembedThumb, trackCount, totalDurationMs, tracks }))
+          } else if (spotifyType === 'playlist') {
+            let trackCount = 1
+            let totalDurationMs = 0
+            let tracks = [{ index: 1, title: oembedTitle, artist: 'Unknown Artist', durationMs: 0, thumbnail: oembedThumb }]
+            
+            try {
+              const { getTracks } = spotifyUrlInfo(fetch)
+              const plTracks = await getTracks(spotUrl)
+              if (plTracks && plTracks.length > 0) {
+                trackCount = plTracks.length
+                totalDurationMs = plTracks.reduce((acc, t) => acc + (t.duration || 0), 0)
+                // Fetch high res arts in parallel batches (up to 10 at a time)
+                tracks = []
+                for (let i = 0; i < plTracks.length; i++) {
+                  const t = plTracks[i]
+                  // Fallback: we will fetch exact art during download if we skip it here, but let's grab it for UI
+                  const art = await fetchItunesTrackArt(t.name, t.artist) || oembedThumb
+                  tracks.push({
+                    index: i + 1,
+                    title: t.name || `Track ${i + 1}`,
+                    artist: t.artist || 'Unknown Artist',
+                    album: '',
+                    durationMs: t.duration || 0,
+                    thumbnail: art,
+                  })
+                }
+              }
+            } catch (e) {
+              console.warn('getTracks failed for playlist:', e.message)
+            }
+            return res.end(JSON.stringify({ type: 'playlist', title: oembedTitle, owner: oembed?.author_name || '', thumbnail: oembedThumb, trackCount, totalDurationMs, tracks }))
           }
 
           res.statusCode = 400
@@ -1340,8 +1351,8 @@ function youtubeDownloaderPlugin() {
                   console.warn(`Query ${idx} failed for "${trackTitle}", trying next...`)
                   return tryQuery(idx + 1)
                 }
-                // If finalFilename not captured from output, scan the outputDir for the file
-                if (!finalFilename) {
+                // If finalFilename not captured or mangled, scan the outputDir for the file
+                if (!finalFilename || !fs.existsSync(path.join(outputDir, finalFilename))) {
                   try {
                     const files = fs.readdirSync(outputDir)
                     const match = files.find(f => f.startsWith(safeName))
@@ -1425,8 +1436,7 @@ function youtubeDownloaderPlugin() {
               // Try getPreview via factory
               let richArtist = '', richAlbum = '', richDurationMs = 0
               try {
-                const SpotifyInfo = require('spotify-url-info')
-                const { getPreview } = SpotifyInfo(fetch)
+                const { getPreview } = spotifyUrlInfo(fetch)
                 const preview = await getPreview(spotUrl)
                 richArtist = preview.artist || ''
                 richAlbum = preview.album || ''
@@ -1469,43 +1479,61 @@ function youtubeDownloaderPlugin() {
 
               tracks = [{ title: collectionTitle, artist: collectionArtist, album: richAlbum, trackNum: 1, durationMs }]
             } else {
-              // Album or Playlist
-              let richData = null
-              try {
-                const SpotifyInfo = require('spotify-url-info')
-                const { getData } = SpotifyInfo(fetch)
-                richData = await getData(spotUrl)
-              } catch (e) {
-                console.warn('spotify-url-info getData failed:', e.message)
-                throw new Error(`Could not fetch ${spotifyType} tracklist.`)
-              }
-
               if (spotifyType === 'album') {
-                collectionTitle = richData?.name || oembedTitle || 'Album'
-                collectionArtist = richData?.artists?.map(a => a.name).join(', ') || oembedData?.author_name || ''
-                albumArtUrl = richData?.images?.[0]?.url || oembedThumb || ''
-                const rawTracks = richData?.tracks?.items || []
-                if (rawTracks.length === 0) throw new Error('Could not fetch album tracklist.')
-                tracks = rawTracks.map((t, i) => ({
-                  title: t.name || `Track ${i + 1}`,
-                  artist: t.artists?.map(a => a.name).join(', ') || collectionArtist,
-                  album: collectionTitle,
-                  trackNum: t.track_number || i + 1,
-                  durationMs: t.duration_ms || 0,
-                }))
+                collectionTitle = oembedTitle || 'Album'
+                collectionArtist = oembedData?.author_name || ''
+                albumArtUrl = oembedThumb || ''
+                
+                send({ status: 'Fetching perfect album data from iTunes...', progress: 4 })
+                const itunesTracks = await fetchItunesTracks(collectionTitle, collectionArtist)
+                if (!itunesTracks || itunesTracks.length === 0) {
+                  console.warn('Could not fetch album tracklist from iTunes.')
+                  tracks = [{ title: collectionTitle, artist: collectionArtist, album: collectionTitle, trackNum: 1, durationMs: 0, albumArtUrl }]
+                } else {
+                  tracks = itunesTracks.map((t, i) => {
+                    let thumb = t.artworkUrl100 || albumArtUrl
+                    if (thumb) thumb = thumb.replace('100x100bb', '600x600bb')
+                    return {
+                      title: t.trackName || `Track ${i + 1}`,
+                      artist: t.artistName || collectionArtist,
+                      album: collectionTitle,
+                      trackNum: t.trackNumber || i + 1,
+                      durationMs: t.trackTimeMillis || 0,
+                      albumArtUrl: thumb,
+                    }
+                  })
+                }
               } else if (spotifyType === 'playlist') {
-                collectionTitle = richData?.name || oembedTitle || 'Playlist'
-                collectionArtist = richData?.owner?.display_name || oembedData?.author_name || ''
-                albumArtUrl = richData?.images?.[0]?.url || oembedThumb || ''
-                const rawTracks = (richData?.tracks?.items || []).filter(item => item?.track)
-                if (rawTracks.length === 0) throw new Error('Could not fetch playlist tracks.')
-                tracks = rawTracks.map((item, i) => ({
-                  title: item.track?.name || `Track ${i + 1}`,
-                  artist: item.track?.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
-                  album: item.track?.album?.name || collectionTitle,
-                  trackNum: i + 1,
-                  durationMs: item.track?.duration_ms || 0,
-                }))
+                collectionTitle = oembedTitle || 'Playlist'
+                collectionArtist = oembedData?.author_name || 'Spotify'
+                albumArtUrl = oembedThumb || ''
+                
+                send({ status: 'Fetching playlist tracks...', progress: 4 })
+                try {
+                  const { getTracks } = spotifyUrlInfo(fetch)
+                  const plTracks = await getTracks(spotUrl)
+                  if (plTracks && plTracks.length > 0) {
+                    tracks = []
+                    for (let i = 0; i < plTracks.length; i++) {
+                      const t = plTracks[i]
+                      // fetch high res art
+                      const art = await fetchItunesTrackArt(t.name, t.artist) || albumArtUrl
+                      tracks.push({
+                        title: t.name || `Track ${i + 1}`,
+                        artist: t.artist || 'Unknown Artist',
+                        album: collectionTitle,
+                        trackNum: i + 1,
+                        durationMs: t.duration || 0,
+                        albumArtUrl: art,
+                      })
+                    }
+                  } else {
+                    throw new Error('No tracks found in playlist.')
+                  }
+                } catch (e) {
+                  console.warn('Playlist extraction failed:', e.message)
+                  tracks = [{ title: collectionTitle, artist: collectionArtist, album: collectionTitle, trackNum: 1, durationMs: 0, albumArtUrl }]
+                }
               }
             }
           } catch (e) {
@@ -1581,7 +1609,7 @@ function youtubeDownloaderPlugin() {
                 track.trackNum,
                 totalTracks,
                 outputDir,
-                albumArtUrl
+                track.albumArtUrl || albumArtUrl
               )
 
               if (result.skipped) break
@@ -1690,6 +1718,38 @@ function youtubeDownloaderPlugin() {
       })
     }
   }
+}
+
+async function fetchItunesTracks(title, artist) {
+  try {
+    const term = encodeURIComponent(`${title} ${artist}`)
+    const searchRes = await fetch(`https://itunes.apple.com/search?term=${term}&entity=album&limit=1`)
+    const searchData = await searchRes.json()
+    if (searchData.results?.length > 0) {
+      const album = searchData.results[0]
+      const lookupRes = await fetch(`https://itunes.apple.com/lookup?id=${album.collectionId}&entity=song`)
+      const lookupData = await lookupRes.json()
+      return lookupData.results.filter(r => r.wrapperType === 'track')
+    }
+  } catch (e) {
+    console.warn('iTunes album fetch failed:', e.message)
+  }
+  return null
+}
+
+async function fetchItunesTrackArt(title, artist) {
+  try {
+    const term = encodeURIComponent(`${title} ${artist}`)
+    const res = await fetch(`https://itunes.apple.com/search?term=${term}&entity=song&limit=1`)
+    const data = await res.json()
+    if (data.results?.length > 0) {
+      // Replace 100x100 with higher resolution 600x600 if possible, or just use 100x100
+      let url = data.results[0].artworkUrl100
+      if (url) url = url.replace('100x100bb', '600x600bb')
+      return url
+    }
+  } catch { }
+  return null
 }
 
 export default defineConfig({

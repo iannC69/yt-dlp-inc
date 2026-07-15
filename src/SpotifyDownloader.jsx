@@ -97,6 +97,7 @@ function TrackRow({ track, status, progress }) {
   return (
     <div className={`sp-track-row sp-track-row--${status}`}>
       <div className="sp-track-num">{String(track.index ?? track.trackNumber ?? 1).padStart(2, '0')}</div>
+      {track.thumbnail && <img src={track.thumbnail} alt="" className="sp-track-row-art" />}
       <div className="sp-track-info">
         <span className="sp-track-name">{track.title}</span>
         <span className="sp-track-artist">{track.artist}</span>
