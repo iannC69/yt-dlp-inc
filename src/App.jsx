@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Play, ChevronLeft, ChevronRight, Settings, X, HelpCircle, ExternalLink } from 'lucide-react';
 import YoutubeDownloader from './YoutubeDownloader';
 import SpotifyDownloader from './SpotifyDownloader';
 import './App.css';
@@ -37,6 +37,29 @@ const slideVariants = {
 export default function App() {
   const [activeIdx, setActiveIdx] = useState(0);
   const [direction, setDirection] = useState(1);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [spotifyClientId, setSpotifyClientId] = useState('');
+  const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
+  const [downloadPreset, setDownloadPreset] = useState('AUTO');
+  const [hardwareAcceleration, setHardwareAcceleration] = useState('NONE');
+  const [showHelp, setShowHelp] = useState(false);
+
+  useEffect(() => {
+    setSpotifyClientId(localStorage.getItem('spotify_client_id') || '');
+    setSpotifyClientSecret(localStorage.getItem('spotify_client_secret') || '');
+    setDownloadPreset(localStorage.getItem('download_preset') || 'AUTO');
+    setHardwareAcceleration(localStorage.getItem('hardware_acceleration') || 'NONE');
+  }, []);
+
+  const saveSettings = () => {
+    localStorage.setItem('spotify_client_id', spotifyClientId.trim());
+    localStorage.setItem('spotify_client_secret', spotifyClientSecret.trim());
+    localStorage.setItem('download_preset', downloadPreset);
+    localStorage.setItem('hardware_acceleration', hardwareAcceleration);
+    setShowSettingsModal(false);
+  };
+
+  const isConfigured = spotifyClientId.trim() !== '' && spotifyClientSecret.trim() !== '';
 
   const switchTo = (idx) => {
     if (idx === activeIdx) return;
@@ -100,6 +123,14 @@ export default function App() {
               <ChevronRight size={16} />
             </button>
           </div>
+          <button 
+            className="settings-button"
+            onClick={() => setShowSettingsModal(true)}
+            title="Settings"
+          >
+            <Settings size={18} />
+            <span className="settings-status-dot" style={{ backgroundColor: isConfigured ? '#1DB954' : '#ef4444' }} />
+          </button>
         </div>
       </div>
 
@@ -124,6 +155,108 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {showSettingsModal && (
+          <motion.div 
+            className="settings-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(e) => e.target === e.currentTarget && setShowSettingsModal(false)}
+          >
+            <motion.div 
+              className="settings-modal-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+            >
+              <button className="settings-modal-close" onClick={() => setShowSettingsModal(false)}>
+                <X size={18} />
+              </button>
+              <div className="settings-header">
+                <h2>Settings</h2>
+                <button className="settings-help-btn" onClick={() => setShowHelp(!showHelp)} title="How to get these?">
+                  <HelpCircle size={16} />
+                </button>
+              </div>
+
+              <AnimatePresence>
+                {showHelp && (
+                  <motion.div 
+                    className="settings-help-box"
+                    initial={{ height: 0, opacity: 0, marginBottom: 0 }}
+                    animate={{ height: 'auto', opacity: 1, marginBottom: 16 }}
+                    exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <h4>How to get your credentials:</h4>
+                    <ol>
+                      <li>Go to the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Spotify Developer Dashboard <ExternalLink size={10} /></a> and log in.</li>
+                      <li>Click <strong>Create app</strong>.</li>
+                      <li>Name your app, and set the Redirect URI strictly to: <code>http://127.0.0.1:5174/</code></li>
+                      <li>Check the <strong>Web API</strong> box and accept the terms to save.</li>
+                      <li>Click <strong>Settings</strong> to reveal your Client ID and Client Secret.</li>
+                    </ol>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <div className="settings-field">
+                <label>Spotify Client ID</label>
+                <input 
+                  type="text" 
+                  value={spotifyClientId} 
+                  onChange={e => setSpotifyClientId(e.target.value)} 
+                  placeholder="Paste Client ID..."
+                />
+              </div>
+              <div className="settings-field">
+                <label>Spotify Client Secret</label>
+                <input 
+                  type="text" 
+                  value={spotifyClientSecret} 
+                  onChange={e => setSpotifyClientSecret(e.target.value)} 
+                  placeholder="Paste Client Secret..."
+                />
+              </div>
+              <div className="settings-field">
+                <label>Download Speed Preset</label>
+                <select 
+                  value={downloadPreset} 
+                  onChange={e => setDownloadPreset(e.target.value)}
+                  className="settings-select"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid rgba(255, 255, 255, 0.1)', outline: 'none' }}
+                >
+                  <option value="AUTO" style={{ color: 'black' }}>AUTO (AI Smart Optimizer)</option>
+                  <option value="ULTRA_PERFORMANCE" style={{ color: 'black' }}>Ultra Performance (Fastest, High CPU)</option>
+                  <option value="HIGH_PERFORMANCE" style={{ color: 'black' }}>High Performance</option>
+                  <option value="BALANCED" style={{ color: 'black' }}>Balanced</option>
+                  <option value="ECO" style={{ color: 'black' }}>Eco (Slow, Low CPU)</option>
+                </select>
+              </div>
+              <div className="settings-field">
+                <label>Hardware Acceleration (FFmpeg)</label>
+                <select 
+                  value={hardwareAcceleration} 
+                  onChange={e => setHardwareAcceleration(e.target.value)}
+                  className="settings-select"
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid rgba(255, 255, 255, 0.1)', outline: 'none' }}
+                >
+                  <option value="NONE" style={{ color: 'black' }}>CPU Only (Recommended for Audio)</option>
+                  <option value="AUTO" style={{ color: 'black' }}>Auto (Let FFmpeg decide)</option>
+                  <option value="CUDA" style={{ color: 'black' }}>NVIDIA GPU (CUDA / NVENC)</option>
+                  <option value="AMF" style={{ color: 'black' }}>AMD GPU (AMF)</option>
+                  <option value="QSV" style={{ color: 'black' }}>Intel GPU (QSV)</option>
+                </select>
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>GPU encoding mostly speeds up Video conversion. MP3 is always CPU.</p>
+              </div>
+              <button className="settings-save-btn" onClick={saveSettings}>
+                Save Settings
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

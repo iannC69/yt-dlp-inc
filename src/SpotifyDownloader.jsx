@@ -4,7 +4,7 @@ import {
   Music, Download, Loader2, AlertCircle, CheckCircle2,
   Link2, List, Disc, Search, RefreshCw, Clipboard,
   X, ChevronDown, ChevronUp, FolderOpen, Clock,
-  Star, Calendar, Hash, Users, Archive, Play
+  Star, Calendar, Hash, Users, Archive, Play, User, LogOut, ListVideo
 } from 'lucide-react';
 import './SpotifyDownloader.css';
 
@@ -92,12 +92,12 @@ function EqualizerBars({ active }) {
   );
 }
 
-function TrackRow({ track, status, progress }) {
-  // status: 'pending' | 'searching' | 'downloading' | 'done' | 'error'
+function TrackRow({ track, status, progress, errorText }) {
   return (
-    <div className={`sp-track-row sp-track-row--${status}`}>
+    <>
+    <div className={`sp-track-row ${status === 'downloading' ? 'sp-track-row--active' : ''}`}>
       <div className="sp-track-num">{String(track.index ?? track.trackNumber ?? 1).padStart(2, '0')}</div>
-      {track.thumbnail && <img src={track.thumbnail} alt="" className="sp-track-row-art" />}
+      {track.coverUrl && <img src={track.coverUrl} alt="" className="sp-track-row-art" />}
       <div className="sp-track-info">
         <span className="sp-track-name">{track.title}</span>
         <span className="sp-track-artist">{track.artist}</span>
@@ -111,10 +111,20 @@ function TrackRow({ track, status, progress }) {
             <motion.div className="sp-track-progress-fill" animate={{ width: `${progress || 0}%` }} />
           </div>
         )}
-        {status === 'done' && <CheckCircle2 size={14} className="sp-track-done-icon" />}
-        {status === 'error' && <AlertCircle size={14} className="sp-track-error-icon" />}
+        {status === 'done' && <CheckCircle2 size={14} className="sp-track-done-icon" title="Downloaded successfully" />}
+        {status === 'error' && (
+          <div className="sp-track-error-container" title={errorText || 'Download failed'}>
+            <AlertCircle size={14} className="sp-track-error-icon" />
+          </div>
+        )}
       </div>
     </div>
+    {status === 'error' && errorText && (
+      <div className="sp-track-error-text">
+        Eroare: {errorText}
+      </div>
+    )}
+    </>
   );
 }
 
@@ -125,30 +135,96 @@ export default function SpotifyDownloader() {
   const [fetchError, setFetchError] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('mp3_320');
   const [showAllTracks, setShowAllTracks] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [selectedTracks, setSelectedTracks] = useState(new Set());
   const [downloadState, setDownloadState] = useState(null);
   const [trackStatuses, setTrackStatuses] = useState({});
+  const [trackErrors, setTrackErrors] = useState({});
   const [clipboardToast, setClipboardToast] = useState(false);
+  const [accessToken, setAccessToken] = useState('');
+  const [myPlaylists, setMyPlaylists] = useState(null);
+  const [myPlaylistsStatus, setMyPlaylistsStatus] = useState('idle');
+  const [showPlaylists, setShowPlaylists] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  
   const downloadIdRef = useRef(null);
   const esRef = useRef(null);
   const inputRef = useRef(null);
 
   const spotifyType = isSpotifyUrl(url) ? getSpotifyType(url) : null;
 
-  // Clipboard auto-detect on focus
+  // Auto-paste removed to prevent interference with manual pasting
+
   useEffect(() => {
-    const onFocus = async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (isSpotifyUrl(text) && text !== url) {
-          setUrl(text);
-          setClipboardToast(true);
-          setTimeout(() => setClipboardToast(false), 3000);
+    const checkAuth = async () => {
+      const storedToken = localStorage.getItem('spotify_access_token');
+      if (storedToken) setAccessToken(storedToken);
+
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) {
+        window.history.replaceState({}, null, '/');
+        const clientId = localStorage.getItem('spotify_client_id') || '';
+        const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+        if (clientId && clientSecret) {
+          try {
+            const res = await fetch('/api/spotify-oauth', {
+              method: 'POST',
+              headers: {
+                'x-spotify-client-id': clientId,
+                'x-spotify-client-secret': clientSecret
+              },
+              body: JSON.stringify({ code, redirectUri: window.location.origin + '/' })
+            });
+            const data = await res.json();
+            if (data.access_token) {
+              localStorage.setItem('spotify_access_token', data.access_token);
+              if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+              setAccessToken(data.access_token);
+            }
+          } catch (err) {}
         }
-      } catch { }
+      }
     };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [url]);
+    checkAuth();
+  }, []);
+
+  useEffect(() => {
+    if (accessToken) {
+      fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.error) setUserProfile(data);
+        })
+        .catch(() => {});
+    } else {
+      setUserProfile(null);
+    }
+  }, [accessToken]);
+
+  const fetchMyPlaylists = useCallback(async () => {
+    if (!accessToken) return;
+    setShowPlaylists(true);
+    setMyPlaylistsStatus('loading');
+    try {
+      const res = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('spotify_access_token');
+        setAccessToken('');
+        throw new Error('Token expired');
+      }
+      const data = await res.json();
+      setMyPlaylists(data.items);
+      setMyPlaylistsStatus('done');
+    } catch (err) {
+      setMyPlaylistsStatus('error');
+    }
+  }, [accessToken]);
 
   const fetchInfo = useCallback(async (inputUrl) => {
     const target = inputUrl || url;
@@ -163,14 +239,33 @@ export default function SpotifyDownloader() {
       setFetchStatus('error');
       return;
     }
+
+    const clientId = localStorage.getItem('spotify_client_id') || '';
+    const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+    const userAccessToken = localStorage.getItem('spotify_access_token') || '';
+
+    if (!clientId.trim() || !clientSecret.trim()) {
+      setFetchError('Add your Spotify credentials in Settings to use Spotify features.');
+      setFetchStatus('error');
+      return;
+    }
+
     setFetchStatus('loading');
     setFetchError('');
     setInfo(null);
     setDownloadState(null);
     setTrackStatuses({});
     setShowAllTracks(false);
+    setShowDownloadModal(false);
+    setSelectedTracks(new Set());
     try {
-      const res = await fetch(`/api/spotify-info?url=${encodeURIComponent(target)}`);
+      const res = await fetch(`/api/spotify-info?url=${encodeURIComponent(target)}`, {
+        headers: {
+          'x-spotify-client-id': clientId,
+          'x-spotify-client-secret': clientSecret,
+          'x-spotify-access-token': userAccessToken
+        }
+      });
       const data = await res.json();
       if (!res.ok || data.error) {
         if (data.error === 'artist_not_supported') throw new Error('Artist pages are not supported. Please use a track, album, or playlist URL.');
@@ -188,59 +283,142 @@ export default function SpotifyDownloader() {
     if (e.key === 'Enter') fetchInfo();
   };
 
-  const handleDownload = () => {
+  const selectAllTracks = () => {
+    if (!info?.tracks) return;
+    setSelectedTracks(new Set(info.tracks.map(t => t.trackNumber)));
+  };
+
+  const deselectAllTracks = () => {
+    setSelectedTracks(new Set());
+  };
+
+  const toggleTrack = (trackNumber) => {
+    const newSet = new Set(selectedTracks);
+    if (newSet.has(trackNumber)) {
+      newSet.delete(trackNumber);
+    } else {
+      newSet.add(trackNumber);
+    }
+    setSelectedTracks(newSet);
+  };
+
+  const openDownloadModal = () => {
+    if (!info) return;
+    if (info.trackCount > 1) {
+      // pre-select all tracks by default
+      selectAllTracks();
+    }
+    setShowDownloadModal(true);
+  };
+
+  const handleDownload = async () => {
     if (!info || downloadState?.active) return;
     if (esRef.current) esRef.current.close();
+    setShowDownloadModal(false);
+    
     const fmt = AUDIO_FORMATS.find(f => f.id === selectedFormat);
     const formatStr = `audio:${fmt.audioFmt}:${fmt.quality}`;
     const dlId = Date.now().toString();
     downloadIdRef.current = dlId;
 
-    // Init track statuses
+    const clientId = localStorage.getItem('spotify_client_id') || '';
+    const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+    const userAccessToken = localStorage.getItem('spotify_access_token') || '';
+
+    if (!clientId.trim() || !clientSecret.trim()) {
+      alert('Add your Spotify credentials in Settings to use Spotify features.');
+      return;
+    }
+
+    // Init track statuses only for selected tracks (or all if none explicitly selected, though we pre-select)
     const initStatuses = {};
+    let totalToDownload = info.trackCount || 1;
     if (info.tracks?.length) {
-      info.tracks.forEach((_, i) => { initStatuses[i] = 'pending'; });
+      let count = 0;
+      info.tracks.forEach((track) => {
+        if (selectedTracks.size === 0 || selectedTracks.has(track.trackNumber)) {
+          initStatuses[track.trackNumber - 1] = 'pending'; // UI maps by 0-index currently
+          count++;
+        }
+      });
+      if (selectedTracks.size > 0) totalToDownload = count;
     }
     setTrackStatuses(initStatuses);
-    setDownloadState({ active: true, status: 'Connecting to Spotify...', progress: 0, trackProgress: 0, currentTrack: 0, totalTracks: info.trackCount || 1, done: false, error: null });
+    setDownloadState({ active: true, status: 'Connecting to Spotify...', progress: 0, trackProgress: 0, currentTrack: 0, totalTracks: totalToDownload, done: false, error: null });
 
-    const params = new URLSearchParams({ url, format: formatStr, downloadId: dlId });
-    const es = new EventSource(`/api/spotify-download?${params}`);
-    esRef.current = es;
+    const params = new URLSearchParams({ 
+      url, 
+      format: formatStr, 
+      downloadId: dlId,
+      preset: localStorage.getItem('download_preset') || 'AUTO',
+      hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE'
+    });
 
-    es.onmessage = (e) => {
-      const d = JSON.parse(e.data);
-      setDownloadState(prev => {
-        const next = { ...prev, ...d };
-        // Keep active=true unless done
-        if (!d.done) next.active = true;
-        if (d.done) next.active = false;
-        return next;
+    if (info.type === 'playlist') {
+      params.append('nativePlaylist', 'true');
+    } else if (selectedTracks.size > 0) {
+      params.append('selectedTracks', Array.from(selectedTracks).join(','));
+    }
+    
+    try {
+      const res = await fetch(`/api/spotify-download?${params}`, {
+        headers: {
+          'x-spotify-client-id': clientId,
+          'x-spotify-client-secret': clientSecret,
+          'x-spotify-access-token': userAccessToken
+        }
       });
+      
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      // Update per-track statuses
-      if (d.currentTrack !== undefined && info.tracks?.length) {
-        const idx = d.currentTrack - 1;
-        if (d.trackDone) {
-          setTrackStatuses(prev => ({ ...prev, [idx]: 'done' }));
-        } else if (d.trackError) {
-          setTrackStatuses(prev => ({ ...prev, [idx]: 'error' }));
-        } else if (d.trackProgress !== undefined && d.trackProgress > 0) {
-          setTrackStatuses(prev => ({ ...prev, [idx]: 'downloading' }));
-        } else if (d.status?.startsWith('Search')) {
-          setTrackStatuses(prev => ({ ...prev, [idx]: 'searching' }));
+      esRef.current = { close: () => { reader.cancel().catch(()=>{}); esRef.current = null; } };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() || '';
+        
+        for (const chunk of chunks) {
+          if (chunk.startsWith('data: ')) {
+            try {
+              const d = JSON.parse(chunk.slice(6));
+              setDownloadState(prev => {
+                const next = { ...prev, ...d };
+                if (!d.done) next.active = true;
+                if (d.done) next.active = false;
+                return next;
+              });
+
+              // Update per-track statuses
+              if (d.currentTrack !== undefined && info.tracks?.length) {
+                const idx = d.currentTrack - 1;
+                if (d.trackDone) {
+                  setTrackStatuses(prev => ({ ...prev, [idx]: 'done' }));
+                } else if (d.trackError) {
+                  setTrackStatuses(prev => ({ ...prev, [idx]: 'error' }));
+                  setTrackErrors(prev => ({ ...prev, [idx]: d.trackError }));
+                } else if (d.trackProgress !== undefined && d.trackProgress > 0) {
+                  setTrackStatuses(prev => ({ ...prev, [idx]: 'downloading' }));
+                } else if (d.status?.startsWith('Search')) {
+                  setTrackStatuses(prev => ({ ...prev, [idx]: 'searching' }));
+                }
+              }
+
+              if (d.done) {
+                if (esRef.current) { esRef.current.close(); esRef.current = null; }
+              }
+            } catch (err) {}
+          }
         }
       }
-
-      if (d.done) {
-        es.close();
-        esRef.current = null;
-      }
-    };
-    es.onerror = () => {
-      es.close();
+    } catch (err) {
       setDownloadState(prev => ({ ...prev, active: false, done: true, error: 'Connection lost. Please try again.' }));
-    };
+    }
   };
 
   const handleCancel = async () => {
@@ -263,6 +441,7 @@ export default function SpotifyDownloader() {
     setFetchError('');
     setDownloadState(null);
     setTrackStatuses({});
+    setTrackErrors({});
     setShowAllTracks(false);
     downloadIdRef.current = null;
   };
@@ -273,7 +452,7 @@ export default function SpotifyDownloader() {
 
   const tracksToShow = useMemo(() => {
     if (!info?.tracks) return [];
-    return showAllTracks ? info.tracks : info.tracks.slice(0, 8);
+    return (info.type === 'playlist') ? info.tracks.slice(0, 5) : (showAllTracks ? info.tracks : info.tracks.slice(0, 5));
   }, [info, showAllTracks]);
 
   const isDownloading = downloadState?.active && !downloadState?.done;
@@ -292,6 +471,55 @@ export default function SpotifyDownloader() {
 
         {/* ── Hero ── */}
         <motion.div className="sp-hero" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+          <div className="sp-header-actions">
+            {!accessToken ? (
+              <button className="sp-login-btn" onClick={() => {
+                const clientId = localStorage.getItem('spotify_client_id');
+                if (!clientId) return alert('Please set your Client ID in Settings first!');
+                const redirectUri = window.location.origin + '/';
+                const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+                window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true&_cb=${Date.now()}`;
+              }}>
+                <User size={16} /> Login to Spotify
+              </button>
+            ) : (
+              <div className="sp-profile-container">
+                <button className="sp-profile-btn" onClick={() => setShowProfileMenu(!showProfileMenu)}>
+                  {userProfile?.images?.[0]?.url ? (
+                    <img src={userProfile.images[0].url} alt="Profile" className="sp-profile-img" />
+                  ) : (
+                    <User size={16} />
+                  )}
+                  <span className="sp-profile-name">{userProfile?.display_name || 'My Profile'}</span>
+                  <ChevronDown size={14} className={`sp-profile-chevron ${showProfileMenu ? 'open' : ''}`} />
+                </button>
+
+                <AnimatePresence>
+                  {showProfileMenu && (
+                    <motion.div 
+                      className="sp-profile-dropdown"
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <button className="sp-dropdown-item" onClick={() => { setShowProfileMenu(false); fetchMyPlaylists(); }}>
+                        <List size={16} /> My Playlists
+                      </button>
+                      <div className="sp-dropdown-divider" />
+                      <button className="sp-dropdown-item sp-logout-item" onClick={() => {
+                        localStorage.removeItem('spotify_access_token');
+                        setAccessToken('');
+                        setShowProfileMenu(false);
+                      }}>
+                        <LogOut size={16} /> Log Out
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+          </div>
           <div className="sp-logo">
             <svg viewBox="0 0 24 24" fill="currentColor" className="sp-logo-icon">
               <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
@@ -367,8 +595,8 @@ export default function SpotifyDownloader() {
               {/* Thumbnail + meta top */}
               <div className="sp-info-top">
                 <div className="sp-info-thumb-wrap">
-                  {info.thumbnail ? (
-                    <img src={info.thumbnail} alt={info.title} className="sp-info-thumb" />
+                  {info.coverUrl ? (
+                    <img src={info.coverUrl} alt={info.title} className="sp-info-thumb" />
                   ) : (
                     <div className="sp-info-thumb-fallback"><Music size={28} /></div>
                   )}
@@ -384,8 +612,13 @@ export default function SpotifyDownloader() {
                     {info.releaseDate && (
                       <span className="sp-info-pill"><Calendar size={11} /> {info.releaseDate.slice(0, 4)}</span>
                     )}
-                    {info.trackCount > 1 && (
-                      <span className="sp-info-pill"><Hash size={11} /> {info.trackCount} tracks</span>
+                    {info.totalTracks > 1 && (
+                      <span className="sp-info-pill">
+                        <Hash size={11} /> 
+                        {info.trackCount < info.totalTracks 
+                          ? `${info.trackCount} / ${info.totalTracks} tracks`
+                          : `${info.trackCount} tracks`}
+                      </span>
                     )}
                     {info.durationMs > 0 && (
                       <span className="sp-info-pill"><Clock size={11} /> {fmtDuration(info.durationMs)}</span>
@@ -410,75 +643,189 @@ export default function SpotifyDownloader() {
 
               {/* Tracklist (album/playlist) */}
               {info.tracks?.length > 1 && (
-                <div className="sp-tracklist">
-                  <div className="sp-tracklist-header">
-                    <span className="sp-tracklist-title"><List size={13} /> Tracks</span>
-                    <span className="sp-tracklist-count">{info.trackCount} songs</span>
-                  </div>
-                  <div className="sp-tracklist-body">
-                    {tracksToShow.map((track, i) => (
-                      <div key={i} className="sp-tracklist-row">
-                        <span className="sp-tracklist-idx">{String(track.index ?? track.trackNumber ?? i + 1).padStart(2, '0')}</span>
-                        <div className="sp-tracklist-info">
-                          <span className="sp-tracklist-name">{track.title}</span>
-                          {track.artist && track.artist !== info.artist && (
-                            <span className="sp-tracklist-sub">{track.artist}</span>
-                          )}
-                        </div>
-                        <span className="sp-tracklist-dur">{fmtDuration(track.durationMs)}</span>
+                info.type === 'playlist' ? (
+                  <div className="sp-playlist-panel">
+                    <div className="sp-playlist-panel-top">
+                      <div className="sp-playlist-panel-icon">
+                        <ListVideo size={20} />
                       </div>
-                    ))}
-                    {info.tracks.length > 8 && (
-                      <button className="sp-tracklist-more" onClick={() => setShowAllTracks(v => !v)}>
-                        {showAllTracks
-                          ? <><ChevronUp size={13} /> Show less</>
-                          : <><ChevronDown size={13} /> Show all {info.tracks.length} tracks</>
-                        }
-                      </button>
-                    )}
+                      <div>
+                        <span className="sp-eyebrow">PLAYLIST GĂSIT</span>
+                        <strong>{info.title}</strong>
+                      </div>
+                      <div className="sp-playlist-count">
+                        {info.totalTracks}
+                        <small>MELODI{info.totalTracks !== 1 && 'I'}</small>
+                      </div>
+                    </div>
+
+                    <div className="sp-playlist-preview">
+                      {info.tracks?.slice(0, 5).map((track, i) => (
+                        <div key={i} className="sp-playlist-preview-row">
+                          <span>{String(track.trackNumber ?? i + 1).padStart(2, '0')}</span>
+                          <strong>{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</strong>
+                          <small>{fmtDuration(track.durationMs)}</small>
+                        </div>
+                      ))}
+                      {info.totalTracks > 5 && (
+                        <div className="sp-playlist-utility">
+                          <Music size={12} /> și încă {info.totalTracks - 5} melodii...
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="sp-tracklist">
+                    <div className="sp-tracklist-header">
+                      <span className="sp-tracklist-title"><List size={13} /> Tracks</span>
+                      <span className="sp-tracklist-count">{info.trackCount} songs</span>
+                    </div>
+                    <div className="sp-tracklist-body">
+                      {tracksToShow.map((track, i) => (
+                        <div key={i} className="sp-tracklist-row">
+                          <span className="sp-tracklist-idx">{String(track.index ?? track.trackNumber ?? i + 1).padStart(2, '0')}</span>
+                          <div className="sp-tracklist-info">
+                            <span className="sp-tracklist-name">{track.title}</span>
+                            {track.artist && track.artist !== info.artist && (
+                              <span className="sp-tracklist-sub">{track.artist}</span>
+                            )}
+                          </div>
+                          <span className="sp-tracklist-dur">{fmtDuration(track.durationMs)}</span>
+                        </div>
+                      ))}
+                      {info.type !== 'playlist' && info.trackCount > 5 && !showAllTracks && (
+                        <div className="sp-tracklist-utility" onClick={() => setShowAllTracks(true)} style={{ cursor: 'pointer' }}>
+                          <Music size={12} />
+                          și încă {info.trackCount - 5} melodii descărcabile... (Apasă pentru a vedea tot)
+                        </div>
+                      )}
+                      {info.type !== 'playlist' && info.trackCount < info.totalTracks && (
+                        <div className="sp-tracklist-utility" style={{ color: '#fb923c', background: 'rgba(251,146,60,0.1)' }}>
+                          <AlertCircle size={12} />
+                          + alte {info.totalTracks - info.trackCount} melodii ascunse/indisponibile
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
               )}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── Format Picker ── */}
+        {/* ── Download Action ── */}
         <AnimatePresence>
           {info && fetchStatus === 'done' && !downloadState && (
-            <motion.div className="sp-format-section" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <h3 className="sp-section-title"><Music size={14} /> Choose Format</h3>
-              <div className="sp-format-grid">
-                {AUDIO_FORMATS.map(fmt => (
-                  <button
-                    key={fmt.id}
-                    className={`sp-format-card ${selectedFormat === fmt.id ? 'sp-format-card--active' : ''}`}
-                    onClick={() => setSelectedFormat(fmt.id)}
-                  >
-                    <div className="sp-format-top-row">
-                      <span className="sp-format-label">{fmt.label}</span>
-                      {fmt.id === 'mp3_320' && <span className="sp-format-rec">Best</span>}
-                    </div>
-                    <span className="sp-format-sub">{fmt.sub}</span>
-                    {totalDuration > 0 && (
-                      <span className="sp-format-size">{estimateSize(totalDuration, fmt.kbps)}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {sizeEstimate && (
-                <div className="sp-format-summary">
-                  <Archive size={13} />
-                  <span>Estimated size: <strong>{sizeEstimate}</strong></span>
-                  {info.trackCount > 1 && <span className="sp-format-summary-zip"> · Will be downloaded as ZIP</span>}
-                </div>
-              )}
-
-              <button className="sp-download-btn" onClick={handleDownload}>
-                <Download size={18} />
-                {info.trackCount > 1 ? `Download ${info.trackCount} Tracks` : 'Download Track'}
+            <motion.div className="sp-dl-actions" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <button
+                className={`sp-dl-btn ${info.trackCount === 1 ? 'sp-single-dl-btn' : 'sp-playlist-dl-btn'}`}
+                onClick={openDownloadModal}
+              >
+                {info.trackCount > 1 ? <><List size={22} /> Descarcă playlistul</> : <><Download size={22} /> Descarcă acum</>}
               </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Download Modal ── */}
+        <AnimatePresence>
+          {showDownloadModal && info && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="sp-modal-overlay"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="sp-modal"
+              >
+                <h3 className="sp-modal-title">
+                  Setări descărcare {info.trackCount > 1 && 'Playlist'}
+                </h3>
+
+                <div className="sp-modal-settings">
+                  <div className="sp-setting-group">
+                    <span className="sp-setting-label">Formatul dorit</span>
+                    <div className="sp-format-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                      {AUDIO_FORMATS.map(fmt => (
+                        <button
+                          key={fmt.id}
+                          className={`sp-format-card ${selectedFormat === fmt.id ? 'sp-format-card--active' : ''}`}
+                          onClick={() => setSelectedFormat(fmt.id)}
+                        >
+                          <div className="sp-format-top-row">
+                            <span className="sp-format-label">{fmt.label}</span>
+                            {fmt.id === 'mp3_320' && <span className="sp-format-rec">Best</span>}
+                          </div>
+                          <span className="sp-format-sub">{fmt.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {info.trackCount > 1 && info.tracks && (
+                    <div className="sp-track-selection-section">
+                      <div className="sp-track-selection-header">
+                        <label className="sp-modal-label">
+                          {info.type === 'playlist' ? 'MELODIILE DIN PLAYLIST' : `SELECTEAZĂ MELODIILE (${selectedTracks.size} ALESE)`}
+                        </label>
+                        {info.type !== 'playlist' && (
+                          <div className="sp-track-utils">
+                            <button className="sp-track-util-btn" onClick={selectAllTracks}>Toate</button>
+                            <button className="sp-track-util-btn" onClick={deselectAllTracks}>Niciuna</button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="track-list">
+                        {info.tracks?.slice(0, info.type === 'playlist' ? 5 : undefined).map((track) => {
+                          const isSelected = info.type === 'playlist' || selectedTracks.has(track.trackNumber);
+                          return (
+                            <div
+                              key={track.trackNumber}
+                              className={`sp-track-item ${isSelected ? 'selected' : ''}`}
+                              onClick={() => info.type !== 'playlist' && toggleTrack(track.trackNumber)}
+                              style={{ cursor: info.type === 'playlist' ? 'default' : 'pointer' }}
+                            >
+                              {info.type !== 'playlist' && <div className="sp-track-checkbox" />}
+                              <span className="sp-track-index">{track.trackNumber}.</span>
+                              <span className="sp-track-name">{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</span>
+                              <span className="sp-track-duration">{fmtDuration(track.durationMs)}</span>
+                            </div>
+                          );
+                        })}
+                        {info.type === 'playlist' && info.totalTracks > 5 && (
+                          <p style={{textAlign: 'center', marginTop: '10px', fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)'}}>
+                            ... și încă {info.totalTracks - 5} melodii...
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {sizeEstimate && (
+                    <div className="sp-format-summary" style={{ marginTop: '1rem' }}>
+                      <Archive size={13} />
+                      <span>Estimated size: <strong>{sizeEstimate}</strong></span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="sp-modal-actions">
+                  <button className="sp-modal-cancel" onClick={() => setShowDownloadModal(false)}>
+                    Anulează
+                  </button>
+                  <button
+                    className="sp-modal-confirm"
+                    onClick={handleDownload}
+                    disabled={info.trackCount > 1 && selectedTracks.size === 0}
+                  >
+                    Începe descărcarea
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -544,16 +891,17 @@ export default function SpotifyDownloader() {
               {/* Per-track list during multi-track download */}
               {isDownloading && info?.tracks?.length > 1 && (
                 <div className="sp-dl-tracklist">
-                  {info.tracks.slice(0, 20).map((track, i) => (
+                  {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).slice(0, 20).map((track, i) => (
                     <TrackRow
-                      key={i}
+                      key={track.trackNumber}
                       track={track}
-                      status={trackStatuses[i] || 'pending'}
-                      progress={i === (downloadState.currentTrack - 1) ? downloadState.trackProgress : 0}
+                      status={trackStatuses[track.trackNumber - 1] || 'pending'}
+                      progress={track.trackNumber === downloadState.currentTrack ? downloadState.trackProgress : 0}
+                      errorText={trackErrors[track.trackNumber - 1]}
                     />
                   ))}
-                  {info.tracks.length > 20 && (
-                    <div className="sp-dl-tracklist-more">+{info.tracks.length - 20} more tracks</div>
+                  {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length > 20 && (
+                    <div className="sp-dl-tracklist-more">+{info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length - 20} more tracks</div>
                   )}
                 </div>
               )}
@@ -608,6 +956,68 @@ export default function SpotifyDownloader() {
           )}
         </AnimatePresence>
 
+      <AnimatePresence>
+        {showPlaylists && (
+          <motion.div 
+            className="sp-playlists-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(e) => e.target === e.currentTarget && setShowPlaylists(false)}
+          >
+            <motion.div 
+              className="sp-playlists-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+            >
+              <div className="sp-playlists-header">
+                <h2>My Playlists</h2>
+                {!accessToken ? (
+                <button className="sp-login-btn" onClick={() => setShowPlaylists(!showPlaylists)}>
+                  <User size={18} /> Login to Spotify
+                </button>
+              ) : (
+                <button className="sp-login-btn sp-logged-in-btn" onClick={() => setShowPlaylists(!showPlaylists)}>
+                  <User size={18} /> My Playlists
+                </button>
+              )}
+              </div>
+              
+              {myPlaylistsStatus === 'loading' && (
+                <div className="sp-pl-loading">
+                  <Loader2 className="sp-spin" size={32} />
+                  <span>Fetching your playlists...</span>
+                </div>
+              )}
+              {myPlaylistsStatus === 'error' && (
+                <div className="sp-pl-error">
+                  <AlertCircle size={24} />
+                  <span>Failed to load playlists. Your token may have expired. Please log in again.</span>
+                </div>
+              )}
+              
+              {myPlaylistsStatus === 'done' && (
+                <div className="sp-playlists-grid">
+                  {myPlaylists?.map(p => (
+                    <div key={p.id} className="sp-playlist-card" onClick={() => {
+                      setShowPlaylists(false);
+                      setUrl(p.external_urls.spotify);
+                      fetchInfo(p.external_urls.spotify);
+                    }}>
+                      <img src={p.images?.[0]?.url || 'https://via.placeholder.com/150'} alt="" />
+                      <div className="sp-playlist-meta">
+                        <div className="sp-playlist-title">{p.name}</div>
+                        <div className="sp-playlist-owner">{p.owner?.display_name} • {p.tracks?.total ?? '?'} tracks</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </div>
     </div>
   );

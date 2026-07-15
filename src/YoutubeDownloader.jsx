@@ -118,6 +118,7 @@ const YoutubeDownloader = () => {
   const [downloading, setDownloading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [step, setStep] = useState(0);
   const [downloadComplete, setDownloadComplete] = useState(false);
   const [finalFilename, setFinalFilename] = useState('');
   const [outputName, setOutputName] = useState('');
@@ -302,16 +303,16 @@ const YoutubeDownloader = () => {
 
           if (data.finalFilename) {
             setFinalFilename(data.finalFilename);
-            if (data.isArchive) {
-              fetch(`/api/download-file?file=${encodeURIComponent(data.finalFilename)}`, { method: 'HEAD' })
+            if (data.downloadUrl) {
+              fetch(data.downloadUrl, { method: 'HEAD' })
                 .then(res => {
                   if (res.ok) {
-                    window.location.href = `/api/download-file?file=${encodeURIComponent(data.finalFilename)}`;
+                    window.location.href = data.downloadUrl;
                   } else {
-                    alert("Eroare: Fișierul ZIP nu a fost găsit sau a expirat.");
+                    alert("Eroare: Fișierul nu a fost găsit sau a expirat.");
                   }
                 })
-                .catch(() => alert("Eroare: Nu s-a putut iniția descărcarea arhivei."));
+                .catch(() => alert("Eroare: Nu s-a putut iniția descărcarea."));
             }
           }
         }
@@ -426,7 +427,9 @@ const YoutubeDownloader = () => {
             title: info.title,
             thumbnail: info.thumbnail,
             formatStr: computedFormat || downloadFormat,
-            scheduleTime: scheduleTime || null
+            scheduleTime: scheduleTime || null,
+            preset: localStorage.getItem('download_preset') || 'AUTO',
+            hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE'
           })
         });
 
@@ -447,7 +450,9 @@ const YoutubeDownloader = () => {
           format: formatToUse,
           title: info.title || '',
           thumbnail: info.thumbnail || '',
-          jobId: Date.now().toString()
+          jobId: Date.now().toString(),
+          preset: localStorage.getItem('download_preset') || 'AUTO',
+          hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE'
         });
         if (scope === 'playlist') {
           queryParams.append('selectedItems', Array.from(selectedTracks).sort((a, b) => a - b).join(','));
@@ -1101,13 +1106,9 @@ const YoutubeDownloader = () => {
 
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                           {scheduleTime === '' && (
-                            <button
-                              className="ytdl-save-btn"
-                              style={{ width: 'auto', padding: '0.8rem 1.5rem' }}
-                              onClick={() => handleOpenFolder(finalFilename)}
-                            >
-                              <FolderOpen size={20} /> Deschide în Explorer
-                            </button>
+                            <div className="ytdl-archive-notice">
+                              Fișierul a fost trimis către managerul de descărcări.
+                            </div>
                           )}
 
                           <button className="ytdl-new-dl-btn" onClick={handleReset} style={{ marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem' }}>
