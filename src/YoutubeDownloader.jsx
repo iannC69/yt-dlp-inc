@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Film, Loader2, AlertCircle, CheckCircle2,
-  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft
+  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft, CalendarClock, FolderOpen
 } from 'lucide-react';
 import './YoutubeDownloader.css';
 
@@ -105,6 +105,25 @@ function generateJobId() {
 
 const YoutubeDownloader = ({ activeJobId }) => {
   const [url, setUrl] = useState('');
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ytdl_history');
+      if (saved) setHistory(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  const saveToHistory = (newUrl, title) => {
+    if (!newUrl) return;
+    setHistory(prev => {
+      const filtered = prev.filter(item => item.url !== newUrl);
+      const updated = [{ url: newUrl, title: title || newUrl, date: Date.now() }, ...filtered].slice(0, 10);
+      localStorage.setItem('ytdl_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
   const [info, setInfo] = useState(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [error, setError] = useState(null);
@@ -282,17 +301,6 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
           if (data.finalFilename) {
             setFinalFilename(data.finalFilename);
-            if (data.downloadUrl) {
-              fetch(data.downloadUrl, { method: 'HEAD' })
-                .then(res => {
-                  if (res.ok) {
-                    window.location.href = data.downloadUrl;
-                  } else {
-                    alert("Eroare: Fișierul nu a fost găsit sau a expirat.");
-                  }
-                })
-                .catch(() => alert("Eroare: Nu s-a putut iniția descărcarea."));
-            }
           }
         }
       } catch (e) {
@@ -311,6 +319,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
   const fetchInfo = async () => {
     if (!url) return;
+    saveToHistory(url, url);
     setLoadingInfo(true);
     setError(null);
     setInfo(null);
@@ -678,10 +687,46 @@ const YoutubeDownloader = ({ activeJobId }) => {
               placeholder={appMode === 'music' ? "Lipește link-ul piesei de YouTube Music..." : "Lipește link-ul de YouTube (Video)..."}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              onFocus={() => setShowHistory(true)}
+              onBlur={() => setTimeout(() => setShowHistory(false), 200)}
               onKeyDown={(e) => e.key === 'Enter' && fetchInfo()}
               disabled={loadingInfo}
               className="ytdl-url-input"
             />
+            {url && (
+              <button className="ytdl-input-clear" style={{ position: 'absolute', right: '120px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', zIndex: 5 }} onClick={() => { setUrl(''); setInfo(null); setDownloadComplete(false); }}>
+                <XCircle size={16} />
+              </button>
+            )}
+            <AnimatePresence>
+              {showHistory && history.length > 0 && !url && (
+                <motion.div 
+                  className="ytdl-history-dropdown"
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'rgba(30,30,40,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', zIndex: 10, marginTop: '0.5rem', backdropFilter: 'blur(10px)' }}
+                >
+                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', padding: '0 0.5rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem' }}>Ultimele descărcări</div>
+                  {history.map((h, i) => (
+                    <div 
+                      key={i} 
+                      style={{ padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                      onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                      onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      onMouseDown={() => {
+                        setUrl(h.url);
+                        setShowHistory(false);
+                        setTimeout(() => fetchInfo(), 100);
+                      }}
+                    >
+                      <Clock size={12} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle', opacity: 0.5 }} />
+                      {h.title}
+                    </div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
             <button
               className="ytdl-fetch-btn"
               onClick={fetchInfo}
@@ -1062,21 +1107,19 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
                         {downloadScope === 'playlist' ? (
                           <div className="ytdl-archive-notice">
-                            Fișierele au fost salvate cu succes.
+                            Fișierele au fost salvate cu succes în locația ta.
                           </div>
                         ) : (
-                          <div className="ytdl-name-input-row" style={{ justifyContent: 'center', margin: '1rem 0' }}>
+                          <div className="ytdl-name-input-row" style={{ justifyContent: 'center', margin: '1rem 0', flexDirection: 'column', alignItems: 'center' }}>
                             <p className="ytdl-ready-filename">{finalFilename}</p>
+                            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', marginTop: '0.5rem' }}>Fișierul a fost salvat local.</p>
                           </div>
                         )}
 
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                          {scheduleTime === '' && (
-                            <div className="ytdl-archive-notice">
-                              Fișierul a fost trimis către managerul de descărcări.
-                            </div>
-                          )}
-
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center', width: '100%' }}>
+                          <button className="ytdl-new-dl-btn" onClick={() => fetch(`/api/ytdl/open-folder${finalFilename ? '?target=' + encodeURIComponent(finalFilename) : ''}`)} style={{ marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem', background: 'rgba(255,255,255,0.1)' }}>
+                            <FolderOpen size={18} /> Deschide Folder
+                          </button>
                           <button className="ytdl-new-dl-btn" onClick={handleReset} style={{ marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem' }}>
                             <RefreshCw size={18} /> Alt videoclip
                           </button>

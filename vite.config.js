@@ -1966,7 +1966,7 @@ function youtubeDownloaderPlugin() {
                     const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
 
                     const ytDlpArgs = [
-                      `scsearch1:${track.artist} ${track.title} audio`,
+                      `ytsearch1:${track.artist} ${track.title} audio`,
                       '-x', '--audio-format', 'mp3',
                       '--audio-quality', '0',
                       '--js-runtimes', `node:${process.execPath}`,

@@ -162,6 +162,26 @@ async function getValidAccessToken(clientId, clientSecret) {
 
 export default function SpotifyDownloader({ activeDownloadId }) {
   const [url, setUrl] = useState('');
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('sp_history');
+      if (saved) setHistory(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  const saveToHistory = (newUrl, title) => {
+    if (!newUrl) return;
+    setHistory(prev => {
+      const filtered = prev.filter(item => item.url !== newUrl);
+      const updated = [{ url: newUrl, title: title || newUrl, date: Date.now() }, ...filtered].slice(0, 10);
+      localStorage.setItem('sp_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const [bulkMeta, setBulkMeta] = useState('');
   const [showBulk, setShowBulk] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -247,9 +267,23 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       fetch('https://api.spotify.com/v1/me', {
         headers: { Authorization: `Bearer ${accessToken}` }
       })
-        .then(r => r.json())
+        .then(async r => {
+          if (r.status === 401) {
+            const clientId = localStorage.getItem('spotify_client_id');
+            const clientSecret = localStorage.getItem('spotify_client_secret');
+            const newToken = await getValidAccessToken(clientId, clientSecret);
+            if (newToken && newToken !== accessToken) {
+              setAccessToken(newToken);
+            } else {
+              localStorage.removeItem('spotify_access_token');
+              setAccessToken('');
+            }
+            throw new Error('Unauthorized');
+          }
+          return r.json();
+        })
         .then(data => {
-          if (!data.error) setUserProfile(data);
+          if (data && !data.error) setUserProfile(data);
         })
         .catch(() => {});
     } else {
@@ -285,6 +319,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       setFetchStatus('error');
       return;
     }
+    
+    saveToHistory(target, target);
+    
     const type = getSpotifyType(target);
     if (type === 'artist') {
       setFetchError('Artist pages are not supported. Please paste a track, album, or playlist URL.');
@@ -765,6 +802,8 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               className="sp-input"
               value={url}
               onChange={e => { setUrl(e.target.value); setFetchStatus('idle'); setInfo(null); setFetchError(''); setDownloadState(null); }}
+              onFocus={() => setShowHistory(true)}
+              onBlur={() => setTimeout(() => setShowHistory(false), 200)}
               onKeyDown={handleKeyDown}
               placeholder="https://open.spotify.com/track/..."
             />
@@ -774,10 +813,39 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               </div>
             )}
             {url && (
-              <button className="sp-input-clear" onClick={reset} title="Clear">
+              <button className="sp-input-clear" style={{ right: spotifyType ? '160px' : '90px', zIndex: 5 }} onClick={reset} title="Clear">
                 <X size={14} />
               </button>
             )}
+            <AnimatePresence>
+              {showHistory && history.length > 0 && !url && (
+                <motion.div 
+                  className="sp-history-dropdown"
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'rgba(30,30,40,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', zIndex: 10, marginTop: '0.5rem', backdropFilter: 'blur(10px)', textAlign: 'left' }}
+                >
+                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', padding: '0 0.5rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem' }}>Ultimele căutări</div>
+                  {history.map((h, i) => (
+                    <div 
+                      key={i} 
+                      style={{ padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#fff' }}
+                      onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                      onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      onMouseDown={() => {
+                        setUrl(h.url);
+                        setShowHistory(false);
+                        setTimeout(() => fetchInfo(h.url), 100);
+                      }}
+                    >
+                      <Clock size={12} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle', opacity: 0.5 }} />
+                      {h.title}
+                    </div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
             <button
               className="sp-fetch-btn"
               onClick={() => fetchInfo()}
