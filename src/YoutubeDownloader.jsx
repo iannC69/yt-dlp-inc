@@ -115,11 +115,11 @@ const YoutubeDownloader = ({ activeJobId }) => {
     } catch {}
   }, []);
 
-  const saveToHistory = (newUrl, title) => {
+  const saveToHistory = (newUrl, title, thumbnail) => {
     if (!newUrl) return;
     setHistory(prev => {
       const filtered = prev.filter(item => item.url !== newUrl);
-      const updated = [{ url: newUrl, title: title || newUrl, date: Date.now() }, ...filtered].slice(0, 10);
+      const updated = [{ url: newUrl, title: title || newUrl, thumbnail, date: Date.now() }, ...filtered].slice(0, 10);
       localStorage.setItem('ytdl_history', JSON.stringify(updated));
       return updated;
     });
@@ -319,7 +319,6 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
   const fetchInfo = async () => {
     if (!url) return;
-    saveToHistory(url, url);
     setLoadingInfo(true);
     setError(null);
     setInfo(null);
@@ -351,6 +350,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
         }
       }
       setInfo({ ...data, playlist });
+      saveToHistory(url, playlist ? playlist.title : data.title, data.thumbnail);
       localStorage.setItem('ytdl_url', url);
       localStorage.setItem('ytdl_info', JSON.stringify({ ...data, playlist }));
       const safeName = (data.title || 'video').replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 60);
@@ -711,17 +711,23 @@ const YoutubeDownloader = ({ activeJobId }) => {
                   {history.map((h, i) => (
                     <div 
                       key={i} 
-                      style={{ padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                      onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-                      onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', color: '#fff' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       onMouseDown={() => {
                         setUrl(h.url);
                         setShowHistory(false);
-                        setTimeout(() => fetchInfo(), 100);
+                        setTimeout(() => fetchInfo(h.url), 100);
                       }}
                     >
-                      <Clock size={12} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle', opacity: 0.5 }} />
-                      {h.title}
+                      {h.thumbnail ? (
+                        <img src={h.thumbnail} alt="" style={{ width: 24, height: 24, borderRadius: '4px', objectFit: 'cover' }} />
+                      ) : (
+                        <Clock size={14} style={{ opacity: 0.5 }} />
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.title}</span>
+                      </div>
                     </div>
                   ))}
                 </motion.div>

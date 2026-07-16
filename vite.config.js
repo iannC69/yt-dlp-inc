@@ -84,19 +84,6 @@ const metrics = {
   failedDownloads: 0,
 }
 
-const historyPath = path.resolve(__dirname, 'history.json')
-function getHistory() {
-  if (fs.existsSync(historyPath)) {
-    try { return JSON.parse(fs.readFileSync(historyPath, 'utf8')); } catch (e) { }
-  }
-  return [];
-}
-function saveToHistory(entry) {
-  const h = getHistory();
-  h.unshift({ ...entry, id: Date.now().toString(), date: new Date().toISOString() });
-  if (h.length > 500) h.length = 500;
-  fs.writeFileSync(historyPath, JSON.stringify(h, null, 2), 'utf8');
-}
 
 const scheduledPath = path.resolve(__dirname, 'scheduled.json')
 function getScheduled() {
@@ -205,20 +192,22 @@ function finishJob(jobId, data) {
     metrics.failedDownloads++;
   } else {
     metrics.successfulDownloads++;
-    const job = activeJobs.get(jobId);
-    if (job && data.finalFilename) {
-      saveToHistory({
-        title: job.state.title || data.finalFilename,
-        thumbnail: job.state.thumbnail,
-        format: job.type === 'single' ? (job.state.format || 'unknown') : 'playlist',
-        filename: data.finalFilename,
-        isArchive: data.isArchive
-      });
-    }
+  }
+  const job = activeJobs.get(jobId)
+  if (!data.error && job && data.finalFilename) {
+    data.jobInfo = {
+      title: job.state.title || data.finalFilename,
+      thumbnail: job.state.thumbnail,
+      format: job.type === 'single' ? (job.state.format || 'unknown') : 'playlist',
+      filename: data.finalFilename,
+      isArchive: data.isArchive,
+      source: 'youtube',
+      date: new Date().toISOString(),
+      id: Date.now().toString()
+    };
   }
 
   broadcast(jobId, { ...data, done: true })
-  const job = activeJobs.get(jobId)
   if (job) {
     job.clients.forEach(client => client.end())
     job.clients.clear()
@@ -323,18 +312,49 @@ function spawnYtDlp(jobId) {
         return
       }
 
-      broadcast(jobId, { progress: 96, status: 'Se creează arhiva ZIP...' })
-      const zipFilename = 'youtube-playlist-' + jobId + '.zip'
-      const zipPath = path.join(job.downloadsDir, zipFilename)
-      try {
-        await createZipFromDirectory(job.collectionDir, zipPath)
-        fs.rmSync(job.collectionDir, { recursive: true, force: true })
-        scheduleDownloadCleanup(zipPath)
-        finishJob(jobId, { progress: 100, finalFilename: zipFilename, isArchive: true })
-      } catch (err) {
-        try { fs.rmSync(job.collectionDir, { recursive: true, force: true }) } catch { /* ignore */ }
-        finishJob(jobId, { error: `Eroare la crearea arhivei: ${err.message}` })
+      broadcast(jobId, { progress: 96, status: 'Se configurează folderul...' })
+      if (job.state.thumbnail) {
+        try {
+          const coverRes = await fetch(job.state.thumbnail)
+          const coverBuffer = Buffer.from(await coverRes.arrayBuffer())
+          const jpgPath = path.join(job.collectionDir, 'folder.jpg')
+          fs.writeFileSync(jpgPath, coverBuffer)
+
+          if (process.platform === 'win32') {
+            const icoPath = path.join(job.collectionDir, 'album.ico')
+            await new Promise((resolve) => {
+              const child = spawn(ffmpegBin, ['-y', '-i', jpgPath, '-vf', 'scale=256:256', icoPath])
+              child.on('close', () => resolve())
+            })
+
+            try { /* keep folder.jpg for library */ } catch { }
+
+            if (fs.existsSync(icoPath)) {
+              const iniContent = "[.ShellClassInfo]\r\nIconResource=album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n"
+              const iniPath = path.join(job.collectionDir, 'desktop.ini')
+              fs.writeFileSync(iniPath, iniContent)
+
+              await new Promise((resolve) => {
+                const child = spawn('attrib', ['+s', job.collectionDir])
+                child.on('close', () => resolve())
+              })
+              await new Promise((resolve) => {
+                const child = spawn('attrib', ['+s', '+h', iniPath])
+                child.on('close', () => resolve())
+              })
+              spawn('ie4uinit.exe', ['-show'])
+              spawn('powershell', ['-Command', '$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Refresh() }'])
+
+              const batContent = `@echo off\r\nattrib +s "%~dp0."\r\nattrib +s +h "%~dp0desktop.ini"\r\nie4uinit.exe -show\r\necho Done! Press F5 in File Explorer to see the folder icon.\r\npause\r\n`;
+              const batPath = path.join(job.collectionDir, 'ApplyFolderIcon.bat');
+              fs.writeFileSync(batPath, batContent);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to set youtube playlist thumbnail:', e)
+        }
       }
+      finishJob(jobId, { progress: 100, finalFilename: path.basename(job.collectionDir), isArchive: false, collectionTitle: job.state.title || path.basename(job.collectionDir) })
     }
   });
 
@@ -426,19 +446,6 @@ function youtubeDownloaderPlugin() {
         res.end(JSON.stringify({ success: true }))
       })
 
-      // ── History API ──
-      server.middlewares.use('/api/ytdl/history', (req, res, next) => {
-        const urlObj = new URL(req.url, `http://${req.headers.host}`)
-        if (urlObj.pathname !== '/') return next()
-
-        if (req.method === 'DELETE') {
-          fs.writeFileSync(historyPath, '[]', 'utf8')
-          return res.end(JSON.stringify({ success: true }))
-        }
-
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(getHistory()))
-      })
 
       // ── Schedule API ──
       server.middlewares.use('/api/ytdl/scheduled', (req, res, next) => {
@@ -993,6 +1000,17 @@ function youtubeDownloaderPlugin() {
         if (!fs.existsSync(filePath)) {
           res.statusCode = 404
           return res.end('File not found')
+        }
+
+        if (fs.statSync(filePath).isDirectory()) {
+          const jpgPath = path.join(filePath, 'folder.jpg');
+          if (fs.existsSync(jpgPath)) {
+            res.setHeader('Content-Type', 'image/jpeg');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return fs.createReadStream(jpgPath).pipe(res);
+          }
+          res.statusCode = 404;
+          return res.end('No thumbnail found in folder');
         }
 
         const args = ['-i', filePath, '-map', '0:v', '-c:v', 'copy', '-f', 'image2pipe', '-']
@@ -1930,6 +1948,9 @@ function youtubeDownloaderPlugin() {
               } catch (e) { }
             }
           } else {
+            // Cap Spotify concurrent downloads (ytsearch) to prevent 429 Too Many Requests
+            const safeLimit = Math.min(limit, 3);
+            
             for (let i = 0; i < tracks.length; i++) {
               if (dlState.cancelled) {
                 if (collectionDir) try { fs.rmSync(collectionDir, { recursive: true, force: true }) } catch { }
@@ -1938,9 +1959,12 @@ function youtubeDownloaderPlugin() {
                 return
               }
 
-              while (activePromises.size >= limit) {
+              while (activePromises.size >= safeLimit) {
                 await Promise.race(activePromises);
               }
+              
+              // Stagger spawns to avoid YouTube search rate limits
+              if (i > 0) await new Promise(r => setTimeout(r, 1200));
               if (dlState.cancelled) break;
 
               const track = tracks[i];
@@ -1969,6 +1993,7 @@ function youtubeDownloaderPlugin() {
                       `ytsearch1:${track.artist} ${track.title} audio`,
                       '-x', '--audio-format', 'mp3',
                       '--audio-quality', '0',
+                      '--extractor-args', 'youtube:player_client=android,web',
                       '--js-runtimes', `node:${process.execPath}`,
                       '-o', path.join(outputDir, finalOutputName),
                       '--no-playlist'
@@ -2128,64 +2153,47 @@ function youtubeDownloaderPlugin() {
               try {
                 const coverRes = await fetch(metadata.coverUrl)
                 const coverBuffer = Buffer.from(await coverRes.arrayBuffer())
-                const jpgPath = path.join(collectionDir, 'folder.jpg')
+                
+                const metaDir = path.join(collectionDir, '.metadata')
+                if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir)
+                
+                const jpgPath = path.join(metaDir, 'folder.jpg')
                 fs.writeFileSync(jpgPath, coverBuffer)
 
                 if (process.platform === 'win32') {
-                  const icoPath = path.join(collectionDir, 'album.ico')
+                  const icoPath = path.join(metaDir, 'album.ico')
                   await new Promise((resolve) => {
                     const child = spawn(ffmpegBin, ['-y', '-i', jpgPath, '-vf', 'scale=256:256', icoPath])
                     child.on('close', () => resolve())
                   })
 
-                  try { fs.unlinkSync(jpgPath) } catch { }
-
                   if (fs.existsSync(icoPath)) {
-                    const iniContent = "[.ShellClassInfo]\r\nIconResource=album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n"
+                    const iniContent = "[.ShellClassInfo]\r\nIconResource=.metadata\\album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n"
                     const iniPath = path.join(collectionDir, 'desktop.ini')
                     fs.writeFileSync(iniPath, iniContent)
 
-                    // Run natively to try and make it automatic!
+                    // Run natively to try and make it automatic! Use shell: true for Windows built-ins
                     await new Promise((resolve) => {
-                      const child = spawn('attrib', ['+s', collectionDir])
+                      const child = spawn('attrib', ['+s', `"${collectionDir}"`], { shell: true })
                       child.on('close', () => resolve())
                     })
                     await new Promise((resolve) => {
-                      const child = spawn('attrib', ['+s', '+h', iniPath])
+                      const child = spawn('attrib', ['+s', '+h', `"${iniPath}"`], { shell: true })
                       child.on('close', () => resolve())
                     })
-                    // Do NOT hide album.ico because it breaks the IconResource in Windows 11
-                    spawn('ie4uinit.exe', ['-show'])
-                    spawn('powershell', ['-Command', '$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Refresh() }'])
+                    await new Promise((resolve) => {
+                      const child = spawn('attrib', ['+s', '+h', `"${metaDir}"`], { shell: true })
+                      child.on('close', () => resolve())
+                    })
 
-                    // Fallback bat file for the user to double click if automatic refresh fails
-                    const batContent = `@echo off\r\nattrib +s "%~dp0."\r\nattrib +s +h "%~dp0desktop.ini"\r\nie4uinit.exe -show\r\necho Done! Press F5 in File Explorer to see the folder icon.\r\npause\r\n`;
-                    const batPath = path.join(collectionDir, 'ApplyFolderIcon.bat');
-                    fs.writeFileSync(batPath, batContent);
+                    spawn('ie4uinit.exe', ['-show'], { shell: true })
+                    spawn('powershell', ['-Command', '$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Refresh() }'], { shell: true })
                   }
                 }
               } catch (e) {
                 console.error('Failed to set album folder thumbnail:', e)
               }
             } // Close if (metadata.type === 'album' && metadata.coverUrl)
-
-            try {
-              const historyPath = path.resolve(process.cwd(), 'history.json')
-              let history = []
-              try { history = JSON.parse(fs.readFileSync(historyPath, 'utf8')) } catch { }
-              history.unshift({
-                title: metadata.title,
-                artist: metadata.type === 'playlist' ? metadata.owner : metadata.artist,
-                album: metadata.type === 'playlist' ? '' : metadata.title,
-                format: "audio:mp3",
-                filename: path.basename(collectionDir),
-                source: "spotify",
-                spotifyType: metadata.type,
-                trackCount: completedTracks.length,
-                id: Date.now().toString(),
-                date: new Date().toISOString()
-              })
-              fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8')
 
               send({
                 done: true,
@@ -2196,12 +2204,11 @@ function youtubeDownloaderPlugin() {
                 failedTracks: failedTracks.length,
                 isArchive: false,
                 collectionTitle: metadata.title,
+                source: 'spotify',
+                spotifyType: metadata.type
               })
               res.end()
-            } catch (err) {
-              send({ done: true, error: `Finalization failed: ${err.message}` })
-              res.end()
-            }
+
           } else {
             // Single track
             const filename = completedTracks[0]
@@ -2214,23 +2221,6 @@ function youtubeDownloaderPlugin() {
             const filePath = path.join(downloadsDir, filename)
             scheduleDownloadCleanup(filePath)
 
-            const historyPath = path.resolve(process.cwd(), 'history.json')
-            let history = []
-            try { history = JSON.parse(fs.readFileSync(historyPath, 'utf8')) } catch { }
-            history.unshift({
-              title: metadata.title,
-              artist: metadata.artist,
-              album: metadata.album,
-              format: "audio:mp3",
-              filename: filename,
-              source: "spotify",
-              spotifyType: "track",
-              trackCount: 1,
-              id: Date.now().toString(),
-              date: new Date().toISOString()
-            })
-            fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8')
-
             send({
               done: true,
               progress: 100,
@@ -2239,6 +2229,8 @@ function youtubeDownloaderPlugin() {
               completedTracks: 1,
               failedTracks: 0,
               collectionTitle: metadata.title,
+              source: 'spotify',
+              spotifyType: 'track'
             })
             res.end()
           }

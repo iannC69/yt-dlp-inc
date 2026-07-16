@@ -52,12 +52,17 @@ export default function App() {
   const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
   const [activeSpotifyJob, setActiveSpotifyJob] = useState(null);
 
-  const fetchHistory = async () => {
+  const fetchHistory = () => {
     try {
-      const res = await fetch('/api/ytdl/history');
-      if (res.ok) setHistoryData(await res.json());
+      const saved = localStorage.getItem('global_history');
+      if (saved) {
+        setHistoryData(JSON.parse(saved));
+      } else {
+        setHistoryData([]);
+      }
     } catch (e) {
       console.error(e);
+      setHistoryData([]);
     }
   };
 
@@ -101,6 +106,10 @@ export default function App() {
         }
       })
       .catch(() => {});
+      
+    const handleHistoryUpdate = () => fetchHistory();
+    window.addEventListener('history_updated', handleHistoryUpdate);
+    return () => window.removeEventListener('history_updated', handleHistoryUpdate);
   }, []);
 
   useEffect(() => {

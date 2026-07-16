@@ -172,11 +172,11 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     } catch {}
   }, []);
 
-  const saveToHistory = (newUrl, title) => {
+  const saveToHistory = (newUrl, title, thumbnail) => {
     if (!newUrl) return;
     setHistory(prev => {
       const filtered = prev.filter(item => item.url !== newUrl);
-      const updated = [{ url: newUrl, title: title || newUrl, date: Date.now() }, ...filtered].slice(0, 10);
+      const updated = [{ url: newUrl, title: title || newUrl, thumbnail, date: Date.now() }, ...filtered].slice(0, 10);
       localStorage.setItem('sp_history', JSON.stringify(updated));
       return updated;
     });
@@ -320,8 +320,6 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       return;
     }
     
-    saveToHistory(target, target);
-    
     const type = getSpotifyType(target);
     if (type === 'artist') {
       setFetchError('Artist pages are not supported. Please paste a track, album, or playlist URL.');
@@ -361,6 +359,12 @@ export default function SpotifyDownloader({ activeDownloadId }) {
         throw new Error(data.error || 'Failed to fetch info');
       }
       setInfo(data);
+      if (data.type !== 'track' && data.tracks) {
+        setSelectedTracks(new Set(data.tracks.map(t => t.trackNumber)));
+      } else {
+        setSelectedTracks(new Set());
+      }
+      saveToHistory(target, data.title || data.name, data.coverUrl || data.thumbnail || data.playlistCover);
       setFetchStatus('done');
     } catch (e) {
       setFetchError(e.message || 'Could not fetch Spotify info.');
@@ -458,6 +462,28 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
               if (d.done) {
                 if (esRef.current) { esRef.current.close(); esRef.current = null; }
+                if (!d.error) {
+                  const savedFilename = d.finalFilename || d.zipPath || d.collectionTitle;
+                  if (savedFilename) {
+                    try {
+                      let h = JSON.parse(localStorage.getItem('global_history') || '[]');
+                      h.unshift({
+                        title: d.collectionTitle || d.finalFilename || info?.title || 'Unknown Title',
+                        artist: info?.artists?.[0]?.name || info?.owner || 'Spotify',
+                        thumbnail: info?.coverUrl || info?.thumbnail,
+                        format: "audio:mp3",
+                        filename: savedFilename,
+                        source: "spotify",
+                        spotifyType: d.spotifyType || info?.type || "track",
+                        id: Date.now().toString(),
+                        date: new Date().toISOString()
+                      });
+                      if (h.length > 500) h.length = 500;
+                      localStorage.setItem('global_history', JSON.stringify(h));
+                      window.dispatchEvent(new Event('history_updated'));
+                    } catch (e) {}
+                  }
+                }
               }
             } catch (err) {}
           }
@@ -569,6 +595,28 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
               if (d.done) {
                 if (esRef.current) { esRef.current.close(); esRef.current = null; }
+                if (!d.error) {
+                  const savedFilename = d.finalFilename || d.zipPath || d.collectionTitle;
+                  if (savedFilename) {
+                    try {
+                      let h = JSON.parse(localStorage.getItem('global_history') || '[]');
+                      h.unshift({
+                        title: d.collectionTitle || d.finalFilename || info?.title || 'Unknown Title',
+                        artist: info?.artists?.[0]?.name || info?.owner || 'Spotify',
+                        thumbnail: info?.coverUrl || info?.thumbnail,
+                        format: "audio:mp3",
+                        filename: savedFilename,
+                        source: "spotify",
+                        spotifyType: d.spotifyType || info?.type || "track",
+                        id: Date.now().toString(),
+                        date: new Date().toISOString()
+                      });
+                      if (h.length > 500) h.length = 500;
+                      localStorage.setItem('global_history', JSON.stringify(h));
+                      window.dispatchEvent(new Event('history_updated'));
+                    } catch (e) {}
+                  }
+                }
               }
             } catch (err) {}
           }
@@ -601,6 +649,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       const data = await res.json();
       if (res.ok) {
         setMassFetchInfo(data);
+        saveToHistory(bulkMeta, data.playlistName || data.title, data.playlistCover || data.coverUrl);
       } else {
         throw new Error(data.error || 'Failed to fetch playlist');
       }
@@ -658,6 +707,29 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               });
               if (d.done && massEsRef.current) {
                 massEsRef.current.close(); massEsRef.current = null;
+                
+                if (!d.error) {
+                  const savedFilename = d.finalFilename || d.zipPath || d.collectionTitle;
+                  if (savedFilename) {
+                    try {
+                      let h = JSON.parse(localStorage.getItem('global_history') || '[]');
+                      h.unshift({
+                        title: d.collectionTitle || d.finalFilename || massFetchInfo?.title || 'Unknown Title',
+                        artist: massFetchInfo?.owner || 'Spotify',
+                        thumbnail: massFetchInfo?.playlistCover || '',
+                        format: "audio:mp3",
+                        filename: savedFilename,
+                        source: "spotify",
+                        spotifyType: d.spotifyType || "playlist",
+                        id: Date.now().toString(),
+                        date: new Date().toISOString()
+                      });
+                      if (h.length > 500) h.length = 500;
+                      localStorage.setItem('global_history', JSON.stringify(h));
+                      window.dispatchEvent(new Event('history_updated'));
+                    } catch (e) {}
+                  }
+                }
               }
             } catch (e) {}
           }
@@ -830,17 +902,23 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                   {history.map((h, i) => (
                     <div 
                       key={i} 
-                      style={{ padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#fff' }}
-                      onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-                      onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', color: '#fff' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       onMouseDown={() => {
                         setUrl(h.url);
                         setShowHistory(false);
                         setTimeout(() => fetchInfo(h.url), 100);
                       }}
                     >
-                      <Clock size={12} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle', opacity: 0.5 }} />
-                      {h.title}
+                      {h.thumbnail ? (
+                        <img src={h.thumbnail} alt="" style={{ width: 24, height: 24, borderRadius: '4px', objectFit: 'cover' }} />
+                      ) : (
+                        <Clock size={14} style={{ opacity: 0.5 }} />
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.title}</span>
+                      </div>
                     </div>
                   ))}
                 </motion.div>
@@ -855,6 +933,51 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               {fetchStatus === 'loading' ? 'Loading...' : 'Preview'}
             </button>
           </div>
+          
+          {!info && fetchStatus !== 'loading' && history.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              style={{ marginTop: 20, textAlign: 'left', width: '100%', maxWidth: '800px', alignSelf: 'center' }}
+            >
+              <span className="sp-suggestions-label">Căutări recente:</span>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
+                {history.map((h, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setUrl(h.url);
+                      setTimeout(() => fetchInfo(h.url), 100);
+                    }}
+                    title={h.url}
+                    style={{
+                      background: 'rgba(29, 185, 84, 0.1)',
+                      border: '1px solid rgba(29, 185, 84, 0.2)',
+                      borderRadius: '20px',
+                      padding: '4px 12px 4px 6px',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    {h.thumbnail ? (
+                      <img src={h.thumbnail} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <span style={{ color: '#1DB954', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, background: 'rgba(29,185,84,0.1)', borderRadius: '50%' }}><Clock size={10} /></span>
+                    )}
+                    <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {h.title || h.url}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           <div className="sp-suggestions">
             <span className="sp-suggestions-label">Supports:</span>
             <span className="sp-badge sp-badge-track"><Disc size={10} /> Track</span>
