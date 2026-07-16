@@ -2117,45 +2117,6 @@ function youtubeDownloaderPlugin() {
             const safeZipName = sanitizeFilename(metadata.title)
             const zipFilename = `spotify-${metadata.type}-${safeZipName}.zip`
             const zipPath = path.join(downloadsDir, zipFilename)
-            if (metadata.type === 'album' && metadata.coverUrl) {
-              try {
-                const coverRes = await fetch(metadata.coverUrl)
-                const coverBuffer = Buffer.from(await coverRes.arrayBuffer())
-                fs.writeFileSync(path.join(collectionDir, 'folder.jpg'), coverBuffer)
-                fs.writeFileSync(path.join(collectionDir, 'AlbumArtSmall.jpg'), coverBuffer)
-
-                if (process.platform === 'win32') {
-                  const icoPath = path.join(collectionDir, 'album.ico')
-                  const jpgPath = path.join(collectionDir, 'folder.jpg')
-                  await new Promise((resolve) => {
-                    const child = spawn(ffmpegBin, ['-y', '-i', jpgPath, '-s', '256x256', icoPath])
-                    child.on('close', () => resolve())
-                  })
-
-                  if (fs.existsSync(icoPath)) {
-                    const iniContent = "[.ShellClassInfo]\nIconResource=album.ico,0\n[ViewState]\nMode=\nVid=\nFolderType=Music\n"
-                    const iniPath = path.join(collectionDir, 'desktop.ini')
-                    fs.writeFileSync(iniPath, iniContent)
-
-                    await new Promise((resolve) => {
-                      const child = spawn('attrib', ['+s', collectionDir])
-                      child.on('close', () => resolve())
-                    })
-                    await new Promise((resolve) => {
-                      const child = spawn('attrib', ['+s', '+h', iniPath])
-                      child.on('close', () => resolve())
-                    })
-                    await new Promise((resolve) => {
-                      const child = spawn('attrib', ['+s', '+h', icoPath]) // Ascundem si iconita
-                      child.on('close', () => resolve())
-                    })
-                  }
-                }
-              } catch (e) {
-                console.error('Failed to set album folder thumbnail:', e)
-              }
-            }
-
             try {
               await createZipFromDirectory(tempDirForZip, zipPath)
               fs.rmSync(tempDirForZip, { recursive: true, force: true })
