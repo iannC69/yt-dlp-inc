@@ -46,9 +46,9 @@ export function getOptimalDownloadConfig(forcedProfile = null) {
 
   switch (profile) {
     case 'ULTRA_PERFORMANCE':
-      ffmpegThreads = Math.max(4, numCores - 2);
-      ytdlpConcurrentFragments = 16;
-      concurrentTracks = 12;
+      ffmpegThreads = numCores;
+      ytdlpConcurrentFragments = 32;
+      concurrentTracks = 24;
       break;
     case 'HIGH_PERFORMANCE':
       ffmpegThreads = Math.max(4, Math.floor(numCores * 0.75));

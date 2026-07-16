@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Film, Loader2, AlertCircle, CheckCircle2,
-  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Settings, FolderOpen, Activity, Cpu, Library, CalendarClock, ArrowLeft, Palette
+  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft
 } from 'lucide-react';
 import './YoutubeDownloader.css';
 
@@ -103,7 +103,7 @@ function generateJobId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
-const YoutubeDownloader = () => {
+const YoutubeDownloader = ({ activeJobId }) => {
   const [url, setUrl] = useState('');
   const [info, setInfo] = useState(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
@@ -124,40 +124,27 @@ const YoutubeDownloader = () => {
   const [outputName, setOutputName] = useState('');
   const [downloadFormat, setDownloadFormat] = useState('video');
   const [downloadSourceMode, setDownloadSourceMode] = useState('standard');
+
+  useEffect(() => {
+    if (activeJobId && !downloading) {
+      setCurrentJobId(activeJobId);
+      reconnectToJob(activeJobId);
+    }
+  }, [activeJobId]);
+
   const [downloadScope, setDownloadScope] = useState('single');
   const [downloadStatus, setDownloadStatus] = useState('');
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [pendingScope, setPendingScope] = useState('single');
   const [currentJobId, setCurrentJobId] = useState(null);
   const [clipboardToast, setClipboardToast] = useState(false);
-  const defaultTheme = { primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' };
-  const [customTheme, setCustomTheme] = useState(() => {
-    try {
-      const saved = localStorage.getItem('ytdl_custom_theme');
-      return saved ? JSON.parse(saved) : defaultTheme;
-    } catch { return defaultTheme; }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('ytdl_custom_theme', JSON.stringify(customTheme));
-  }, [customTheme]);
 
   const eventSourceRef = useRef(null);
   const [systemStatus, setSystemStatus] = useState(null);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [customPath, setCustomPath] = useState('');
 
   const [appMode, setAppMode] = useState(null);
-  const [showLibrary, setShowLibrary] = useState(false);
-  const [historyData, setHistoryData] = useState([]);
   const [scheduleTime, setScheduleTime] = useState('');
-
-  const fetchHistory = async () => {
-    try {
-      const res = await fetch('/api/ytdl/history');
-      if (res.ok) setHistoryData(await res.json());
-    } catch (e) { }
-  };
 
   useEffect(() => {
     fetch('/api/ytdl/get-config').then(r => r.json()).then(data => {
@@ -184,15 +171,7 @@ const YoutubeDownloader = () => {
     return () => window.removeEventListener('focus', handleFocus);
   }, [url, downloading, downloadComplete, info, appMode]);
 
-  const handleSelectFolder = async () => {
-    try {
-      const res = await fetch('/api/ytdl/select-folder');
-      const data = await res.json();
-      if (data.success) {
-        setCustomPath(data.path);
-      }
-    } catch (e) { }
-  };
+
 
   const handleOpenFolder = async (target = '') => {
     try {
@@ -565,11 +544,7 @@ const YoutubeDownloader = () => {
   };
 
   return (
-    <div className="ytdl-page" style={{
-      '--theme-primary': customTheme.primary,
-      '--theme-secondary': customTheme.secondary,
-      '--theme-bg': customTheme.bgBase
-    }}>
+    <div className="ytdl-page">
       <div className="ytdl-bg-glow" />
 
       <div className="ytdl-layout">
@@ -596,20 +571,11 @@ const YoutubeDownloader = () => {
 
           {/* Right: action buttons */}
           <div className="ytdl-header-actions">
-            <button className="ytdl-icon-btn" onClick={() => setShowSettingsModal(true)} title="Setări și Temă">
-              <Palette size={20} />
-            </button>
             {info && !downloading && (
               <button className="ytdl-reset-btn" onClick={handleReset} title="Resetare">
                 <RefreshCw size={18} />
               </button>
             )}
-            <button className="ytdl-settings-btn" onClick={() => { setShowLibrary(true); fetchHistory(); }} title="Librărie Istoric">
-              <Library size={20} />
-            </button>
-            <button className="ytdl-settings-btn" onClick={() => setShowSettingsModal(true)} title="Setări (Director Descărcare)">
-              <Settings size={20} />
-            </button>
           </div>
         </motion.header>
 
@@ -1124,175 +1090,7 @@ const YoutubeDownloader = () => {
           )}
         </AnimatePresence>
 
-        <AnimatePresence>
-          {showLibrary && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="ytdl-library-overlay"
-            >
-              <div className="ytdl-library-header">
-                <h2>Librărie Descărcări</h2>
-                <button className="ytdl-modal-cancel" onClick={() => setShowLibrary(false)}>Închide</button>
-              </div>
-              <div className="ytdl-library-grid">
-                {historyData.length === 0 ? (
-                  <div style={{ color: '#94a3b8', textAlign: 'center', marginTop: '2rem' }}>Nicio descărcare recentă.</div>
-                ) : (
-                  historyData.map((item) => (
-                    <div key={item.id} className="ytdl-library-card">
-                      {item.thumbnail && item.thumbnail !== 'undefined' && item.thumbnail !== 'null' ? (
-                        <img
-                          src={item.thumbnail}
-                          alt="thumbnail"
-                          className="ytdl-lib-thumb"
-                          onError={(e) => {
-                            if (!e.target.dataset.triedLocal) {
-                              e.target.dataset.triedLocal = 'true';
-                              e.target.src = `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`;
-                            } else {
-                              e.target.style.display = 'none';
-                              e.target.nextElementSibling.style.display = 'flex';
-                            }
-                          }}
-                        />
-                      ) : (
-                        <img
-                          src={`/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
-                          alt="thumbnail"
-                          className="ytdl-lib-thumb"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextElementSibling.style.display = 'flex';
-                          }}
-                        />
-                      )}
-                      <div
-                        className="ytdl-lib-thumb-fallback"
-                        style={{ display: 'none' }}
-                      >
-                        <Film size={32} color="rgba(255,255,255,0.2)" />
-                      </div>
-                      <div className="ytdl-lib-info">
-                        <h4 className="ytdl-lib-title" title={item.title}>{item.title}</h4>
-                        <div className="ytdl-lib-meta">
-                          <span>{item.format}</span>
-                          <span>{new Date(item.date).toLocaleDateString()}</span>
-                        </div>
-                        <button className="ytdl-lib-open-btn" onClick={() => handleOpenFolder(item.filename)}>
-                          <FolderOpen size={16} /> Folder
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
-        <AnimatePresence>
-          {showSettingsModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="ytdl-modal-overlay"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="ytdl-modal ytdl-settings-modal"
-              >
-                <h3 className="ytdl-modal-title">Setări Aplicație</h3>
-
-                <div className="ytdl-settings">
-                  <div className="ytdl-setting-group">
-                    <span className="ytdl-setting-label">Director descărcări (Local)</span>
-                    <p className="ytdl-setting-desc">Alege folderul exact unde vrei să se salveze fișierele automat. Aplicația va ocoli browserul!</p>
-
-                    <div className="ytdl-path-picker">
-                      <input
-                        type="text"
-                        readOnly
-                        value={customPath || 'Mod Implicit (Folderul Aplicației/downloads)'}
-                        className="ytdl-url-input"
-                        title={customPath}
-                      />
-                      <button className="ytdl-btn ytdl-btn-secondary" onClick={handleSelectFolder}>
-                        <FolderOpen size={18} /> Alege Folder
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="ytdl-setting-group">
-                    <span className="ytdl-setting-label">Personalizare Temă (Culori Hex)</span>
-                    <p className="ytdl-setting-desc">Alege culorile exacte pentru interfață. Se aplică instantaneu.</p>
-
-                    <div className="ytdl-theme-pickers">
-                      <div className="ytdl-color-picker-item">
-                        <label>Accent Principal</label>
-                        <div className="ytdl-color-input-wrapper">
-                          <input
-                            type="color"
-                            value={customTheme.primary}
-                            onChange={(e) => setCustomTheme(prev => ({ ...prev, primary: e.target.value }))}
-                            className="ytdl-color-input"
-                          />
-                          <span className="ytdl-color-hex">{customTheme.primary.toUpperCase()}</span>
-                        </div>
-                      </div>
-
-                      <div className="ytdl-color-picker-item">
-                        <label>Accent Secundar</label>
-                        <div className="ytdl-color-input-wrapper">
-                          <input
-                            type="color"
-                            value={customTheme.secondary}
-                            onChange={(e) => setCustomTheme(prev => ({ ...prev, secondary: e.target.value }))}
-                            className="ytdl-color-input"
-                          />
-                          <span className="ytdl-color-hex">{customTheme.secondary.toUpperCase()}</span>
-                        </div>
-                      </div>
-
-                      <div className="ytdl-color-picker-item">
-                        <label>Culoare Fundal</label>
-                        <div className="ytdl-color-input-wrapper">
-                          <input
-                            type="color"
-                            value={customTheme.bgBase}
-                            onChange={(e) => setCustomTheme(prev => ({ ...prev, bgBase: e.target.value }))}
-                            className="ytdl-color-input"
-                          />
-                          <span className="ytdl-color-hex">{customTheme.bgBase.toUpperCase()}</span>
-                        </div>
-                      </div>
-
-                      <div className="ytdl-color-picker-item ytdl-color-picker-reset">
-                        <button
-                          className="ytdl-btn ytdl-btn-outline"
-                          onClick={() => setCustomTheme({ primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' })}
-                          title="Resetează la culorile implicite"
-                        >
-                          <RefreshCw size={16} /> Resetare
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ytdl-modal-actions">
-                  <button className="ytdl-btn ytdl-btn-primary ytdl-modal-confirm" onClick={() => setShowSettingsModal(false)}>
-                    Gata
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );

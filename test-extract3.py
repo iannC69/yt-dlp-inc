@@ -1,0 +1,1 @@
+import re, base64, json; html = open('test-spotify.html', encoding='utf-8').read(); m = re.search(r'<script id=\"initial-state\" type=\"text/plain\">(.*?)</script>', html, re.DOTALL); print('Found!' if m else 'Not found'); open('state.json','w',encoding='utf-8').write(json.dumps(json.loads(base64.b64decode(m.group(1)).decode('utf-8')), indent=2)) if m else None

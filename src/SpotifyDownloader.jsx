@@ -92,7 +92,7 @@ function EqualizerBars({ active }) {
   );
 }
 
-function TrackRow({ track, status, progress, errorText }) {
+function TrackRow({ track, status, progress, errorText, overrideUrl, onOverrideChange }) {
   return (
     <>
     <div className={`sp-track-row ${status === 'downloading' ? 'sp-track-row--active' : ''}`}>
@@ -128,8 +128,11 @@ function TrackRow({ track, status, progress, errorText }) {
   );
 }
 
-export default function SpotifyDownloader() {
+export default function SpotifyDownloader({ activeDownloadId }) {
   const [url, setUrl] = useState('');
+  const [bulkMeta, setBulkMeta] = useState('');
+  const [showBulk, setShowBulk] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [info, setInfo] = useState(null);
   const [fetchStatus, setFetchStatus] = useState('idle'); // idle | loading | done | error
   const [fetchError, setFetchError] = useState('');
@@ -140,6 +143,7 @@ export default function SpotifyDownloader() {
   const [downloadState, setDownloadState] = useState(null);
   const [trackStatuses, setTrackStatuses] = useState({});
   const [trackErrors, setTrackErrors] = useState({});
+  const [trackOverrides, setTrackOverrides] = useState({});
   const [clipboardToast, setClipboardToast] = useState(false);
   const [accessToken, setAccessToken] = useState('');
   const [myPlaylists, setMyPlaylists] = useState(null);
@@ -167,13 +171,16 @@ export default function SpotifyDownloader() {
         window.history.replaceState({}, null, '/');
         const clientId = localStorage.getItem('spotify_client_id') || '';
         const clientSecret = localStorage.getItem('spotify_client_secret') || '';
-        if (clientId && clientSecret) {
+        if (!clientSecret) {
+          alert('Lipsește Spotify Client Secret! Te rugăm să adaugi și Client Secret în Setări pentru a te putea autentifica.');
+        } else if (clientId && clientSecret) {
           try {
             const res = await fetch('/api/spotify-oauth', {
               method: 'POST',
               headers: {
                 'x-spotify-client-id': clientId,
-                'x-spotify-client-secret': clientSecret
+                'x-spotify-client-secret': clientSecret,
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({ code, redirectUri: window.location.origin + '/' })
             });
@@ -182,8 +189,13 @@ export default function SpotifyDownloader() {
               localStorage.setItem('spotify_access_token', data.access_token);
               if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
               setAccessToken(data.access_token);
+              alert('Autentificare Spotify reușită!');
+            } else {
+              alert(`Eroare la obținerea token-ului Spotify: ${data.error || 'Necunoscut'}`);
             }
-          } catch (err) {}
+          } catch (err) {
+            alert(`Eroare de rețea la autentificarea Spotify: ${err.message}`);
+          }
         }
       }
     };
@@ -311,6 +323,73 @@ export default function SpotifyDownloader() {
     setShowDownloadModal(true);
   };
 
+  
+  useEffect(() => {
+    if (activeDownloadId && !downloadState?.active) {
+      reconnect(activeDownloadId);
+    }
+  }, [activeDownloadId]);
+
+  const reconnect = async (dlId) => {
+    downloadIdRef.current = dlId;
+    setDownloadState({ active: true, status: 'Reconnecting to download...', progress: 0, trackProgress: 0, currentTrack: 0, totalTracks: 1, done: false, error: null });
+
+    if (esRef.current) esRef.current.close();
+
+    try {
+      const res = await fetch(`/api/spotify-status?downloadId=${dlId}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      esRef.current = { close: () => { reader.cancel().catch(()=>{}); esRef.current = null; } };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() || '';
+        
+        for (const chunk of chunks) {
+          if (chunk.startsWith('data: ')) {
+            try {
+              const d = JSON.parse(chunk.slice(6));
+              if (d.error && d.done) {
+                 setDownloadState(prev => ({ ...prev, active: false, done: true, error: d.error }));
+                 if (esRef.current) { esRef.current.close(); esRef.current = null; }
+                 return;
+              }
+              setDownloadState(prev => {
+                const next = { ...prev, ...d };
+                if (!d.done) next.active = true;
+                if (d.done) next.active = false;
+                return next;
+              });
+
+              if (d.trackDone && d.currentTrack) {
+                setTrackStatuses(prev => ({ ...prev, [d.currentTrack - 1]: 'done' }));
+              }
+              if (d.trackError && d.currentTrack) {
+                setTrackStatuses(prev => ({ ...prev, [d.currentTrack - 1]: 'error' }));
+                setTrackErrors(prev => ({ ...prev, [d.currentTrack - 1]: d.trackError }));
+              }
+              if (d.currentTrack && !d.trackDone && !d.trackError) {
+                setTrackStatuses(prev => ({ ...prev, [d.currentTrack - 1]: 'downloading' }));
+              }
+
+              if (d.done) {
+                if (esRef.current) { esRef.current.close(); esRef.current = null; }
+              }
+            } catch (err) {}
+          }
+        }
+      }
+    } catch (err) {
+      setDownloadState(prev => ({ ...prev, active: false, done: true, error: 'Connection lost. Please try again.' }));
+    }
+  };
   const handleDownload = async () => {
     if (!info || downloadState?.active) return;
     if (esRef.current) esRef.current.close();
@@ -346,12 +425,14 @@ export default function SpotifyDownloader() {
     setTrackStatuses(initStatuses);
     setDownloadState({ active: true, status: 'Connecting to Spotify...', progress: 0, trackProgress: 0, currentTrack: 0, totalTracks: totalToDownload, done: false, error: null });
 
+    const actualUrl = url === 'bulk://meta' ? bulkMeta : url;
     const params = new URLSearchParams({ 
-      url, 
+      url: actualUrl, 
       format: formatStr, 
       downloadId: dlId,
       preset: localStorage.getItem('download_preset') || 'AUTO',
-      hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE'
+      hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE',
+      overrides: JSON.stringify(trackOverrides)
     });
 
     if (info.type === 'playlist') {
@@ -452,7 +533,7 @@ export default function SpotifyDownloader() {
 
   const tracksToShow = useMemo(() => {
     if (!info?.tracks) return [];
-    return (info.type === 'playlist') ? info.tracks.slice(0, 5) : (showAllTracks ? info.tracks : info.tracks.slice(0, 5));
+    return showAllTracks ? info.tracks : info.tracks.slice(0, 5);
   }, [info, showAllTracks]);
 
   const isDownloading = downloadState?.active && !downloadState?.done;
@@ -575,6 +656,67 @@ export default function SpotifyDownloader() {
             <span className="sp-badge sp-badge-album"><Music size={10} /> Album</span>
             <span className="sp-badge sp-badge-playlist"><List size={10} /> Playlist</span>
           </div>
+
+          {!showBulk ? (
+            <div style={{ textAlign: 'center', marginTop: 15 }}>
+              <button className="sp-bulk-btn" onClick={() => setShowBulk(true)} style={{ padding: '8px 12px', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid #3b82f6', borderRadius: 8, color: '#60a5fa', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <ListVideo size={14} style={{ verticalAlign: 'middle', marginRight: 6 }}/>
+                Peste 100 Melodii? (Spotify Mass Downloader)
+              </button>
+            </div>
+          ) : (
+            <div className="sp-bulk-container" style={{ textAlign: 'left', width: '100%', marginTop: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <h3 style={{ margin: 0, color: '#fff', fontSize: '1rem' }}>Spotify Mass Downloader</h3>
+                <button onClick={() => setShowBulk(false)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer' }}><X size={16} /></button>
+              </div>
+              <p style={{ color: '#a0a0a0', fontSize: '0.8rem', marginBottom: 10 }}>
+                Introdu mai jos link-ul către un <b>Playlist Spotify</b> (fără limite). Aplicația va scana automat sute de piese și le va descărca direct.
+              </p>
+              
+              <input 
+                type="text"
+                value={bulkMeta}
+                onChange={(e) => setBulkMeta(e.target.value)}
+                placeholder="https://open.spotify.com/playlist/..."
+                style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, outline: 'none' }}
+              />
+
+              <button 
+                disabled={isExtracting}
+                onClick={async () => {
+                  if (!bulkMeta.trim()) return;
+                  const url = bulkMeta.trim();
+
+                  if (url.includes('spotify.com/playlist')) {
+                    setIsExtracting(true);
+                    try {
+                      const res = await fetch(`/api/spotify-info?url=${encodeURIComponent(url)}`);
+                      if (res.ok) {
+                        const metadata = await res.json();
+                        setShowBulk(false);
+                        setInfo(metadata);
+                        setSelectedTracks(new Set(metadata.tracks.map((_, i) => i + 1)));
+                        setUrl('bulk://meta'); // Treat it as bulk
+                        setFetchStatus('done');
+                      } else {
+                        throw new Error('Failed to extract playlist');
+                      }
+                    } catch (err) {
+                      console.error("Failed to extract Spotify link", err);
+                      setBulkMeta("Eroare la extragerea playlist-ului. Încearcă din nou.");
+                    }
+                    setIsExtracting(false);
+                  } else {
+                    setBulkMeta("Te rugăm să introduci un link valid de Playlist Spotify.");
+                  }
+                }}
+                style={{ width: '100%', padding: '10px', marginTop: 10, background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 8, cursor: isExtracting ? 'not-allowed' : 'pointer', opacity: isExtracting ? 0.7 : 1 }}
+              >
+                {isExtracting ? 'Se extrag melodiile (~30s)...' : 'Preia toate piesele'}
+              </button>
+            </div>
+          )}
         </motion.div>
 
         {/* ── Error ── */}
@@ -660,16 +802,22 @@ export default function SpotifyDownloader() {
                     </div>
 
                     <div className="sp-playlist-preview">
-                      {info.tracks?.slice(0, 5).map((track, i) => (
+                      {tracksToShow.map((track, i) => (
                         <div key={i} className="sp-playlist-preview-row">
                           <span>{String(track.trackNumber ?? i + 1).padStart(2, '0')}</span>
                           <strong>{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</strong>
                           <small>{fmtDuration(track.durationMs)}</small>
                         </div>
                       ))}
-                      {info.totalTracks > 5 && (
-                        <div className="sp-playlist-utility">
-                          <Music size={12} /> și încă {info.totalTracks - 5} melodii...
+                      {info.totalTracks > 5 && !showAllTracks && (
+                        <div className="sp-playlist-utility" onClick={() => setShowAllTracks(true)} style={{ cursor: 'pointer', padding: '0.5rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', textAlign: 'center', marginTop: '0.5rem' }}>
+                          <Music size={12} style={{ marginRight: '6px' }} />
+                          Afișează încă {info.totalTracks - 5} melodii
+                        </div>
+                      )}
+                      {showAllTracks && info.totalTracks > info.tracks.length && (
+                        <div className="sp-playlist-utility" style={{ padding: '0.5rem', color: '#9ca3af', textAlign: 'center', marginTop: '0.5rem' }}>
+                          (Spotify ascunde restul de {info.totalTracks - info.tracks.length} piese. Loghează-te în Setări cu API keys pentru a le vedea pe toate.)
                         </div>
                       )}
                     </div>
@@ -895,6 +1043,8 @@ export default function SpotifyDownloader() {
                     <TrackRow
                       key={track.trackNumber}
                       track={track}
+                            overrideUrl={trackOverrides[track.trackNumber - 1]}
+                            onOverrideChange={(val) => setTrackOverrides(prev => ({ ...prev, [track.trackNumber - 1]: val }))}
                       status={trackStatuses[track.trackNumber - 1] || 'pending'}
                       progress={track.trackNumber === downloadState.currentTrack ? downloadState.trackProgress : 0}
                       errorText={trackErrors[track.trackNumber - 1]}

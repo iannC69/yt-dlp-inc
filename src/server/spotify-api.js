@@ -14,7 +14,7 @@ export async function getSpotifyToken(clientId, clientSecret) {
     throw new Error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET from request headers")
   }
 
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const data = 'grant_type=client_credentials'
 
   return new Promise((resolve, reject) => {
@@ -149,11 +149,11 @@ async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
 
 // ── Main Metadata Resolver ───────────────────────────────────────────────────
 export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret, accessToken = null) {
-  const match = spotifyUrlString.split('?')[0].match(
+  const match = (spotifyUrlString || '').split('?')[0].match(
     /open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/
   )
   if (!match) {
-    throw new Error("Invalid Spotify URL. Supported types: track, album, playlist.")
+    throw new Error(`Invalid Spotify URL (${spotifyUrlString}). Supported types: track, album, playlist.`)
   }
 
   const type = match[1]
@@ -316,4 +316,41 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
   }
 
   throw new Error(`Unsupported Spotify URL type: ${type}`)
+}
+
+export async function resolveSpotifyFallback(url) {
+  try {
+    const { getDetails } = spotifyUrlInfo(fetch);
+    const details = await getDetails(url);
+    if (!details) throw new Error("Could not fetch details using fallback.");
+    
+    // Type checking
+    const type = details.preview?.type || 'playlist';
+    
+    // Convert tracks
+    const tracks = (details.tracks || []).map((t, i) => {
+      const spotifyId = t.uri ? t.uri.split(':').pop() : '';
+      return {
+        trackNumber: i + 1,
+        title: t.name,
+        artist: t.artist,
+        allArtists: t.artist,
+        durationMs: t.duration || 0,
+        spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : '',
+        coverUrl: details.preview?.image || null
+      };
+    });
+
+    return {
+      type: type,
+      title: details.preview?.title || 'Spotify Audio',
+      trackCount: tracks.length,
+      totalTracks: tracks.length,
+      totalDurationMs: tracks.reduce((acc, t) => acc + (t.durationMs || 0), 0),
+      tracks: tracks,
+      coverUrl: details.preview?.image || null
+    };
+  } catch (err) {
+    throw new Error(`Fallback extraction failed: ${err.message}`);
+  }
 }

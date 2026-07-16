@@ -9,7 +9,7 @@ import os from 'os'
 import ffmpegStatic from 'ffmpeg-static'
 import NodeID3 from 'node-id3'
 import https from 'https'
-import { resolveSpotifyMetadata } from './src/server/spotify-api.js'
+import { resolveSpotifyMetadata, resolveSpotifyFallback } from './src/server/spotify-api.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const binPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
 // Use ffmpeg-static for bundled ffmpeg binary; fall back to local bin/ if present
@@ -1227,14 +1227,16 @@ function youtubeDownloaderPlugin() {
 
         try {
           res.setHeader('Content-Type', 'application/json')
-          const metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
+          let metadata;
+          try {
+            metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
+          } catch (err) {
+            console.log(`resolveSpotifyMetadata failed (${err.message}), trying fallback...`);
+            metadata = await resolveSpotifyFallback(spotUrl);
+          }
           return res.end(JSON.stringify(metadata))
         } catch (err) {
           console.error('Spotify info error:', err)
-          if (err.message.includes('Missing SPOTIFY_CLIENT_ID')) {
-            res.statusCode = 500
-            return res.end(JSON.stringify({ error: "Add your Spotify credentials in Settings to use Spotify features." }))
-          }
           res.statusCode = 500
           res.end(JSON.stringify({ error: err.message }))
         }
@@ -1246,7 +1248,69 @@ function youtubeDownloaderPlugin() {
       // ── Spotify Active Downloads map (for cancel support) ──
       const spotifyActiveDownloads = new Map()
 
-      // ── Spotify Cancel ──
+      // 🎶 Spotify Extract Info (via spotdl save) 🎶
+      server.middlewares.use('/api/spotdl-extract', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        const spotUrl = urlObj.searchParams.get('url')
+        if (!spotUrl) {
+          res.statusCode = 400
+          return res.end(JSON.stringify({ error: 'Missing url param' }))
+        }
+
+        res.setHeader('Content-Type', 'application/json')
+        const tempFile = path.join(os.tmpdir(), `spotdl_extract_${Date.now()}.spotdl`)
+        const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe')
+
+        const proc = spawn(spotdlPath, ['save', spotUrl, '--save-file', tempFile], {
+          env: {
+            ...process.env,
+            PYTHONIOENCODING: 'utf-8',
+            PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}`
+          }
+        })
+
+        // Drain stdout/stderr so spotdl doesn't block!
+        proc.stdout.on('data', () => {})
+        proc.stderr.on('data', () => {})
+
+        proc.on('close', (code) => {
+          if (fs.existsSync(tempFile)) {
+            try {
+              const raw = fs.readFileSync(tempFile, 'utf8')
+              const tracks = JSON.parse(raw)
+              fs.unlinkSync(tempFile)
+              
+              // Convert spotdl dump to our metadata format
+              const metadata = {
+                type: 'playlist',
+                title: tracks[0]?.list_name || 'Spotify Playlist',
+                trackCount: tracks.length,
+                totalTracks: tracks.length,
+                totalDurationMs: 0,
+                tracks: tracks.map((t, i) => ({
+                  trackNumber: i + 1,
+                  title: t.name,
+                  artist: t.artist,
+                  allArtists: t.artists.join(', '),
+                  durationMs: t.duration * 1000,
+                  spotifyUrl: t.url,
+                  coverUrl: t.cover_url
+                }))
+              }
+              res.end(JSON.stringify(metadata))
+            } catch (e) {
+               res.statusCode = 500
+               res.end(JSON.stringify({ error: e.message }))
+            }
+          } else {
+             res.statusCode = 500
+             res.end(JSON.stringify({ error: 'spotdl failed to extract' }))
+          }
+        })
+      })
+
+// ── Spotify Cancel ──
       server.middlewares.use('/api/spotify-cancel', (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
@@ -1303,7 +1367,12 @@ function youtubeDownloaderPlugin() {
           try {
             metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
           } catch (e) {
-            throw new Error(`Spotify metadata fetch failed: ${e.message}`)
+            try {
+              console.log(`resolveSpotifyMetadata failed during download (${e.message}), trying fallback...`);
+              metadata = await resolveSpotifyFallback(spotUrl);
+            } catch (fallbackErr) {
+              throw new Error(`Spotify metadata fetch failed: ${e.message} (Fallback failed: ${fallbackErr.message})`);
+            }
           }
 
           const isCollection = metadata.type === 'album' || metadata.type === 'playlist'
@@ -1437,14 +1506,21 @@ function youtubeDownloaderPlugin() {
               proc.on('error', (err) => resolve({ error: `spotdl spawn failed: ${err.message}` }))
             });
 
-            if (result.skipped) return;
-            if (result.error) {
-              failedTracks.push({ title: 'Playlist', error: result.error });
-              send({ error: result.error, done: true });
-            } else {
+              if (result.skipped) return;
+              if (result.error) {
+                failedTracks.push({ title: 'Playlist', error: result.error });
+                send({ error: result.error, done: true });
+                res.end();
+                return;
+              } else {
                try {
                  const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'))
                  for (const f of files) completedTracks.push(f)
+                 if (completedTracks.length === 0) {
+                   send({ error: 'No files were downloaded.', done: true });
+                   res.end();
+                   return;
+                 }
                  send({
                    trackDone: true,
                    currentTrack: result.nativeTotalTracks,

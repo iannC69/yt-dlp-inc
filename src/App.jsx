@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, ChevronLeft, ChevronRight, Settings, X, HelpCircle, ExternalLink } from 'lucide-react';
+import { Play, ChevronLeft, ChevronRight, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw } from 'lucide-react';
 import YoutubeDownloader from './YoutubeDownloader';
 import SpotifyDownloader from './SpotifyDownloader';
+import LibraryModal from './LibraryModal';
 import './App.css';
 
 const PLATFORMS = [
@@ -38,24 +39,85 @@ export default function App() {
   const [activeIdx, setActiveIdx] = useState(0);
   const [direction, setDirection] = useState(1);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
+  
   const [spotifyClientId, setSpotifyClientId] = useState('');
   const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
   const [downloadPreset, setDownloadPreset] = useState('AUTO');
   const [hardwareAcceleration, setHardwareAcceleration] = useState('NONE');
+  const [customPath, setCustomPath] = useState('');
+  const [customTheme, setCustomTheme] = useState({ primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' });
   const [showHelp, setShowHelp] = useState(false);
+  const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
+  const [activeSpotifyJob, setActiveSpotifyJob] = useState(null);
+
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch('/api/ytdl/history');
+      if (res.ok) setHistoryData(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSelectFolder = async () => {
+    try {
+      const res = await fetch('/api/ytdl/select-folder');
+      const data = await res.json();
+      if (data.success) {
+        setCustomPath(data.path);
+      }
+    } catch (e) { }
+  };
 
   useEffect(() => {
     setSpotifyClientId(localStorage.getItem('spotify_client_id') || '');
     setSpotifyClientSecret(localStorage.getItem('spotify_client_secret') || '');
     setDownloadPreset(localStorage.getItem('download_preset') || 'AUTO');
     setHardwareAcceleration(localStorage.getItem('hardware_acceleration') || 'NONE');
+
+    fetch('/api/ytdl/get-config').then(r => r.json()).then(data => {
+      if (data.customPath) setCustomPath(data.customPath);
+    }).catch(() => { });
+
+    const savedTheme = localStorage.getItem('global_theme');
+    if (savedTheme) {
+      try {
+        setCustomTheme(JSON.parse(savedTheme));
+      } catch (e) {}
+    }
+
+    // Auto-reconnect to background jobs
+    fetch('/api/active-jobs')
+      .then(r => r.json())
+      .then(data => {
+        if (data.youtube && data.youtube.length > 0) {
+          setActiveYoutubeJob(data.youtube[0]);
+          setActiveIdx(0);
+        } else if (data.spotify && data.spotify.length > 0) {
+          setActiveSpotifyJob(data.spotify[0]);
+          setActiveIdx(1);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--primary', customTheme.primary);
+    root.style.setProperty('--primary-dark', customTheme.primary + 'CC');
+    root.style.setProperty('--secondary', customTheme.secondary);
+    root.style.setProperty('--bg-base', customTheme.bgBase);
+    root.style.setProperty('--bg-panel', customTheme.bgBase + 'F2'); // add opacity
+  }, [customTheme]);
 
   const saveSettings = () => {
     localStorage.setItem('spotify_client_id', spotifyClientId.trim());
     localStorage.setItem('spotify_client_secret', spotifyClientSecret.trim());
     localStorage.setItem('download_preset', downloadPreset);
     localStorage.setItem('hardware_acceleration', hardwareAcceleration);
+    localStorage.setItem('global_theme', JSON.stringify(customTheme));
     setShowSettingsModal(false);
   };
 
@@ -123,14 +185,30 @@ export default function App() {
               <ChevronRight size={16} />
             </button>
           </div>
-          <button 
-            className="settings-button"
-            onClick={() => setShowSettingsModal(true)}
-            title="Settings"
-          >
-            <Settings size={18} />
-            <span className="settings-status-dot" style={{ backgroundColor: isConfigured ? '#1DB954' : '#ef4444' }} />
-          </button>
+          <div className="global-top-actions">
+            <button 
+              className="settings-button"
+              onClick={() => setShowSettingsModal(true)}
+              title="Theme / Palette"
+            >
+              <Palette size={18} />
+            </button>
+            <button 
+              className="settings-button"
+              onClick={() => { fetchHistory(); setShowLibrary(true); }}
+              title="Library / History"
+            >
+              <Library size={18} />
+            </button>
+            <button 
+              className="settings-button"
+              onClick={() => setShowSettingsModal(true)}
+              title="Settings"
+            >
+              <Settings size={18} />
+              <span className="settings-status-dot" style={{ backgroundColor: isConfigured ? '#1DB954' : '#ef4444' }} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -150,11 +228,17 @@ export default function App() {
             }}
             className="panel-slide"
           >
-            {activeIdx === 0 && <YoutubeDownloader />}
-            {activeIdx === 1 && <SpotifyDownloader />}
+            {activeIdx === 0 && <YoutubeDownloader activeJobId={activeYoutubeJob} />}
+            {activeIdx === 1 && <SpotifyDownloader activeDownloadId={activeSpotifyJob} />}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {showLibrary && (
+          <LibraryModal historyData={historyData} onClose={() => setShowLibrary(false)} />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showSettingsModal && (
@@ -175,11 +259,70 @@ export default function App() {
                 <X size={18} />
               </button>
               <div className="settings-header">
-                <h2>Settings</h2>
+                <h2>Setări Generale</h2>
                 <button className="settings-help-btn" onClick={() => setShowHelp(!showHelp)} title="How to get these?">
                   <HelpCircle size={16} />
                 </button>
               </div>
+
+              <div className="settings-scroll-content">
+                <div className="settings-section">
+                  <h3>Director descărcări (Local)</h3>
+                  <div className="settings-path-picker">
+                    <input
+                      type="text"
+                      readOnly
+                      value={customPath || 'Mod Implicit (Folderul Aplicației/downloads)'}
+                      className="settings-input"
+                      title={customPath}
+                    />
+                    <button className="settings-save-btn" onClick={handleSelectFolder} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
+                      <FolderOpen size={16} style={{ display: 'inline', marginRight: '4px' }} /> Folder
+                    </button>
+                  </div>
+                </div>
+
+                <div className="settings-section">
+                  <h3>Personalizare Temă (Culori Hex)</h3>
+                  <div className="settings-theme-pickers">
+                    <div className="settings-color-picker-item">
+                      <label>Accent Principal</label>
+                      <div className="settings-color-input-wrapper">
+                        <input
+                          type="color"
+                          value={customTheme.primary}
+                          onChange={(e) => setCustomTheme(prev => ({ ...prev, primary: e.target.value }))}
+                        />
+                        <span>{customTheme.primary.toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <div className="settings-color-picker-item">
+                      <label>Culoare Fundal</label>
+                      <div className="settings-color-input-wrapper">
+                        <input
+                          type="color"
+                          value={customTheme.bgBase}
+                          onChange={(e) => setCustomTheme(prev => ({ ...prev, bgBase: e.target.value }))}
+                        />
+                        <span>{customTheme.bgBase.toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <div className="settings-color-picker-item">
+                      <button
+                        className="settings-save-btn"
+                        style={{ width: 'auto', padding: '0.5rem 1rem', background: '#475569' }}
+                        onClick={() => setCustomTheme({ primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' })}
+                      >
+                        <RefreshCw size={14} style={{ display: 'inline', marginRight: '4px' }}/> Reset
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <hr className="settings-divider" />
+                
+                <div className="settings-section">
+                  <h3>Spotify Credentials</h3>
 
               <AnimatePresence>
                 {showHelp && (
@@ -249,9 +392,11 @@ export default function App() {
                   <option value="QSV" style={{ color: 'black' }}>Intel GPU (QSV)</option>
                 </select>
                 <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>GPU encoding mostly speeds up Video conversion. MP3 is always CPU.</p>
+                </div>
+              </div>
               </div>
               <button className="settings-save-btn" onClick={saveSettings}>
-                Save Settings
+                Salvează Setările
               </button>
             </motion.div>
           </motion.div>
