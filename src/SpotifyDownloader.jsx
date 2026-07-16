@@ -937,7 +937,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                       </p>
                       
                       <div style={{ display: 'flex', gap: 10 }}>
-                        {massDlState.zipPath && (
+                        {massDlState.zipPath && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
                           <button onClick={() => window.location.href = `/api/download-file?file=${encodeURIComponent(massDlState.zipPath)}`} style={{ flex: 1.5, padding: '12px', background: '#1DB954', border: 'none', color: '#000', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
                             Salvează ZIP
                           </button>
@@ -1405,7 +1405,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                     )}
                   </div>
                   <div className="sp-result-actions">
-                    {downloadState.downloadUrl && (
+                    {downloadState.downloadUrl && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
                       <a className="sp-download-link" href={downloadState.downloadUrl} download={downloadState.finalFilename}>
                         <Download size={14} /> Save File
                       </a>

@@ -1794,9 +1794,10 @@ function youtubeDownloaderPlugin() {
           let tempDirForZip = null
           if (isCollection) {
             const safeFolderName = sanitizeFilename(metadata.title)
-            tempDirForZip = path.join(downloadsDir, `spotify-temp-${Date.now()}`)
-            collectionDir = path.join(tempDirForZip, safeFolderName)
-            fs.mkdirSync(collectionDir, { recursive: true })
+            collectionDir = path.join(downloadsDir, safeFolderName)
+            if (!fs.existsSync(collectionDir)) {
+              fs.mkdirSync(collectionDir, { recursive: true })
+            }
             outputDir = collectionDir
           }
 
@@ -1825,7 +1826,8 @@ function youtubeDownloaderPlugin() {
                 '--format', 'mp3',
                 '--threads', String(aiConfig.concurrentTracks || 4),
                 '--preload',
-                '--audio', 'youtube', 'soundcloud', 'piped'
+                '--audio', 'soundcloud', 'youtube', 'piped',
+                '--yt-dlp-args', `--js-runtimes=node:${process.execPath}`
               ];
               let spFfmpegArgs = `-threads ${aiConfig.ffmpegThreads}`
               if (hwaccel !== 'NONE') {
@@ -1964,9 +1966,10 @@ function youtubeDownloaderPlugin() {
                     const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
 
                     const ytDlpArgs = [
-                      `ytsearch1:${track.artist} ${track.title} audio`,
+                      `scsearch1:${track.artist} ${track.title} audio`,
                       '-x', '--audio-format', 'mp3',
                       '--audio-quality', '0',
+                      '--js-runtimes', `node:${process.execPath}`,
                       '-o', path.join(outputDir, finalOutputName),
                       '--no-playlist'
                     ];
@@ -2004,24 +2007,27 @@ function youtubeDownloaderPlugin() {
                         return resolve({ error: `yt-dlp failed with code ${code}: ${stderr}`, trackTitle: track.title })
                       }
 
-                      let finalFilename = ''
-                      try {
-                        const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'))
-                        let newestFile = null
-                        let newestTime = 0
-                        for (const f of files) {
-                          const stat = fs.statSync(path.join(outputDir, f))
-                          if (stat.mtimeMs > newestTime && stat.mtimeMs >= startTime) {
-                            newestTime = stat.mtimeMs
-                            newestFile = f
+                      let resolvedFilename = ''
+                      if (fs.existsSync(path.join(outputDir, finalOutputName))) {
+                        resolvedFilename = finalOutputName;
+                      } else {
+                        // Fallback scan without mtime restriction in case yt-dlp did something weird
+                        try {
+                          const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'))
+                          if (files.length > 0) {
+                            // Sort by creation time just in case, but just grab the file that includes the title
+                            const matched = files.find(f => f.includes(safeTitle) || f.includes(safeArtist));
+                            if (matched) resolvedFilename = matched;
+                            else resolvedFilename = files[files.length - 1]; // last resort
                           }
-                        }
-                        if (newestFile) finalFilename = newestFile
-                      } catch { }
+                        } catch { }
+                      }
 
-                      if (!finalFilename) {
+                      if (!resolvedFilename) {
                         return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title })
                       }
+
+                      const finalFilename = resolvedFilename;
 
                       let coverBuffer = null
                       if (track.coverUrl) {
@@ -2117,11 +2123,53 @@ function youtubeDownloaderPlugin() {
             const safeZipName = sanitizeFilename(metadata.title)
             const zipFilename = `spotify-${metadata.type}-${safeZipName}.zip`
             const zipPath = path.join(downloadsDir, zipFilename)
-            try {
-              await createZipFromDirectory(tempDirForZip, zipPath)
-              fs.rmSync(tempDirForZip, { recursive: true, force: true })
-              scheduleDownloadCleanup(zipPath)
 
+            if (metadata.type === 'album' && metadata.coverUrl) {
+              try {
+                const coverRes = await fetch(metadata.coverUrl)
+                const coverBuffer = Buffer.from(await coverRes.arrayBuffer())
+                const jpgPath = path.join(collectionDir, 'folder.jpg')
+                fs.writeFileSync(jpgPath, coverBuffer)
+
+                if (process.platform === 'win32') {
+                  const icoPath = path.join(collectionDir, 'album.ico')
+                  await new Promise((resolve) => {
+                    const child = spawn(ffmpegBin, ['-y', '-i', jpgPath, '-vf', 'scale=256:256', icoPath])
+                    child.on('close', () => resolve())
+                  })
+
+                  try { fs.unlinkSync(jpgPath) } catch { }
+
+                  if (fs.existsSync(icoPath)) {
+                    const iniContent = "[.ShellClassInfo]\r\nIconResource=album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n"
+                    const iniPath = path.join(collectionDir, 'desktop.ini')
+                    fs.writeFileSync(iniPath, iniContent)
+
+                    // Run natively to try and make it automatic!
+                    await new Promise((resolve) => {
+                      const child = spawn('attrib', ['+s', collectionDir])
+                      child.on('close', () => resolve())
+                    })
+                    await new Promise((resolve) => {
+                      const child = spawn('attrib', ['+s', '+h', iniPath])
+                      child.on('close', () => resolve())
+                    })
+                    // Do NOT hide album.ico because it breaks the IconResource in Windows 11
+                    spawn('ie4uinit.exe', ['-show'])
+                    spawn('powershell', ['-Command', '$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Refresh() }'])
+
+                    // Fallback bat file for the user to double click if automatic refresh fails
+                    const batContent = `@echo off\r\nattrib +s "%~dp0."\r\nattrib +s +h "%~dp0desktop.ini"\r\nie4uinit.exe -show\r\necho Done! Press F5 in File Explorer to see the folder icon.\r\npause\r\n`;
+                    const batPath = path.join(collectionDir, 'ApplyFolderIcon.bat');
+                    fs.writeFileSync(batPath, batContent);
+                  }
+                }
+              } catch (e) {
+                console.error('Failed to set album folder thumbnail:', e)
+              }
+            } // Close if (metadata.type === 'album' && metadata.coverUrl)
+
+            try {
               const historyPath = path.resolve(process.cwd(), 'history.json')
               let history = []
               try { history = JSON.parse(fs.readFileSync(historyPath, 'utf8')) } catch { }
@@ -2130,7 +2178,7 @@ function youtubeDownloaderPlugin() {
                 artist: metadata.type === 'playlist' ? metadata.owner : metadata.artist,
                 album: metadata.type === 'playlist' ? '' : metadata.title,
                 format: "audio:mp3",
-                filename: zipFilename,
+                filename: path.basename(collectionDir),
                 source: "spotify",
                 spotifyType: metadata.type,
                 trackCount: completedTracks.length,
@@ -2142,17 +2190,16 @@ function youtubeDownloaderPlugin() {
               send({
                 done: true,
                 progress: 100,
-                finalFilename: zipFilename,
-                downloadUrl: `/api/download-file?file=${encodeURIComponent(zipFilename)}`,
+                finalFilename: path.basename(collectionDir),
+                downloadUrl: '',
                 completedTracks: completedTracks.length,
                 failedTracks: failedTracks.length,
-                isArchive: true,
+                isArchive: false,
                 collectionTitle: metadata.title,
               })
               res.end()
-            } catch (zipErr) {
-              try { fs.rmSync(tempDirForZip, { recursive: true, force: true }) } catch { }
-              send({ done: true, error: `ZIP creation failed: ${zipErr.message}` })
+            } catch (err) {
+              send({ done: true, error: `Finalization failed: ${err.message}` })
               res.end()
             }
           } else {
