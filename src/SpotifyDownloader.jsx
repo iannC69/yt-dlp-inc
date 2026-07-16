@@ -4,7 +4,7 @@ import {
   Music, Download, Loader2, AlertCircle, CheckCircle2,
   Link2, List, Disc, Search, RefreshCw, Clipboard,
   X, ChevronDown, ChevronUp, FolderOpen, Clock,
-  Star, Calendar, Hash, Users, Archive, Play, User, LogOut, ListVideo
+  Star, Calendar, Hash, Users, Archive, Play, User, LogOut, ListVideo, HardDrive, Database
 } from 'lucide-react';
 import './SpotifyDownloader.css';
 
@@ -128,6 +128,38 @@ function TrackRow({ track, status, progress, errorText, overrideUrl, onOverrideC
   );
 }
 
+async function getValidAccessToken(clientId, clientSecret) {
+  const expiresAt   = parseInt(localStorage.getItem('spotify_expires_at') || '0', 10);
+  const accessToken = localStorage.getItem('spotify_access_token')  || '';
+  const refreshToken = localStorage.getItem('spotify_refresh_token') || '';
+
+  if (accessToken && Date.now() < expiresAt - 60000) return accessToken;
+
+  if (refreshToken && clientId && clientSecret) {
+    try {
+      const res = await fetch('/api/spotify-refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-spotify-client-id': clientId,
+          'x-spotify-client-secret': clientSecret,
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      const data = await res.json();
+      if (data.access_token) {
+        localStorage.setItem('spotify_access_token', data.access_token);
+        localStorage.setItem('spotify_expires_at', Date.now() + data.expires_in * 1000);
+        if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+        return data.access_token;
+      }
+    } catch (e) {
+      console.warn('[spotify] Token refresh failed:', e);
+    }
+  }
+  return accessToken;
+}
+
 export default function SpotifyDownloader({ activeDownloadId }) {
   const [url, setUrl] = useState('');
   const [bulkMeta, setBulkMeta] = useState('');
@@ -151,6 +183,14 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const [showPlaylists, setShowPlaylists] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  
+  // Mass Downloader specific state
+  const [massFetchInfo, setMassFetchInfo] = useState(null);
+  const [massFetchError, setMassFetchError] = useState('');
+  const [massDlState, setMassDlState] = useState(null);
+  const [massFormat, setMassFormat] = useState('mp3_320');
+  const massEsRef = useRef(null);
+  const massDownloadIdRef = useRef(null);
   
   const downloadIdRef = useRef(null);
   const esRef = useRef(null);
@@ -188,10 +228,10 @@ export default function SpotifyDownloader({ activeDownloadId }) {
             if (data.access_token) {
               localStorage.setItem('spotify_access_token', data.access_token);
               if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+              if (data.expires_in) localStorage.setItem('spotify_expires_at', Date.now() + data.expires_in * 1000);
               setAccessToken(data.access_token);
-              alert('Autentificare Spotify reușită!');
             } else {
-              alert(`Eroare la obținerea token-ului Spotify: ${data.error || 'Necunoscut'}`);
+              console.error(`Eroare la obținerea token-ului Spotify: ${data.error || 'Necunoscut'}`);
             }
           } catch (err) {
             alert(`Eroare de rețea la autentificarea Spotify: ${err.message}`);
@@ -502,6 +542,103 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     }
   };
 
+  const handleMassFetch = async () => {
+    setMassFetchError('');
+    if (!bulkMeta.trim() || !bulkMeta.includes('spotify.com/playlist')) {
+      setMassFetchError("Te rugăm să introduci un link valid de Playlist Spotify.");
+      return;
+    }
+    setIsExtracting(true);
+    try {
+      const clientId     = localStorage.getItem('spotify_client_id')     || '';
+      const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+      const userAccessToken = await getValidAccessToken(clientId, clientSecret);
+      if (userAccessToken && userAccessToken !== accessToken) setAccessToken(userAccessToken);
+      const res = await fetch(`/api/spotify-mass-fetch?url=${encodeURIComponent(bulkMeta)}`, {
+        headers: {
+          'x-spotify-client-id': clientId,
+          'x-spotify-client-secret': clientSecret,
+          'x-spotify-access-token': userAccessToken
+        }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMassFetchInfo(data);
+      } else {
+        throw new Error(data.error || 'Failed to fetch playlist');
+      }
+    } catch (err) {
+      console.error(err);
+      setMassFetchError(err.message);
+    }
+    setIsExtracting(false);
+  };
+
+  const startMassDownload = async () => {
+    if (!massFetchInfo || massDlState?.active) return;
+    if (massEsRef.current) massEsRef.current.close();
+    
+    const fmt = AUDIO_FORMATS.find(f => f.id === massFormat);
+    const formatStr = `audio:${fmt.audioFmt}:${fmt.quality}`;
+    const dlId = Date.now().toString();
+    massDownloadIdRef.current = dlId;
+
+    const clientId     = localStorage.getItem('spotify_client_id')     || '';
+    const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+    const userAccessToken = await getValidAccessToken(clientId, clientSecret);
+    if (userAccessToken && userAccessToken !== accessToken) setAccessToken(userAccessToken);
+
+    setMassDlState({ active: true, done: false, error: null, current: 0, total: massFetchInfo.totalTracks });
+
+    try {
+      const params = new URLSearchParams({ url: bulkMeta, format: formatStr, downloadId: dlId });
+      const res = await fetch(`/api/spotify-mass-download?${params}`, {
+        headers: {
+          'x-spotify-client-id': clientId,
+          'x-spotify-client-secret': clientSecret,
+          'x-spotify-access-token': userAccessToken
+        }
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      massEsRef.current = { close: () => { reader.cancel().catch(()=>{}); massEsRef.current = null; } };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() || '';
+        for (const chunk of chunks) {
+          if (chunk.startsWith('data: ')) {
+            try {
+              const d = JSON.parse(chunk.slice(6));
+              setMassDlState(prev => {
+                const next = { ...prev, ...d };
+                if (d.done) next.active = false;
+                return next;
+              });
+              if (d.done && massEsRef.current) {
+                massEsRef.current.close(); massEsRef.current = null;
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (err) {
+      setMassDlState(prev => ({ ...prev, active: false, done: true, error: 'Connection lost' }));
+    }
+  };
+
+  const cancelMassDownload = async () => {
+    if (massEsRef.current) massEsRef.current.close();
+    if (massDownloadIdRef.current) {
+      try { await fetch(`/api/spotify-mass-cancel?downloadId=${massDownloadIdRef.current}`); } catch { }
+    }
+    setMassDlState(prev => ({ ...prev, active: false, done: true, cancelled: true, error: 'Descărcarea a fost anulată' }));
+  };
+
   const handleCancel = async () => {
     if (esRef.current) esRef.current.close();
     if (downloadIdRef.current) {
@@ -665,57 +802,236 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               </button>
             </div>
           ) : (
-            <div className="sp-bulk-container" style={{ textAlign: 'left', width: '100%', marginTop: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <h3 style={{ margin: 0, color: '#fff', fontSize: '1rem' }}>Spotify Mass Downloader</h3>
-                <button onClick={() => setShowBulk(false)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer' }}><X size={16} /></button>
+            <motion.div 
+              className="sp-bulk-container" 
+              initial={{ opacity: 0, y: 10 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              exit={{ opacity: 0, y: -10 }}
+              style={{ textAlign: 'left', width: '100%', marginTop: 20, background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 20, border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ListVideo size={18} color="#1DB954" /> Mass Downloader
+                </h3>
+                <button onClick={() => { setShowBulk(false); setMassFetchInfo(null); setMassDlState(null); setMassFetchError(''); }} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', transition: 'color 0.2s', padding: 4, borderRadius: 4 }}><X size={18} /></button>
               </div>
-              <p style={{ color: '#a0a0a0', fontSize: '0.8rem', marginBottom: 10 }}>
-                Introdu mai jos link-ul către un <b>Playlist Spotify</b> (fără limite). Aplicația va scana automat sute de piese și le va descărca direct.
-              </p>
-              
-              <input 
-                type="text"
-                value={bulkMeta}
-                onChange={(e) => setBulkMeta(e.target.value)}
-                placeholder="https://open.spotify.com/playlist/..."
-                style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, outline: 'none' }}
-              />
 
-              <button 
-                disabled={isExtracting}
-                onClick={async () => {
-                  if (!bulkMeta.trim()) return;
-                  const url = bulkMeta.trim();
+              {!massFetchInfo && !massDlState ? (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ padding: '5px 0' }}>
+                  <p style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: 15, lineHeight: 1.5 }}>
+                    Introdu link-ul către un <b>Playlist Spotify</b>. Aplicația va ocoli limitele de paginare și va scana sute de piese, pregătindu-le pentru descărcare simultană.
+                  </p>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type="text"
+                      value={bulkMeta}
+                      onChange={(e) => { setBulkMeta(e.target.value); setMassFetchError(''); }}
+                      placeholder="https://open.spotify.com/playlist/..."
+                      disabled={isExtracting}
+                      style={{ width: '100%', padding: '12px 15px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, outline: 'none', fontSize: '0.9rem' }}
+                    />
+                  </div>
+                  <button 
+                    disabled={isExtracting}
+                    onClick={handleMassFetch}
+                    style={{ width: '100%', padding: '12px', marginTop: 15, background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 8, cursor: isExtracting ? 'not-allowed' : 'pointer', opacity: isExtracting ? 0.8 : 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}
+                  >
+                    {isExtracting ? (
+                      <>
+                        <Loader2 size={18} className="sp-spin" />
+                        <span>Se scanează playlist-ul<motion.span animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1.5 }}>...</motion.span></span>
+                      </>
+                    ) : (
+                      <>
+                        <Download size={18} /> Preia toate piesele
+                      </>
+                    )}
+                  </button>
 
-                  if (url.includes('spotify.com/playlist')) {
-                    setIsExtracting(true);
-                    try {
-                      const res = await fetch(`/api/spotify-info?url=${encodeURIComponent(url)}`);
-                      if (res.ok) {
-                        const metadata = await res.json();
-                        setShowBulk(false);
-                        setInfo(metadata);
-                        setSelectedTracks(new Set(metadata.tracks.map((_, i) => i + 1)));
-                        setUrl('bulk://meta'); // Treat it as bulk
-                        setFetchStatus('done');
-                      } else {
-                        throw new Error('Failed to extract playlist');
-                      }
-                    } catch (err) {
-                      console.error("Failed to extract Spotify link", err);
-                      setBulkMeta("Eroare la extragerea playlist-ului. Încearcă din nou.");
-                    }
-                    setIsExtracting(false);
-                  } else {
-                    setBulkMeta("Te rugăm să introduci un link valid de Playlist Spotify.");
-                  }
-                }}
-                style={{ width: '100%', padding: '10px', marginTop: 10, background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 8, cursor: isExtracting ? 'not-allowed' : 'pointer', opacity: isExtracting ? 0.7 : 1 }}
-              >
-                {isExtracting ? 'Se extrag melodiile (~30s)...' : 'Preia toate piesele'}
-              </button>
-            </div>
+                  <AnimatePresence>
+                    {massFetchError && (
+                      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} style={{ marginTop: 15, padding: 15, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#ef4444', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                          <div style={{ flex: 1 }}>{massFetchError}</div>
+                        </div>
+                        {massFetchError.includes('SPOTIFY_403') && (
+                          <button onClick={() => {
+                            const clientId = localStorage.getItem('spotify_client_id');
+                            if (!clientId) return alert('Please set your Client ID in Settings first!');
+                            const redirectUri = window.location.origin + '/';
+                            const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+                            window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true&_cb=${Date.now()}`;
+                          }} style={{ marginTop: 12, width: '100%', padding: '10px', background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
+                            <User size={16} /> Login to Spotify
+                          </button>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              ) : massDlState ? (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>
+                  {!massDlState.done ? (
+                    <>
+                      {/* Rotating Vinyl/Cover */}
+                      <div style={{ position: 'relative', width: 120, height: 120, marginBottom: 20 }}>
+                        <motion.img 
+                          src={massDlState.coverUrl || massFetchInfo?.playlistCover || 'https://via.placeholder.com/150'} 
+                          animate={{ rotate: 360 }} 
+                          transition={{ repeat: Infinity, duration: 8, ease: "linear" }}
+                          style={{ width: 120, height: 120, borderRadius: '50%', objectFit: 'cover', border: '4px solid #1DB954', boxShadow: '0 0 30px rgba(29, 185, 84, 0.4)' }}
+                        />
+                        <div style={{ position: 'absolute', top: '50%', left: '50%', width: 24, height: 24, background: '#121212', borderRadius: '50%', transform: 'translate(-50%, -50%)', border: '2px solid #1DB954' }} />
+                      </div>
+
+                      {/* Current Track Info */}
+                      <div style={{ textAlign: 'center', marginBottom: 25, width: '100%' }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>
+                          {massDlState.title || 'Se pregătește...'}
+                        </div>
+                        <div style={{ fontSize: '0.9rem', color: '#a0a0a0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {massDlState.artist || 'Așteptare...'}
+                        </div>
+                        {massDlState.status && <div style={{ color: '#1DB954', fontSize: '0.8rem', marginTop: 6, fontWeight: 500 }}>{massDlState.status}</div>}
+                      </div>
+
+                      {/* Progress Bars */}
+                      <div style={{ width: '100%', marginBottom: 20 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#a0a0a0', marginBottom: 6 }}>
+                          <span>{massDlState.current} / {massDlState.total} piese</span>
+                          <span>{massDlState.percent || 0}%</span>
+                        </div>
+                        <div style={{ width: '100%', height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+                          <motion.div animate={{ width: `${massDlState.percent || 0}%` }} transition={{ duration: 0.3 }} style={{ height: '100%', background: '#1DB954' }} />
+                        </div>
+                        <div style={{ width: '100%', height: 2, background: 'rgba(255,255,255,0.05)', borderRadius: 1, overflow: 'hidden' }}>
+                          <motion.div animate={{ width: `${massDlState.trackProgress || 0}%` }} transition={{ duration: 0.1 }} style={{ height: '100%', background: 'rgba(255,255,255,0.4)' }} />
+                        </div>
+                      </div>
+
+                      {/* Stats row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.85rem', color: '#a0a0a0', marginBottom: 25, background: 'rgba(0,0,0,0.3)', padding: '12px 15px', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={15} color="#1DB954" /> <span style={{ color: '#fff' }}>{massDlState.current ? massDlState.current - 1 - (massDlState.failed || 0) : 0}</span> ok</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertCircle size={15} color={massDlState.failed ? '#ef4444' : '#a0a0a0'} /> <span style={{ color: massDlState.failed ? '#ef4444' : '#fff' }}>{massDlState.failed || 0}</span> failed</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={15} color="#60a5fa" /> <span style={{ color: '#fff' }}>{massDlState.estimatedSecondsRemaining ? `~${Math.ceil(massDlState.estimatedSecondsRemaining / 60)}m` : '...'}</span></div>
+                      </div>
+
+                      <button onClick={cancelMassDownload} style={{ width: '100%', padding: '12px', background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#ef4444', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s', ':hover': { background: 'rgba(239, 68, 68, 0.1)' } }}>
+                        Anulează descărcarea
+                      </button>
+                    </>
+                  ) : (
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ textAlign: 'center', padding: '10px 0', width: '100%' }}>
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }} style={{ width: 64, height: 64, borderRadius: '50%', background: massDlState.cancelled ? 'rgba(239,68,68,0.1)' : 'rgba(29,185,84,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px' }}>
+                        {massDlState.cancelled ? <AlertCircle size={32} color="#ef4444" /> : <CheckCircle2 size={32} color="#1DB954" />}
+                      </motion.div>
+                      
+                      <h3 style={{ color: '#fff', margin: '0 0 8px 0', fontSize: '1.2rem' }}>
+                        {massDlState.cancelled ? 'Descărcare Anulată' : 'Descărcare Completă!'}
+                      </h3>
+                      
+                      <p style={{ color: '#a0a0a0', fontSize: '0.95rem', margin: '0 0 25px 0' }}>
+                        {massDlState.completedCount || 0} piese descărcate • {massDlState.failedCount || 0} eșuate
+                        {massDlState.error && <span style={{ display: 'block', color: '#ef4444', marginTop: 10, padding: 10, background: 'rgba(239,68,68,0.1)', borderRadius: 6, fontSize: '0.85rem' }}>Eroare: {massDlState.error}</span>}
+                      </p>
+                      
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        {massDlState.zipPath && (
+                          <button onClick={() => window.location.href = `/api/download-file?file=${encodeURIComponent(massDlState.zipPath)}`} style={{ flex: 1.5, padding: '12px', background: '#1DB954', border: 'none', color: '#000', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                            Salvează ZIP
+                          </button>
+                        )}
+                        <button onClick={openFolder} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
+                          <FolderOpen size={16} style={{ verticalAlign: 'text-bottom', marginRight: 4 }} /> Deschide
+                        </button>
+                        <button onClick={() => { setMassDlState(null); setMassFetchInfo(null); }} style={{ flex: 1, padding: '12px', background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
+                          Nouă
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', gap: 20, background: 'rgba(0,0,0,0.2)', padding: 15, borderRadius: 10 }}>
+                    {massFetchInfo.playlistCover ? (
+                      <img src={massFetchInfo.playlistCover} alt="Cover" style={{ width: 80, height: 80, borderRadius: 10, objectFit: 'cover', boxShadow: '0 8px 16px rgba(0,0,0,0.3)' }} />
+                    ) : (
+                      <div style={{ width: 80, height: 80, borderRadius: 10, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.3)' }}><Music size={32} color="#a0a0a0" /></div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
+                      <h4 style={{ margin: '0 0 4px 0', color: '#fff', fontSize: '1.1rem', fontWeight: 600 }}>{massFetchInfo.playlistName}</h4>
+                      <div style={{ color: '#1DB954', fontSize: '0.85rem', marginBottom: 10, fontWeight: 500 }}>by {massFetchInfo.owner || 'Unknown'}</div>
+                      
+                      <div style={{ display: 'flex', gap: 15, color: '#a0a0a0', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Music size={14} /> {massFetchInfo.totalTracks} tracks</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={14} /> {fmtTotalDuration(massFetchInfo.tracks.reduce((acc, t) => acc + (t.durationMs || 0), 0))}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><HardDrive size={14} /> ~{estimateSize(massFetchInfo.tracks.reduce((acc, t) => acc + (t.durationMs || 0), 0), AUDIO_FORMATS.find(f => f.id === massFormat)?.kbps || 320)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.1)' }} />
+
+                  {/* Metadata Sources */}
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: '#a0a0a0', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, letterSpacing: 0.5 }}><Database size={13} /> METADATA SOURCES</div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      {(() => {
+                        const counts = {
+                          spotify: massFetchInfo.tracks.filter(t => t.metadataSource === 'spotify').length,
+                          itunes: massFetchInfo.tracks.filter(t => t.metadataSource === 'itunes').length,
+                          yt: massFetchInfo.tracks.filter(t => t.metadataSource === 'youtube_music').length,
+                        };
+                        return (
+                          <>
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, border: `1px solid ${counts.spotify > 0 ? '#1DB954' : 'rgba(255,255,255,0.05)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: counts.spotify > 0 ? '#1DB954' : '#666', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" /></svg>
+                                Spotify API
+                              </div>
+                              <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} style={{ fontSize: '1.2rem', color: counts.spotify > 0 ? '#fff' : '#666', fontWeight: 'bold' }}>{counts.spotify}</motion.div>
+                            </motion.div>
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, border: `1px solid ${counts.itunes > 0 ? '#fb923c' : 'rgba(255,255,255,0.05)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: counts.itunes > 0 ? '#fb923c' : '#666', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M17.05 15.48c-.02-2.85 2.33-4.22 2.44-4.29-1.32-1.93-3.38-2.19-4.1-2.23-1.75-.18-3.41 1.03-4.3 1.03-.89 0-2.27-1.01-3.73-.98-1.9.03-3.66 1.1-4.63 2.8-1.97 3.41-.5 8.45 1.41 11.22.94 1.35 2.05 2.88 3.51 2.83 1.42-.05 1.95-.92 3.66-.92 1.7 0 2.19.92 3.68.89 1.51-.03 2.48-1.4 3.41-2.76 1.07-1.56 1.51-3.08 1.53-3.16-.03-.01-2.85-1.1-2.88-4.43zM14.65 5.54c.78-.94 1.3-2.25 1.16-3.54-1.11.04-2.47.74-3.27 1.69-.71.84-1.34 2.18-1.18 3.44 1.24.1 2.51-.65 3.29-1.59z"/></svg>
+                                iTunes
+                              </div>
+                              <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} style={{ fontSize: '1.2rem', color: counts.itunes > 0 ? '#fff' : '#666', fontWeight: 'bold' }}>{counts.itunes}</motion.div>
+                            </motion.div>
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, border: `1px solid ${counts.yt > 0 ? '#f43f5e' : 'rgba(255,255,255,0.05)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: counts.yt > 0 ? '#f43f5e' : '#666', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M21.582 6.186a2.684 2.684 0 00-1.884-1.898C17.983 3.8 12 3.8 12 3.8s-5.983 0-7.698.488A2.684 2.684 0 002.418 6.186C1.94 7.915 1.94 12 1.94 12s0 4.085.478 5.814a2.684 2.684 0 001.884 1.898C5.983 20.2 12 20.2 12 20.2s5.983 0 7.698-.488a2.684 2.684 0 001.884-1.898C22.06 16.085 22.06 12 22.06 12s0-4.085-.478-5.814zM9.913 14.894V9.106l5.244 2.894-5.244 2.894z"/></svg>
+                                YT Music
+                              </div>
+                              <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} style={{ fontSize: '1.2rem', color: counts.yt > 0 ? '#fff' : '#666', fontWeight: 'bold' }}>{counts.yt}</motion.div>
+                            </motion.div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                    <select 
+                      value={massFormat} 
+                      onChange={(e) => setMassFormat(e.target.value)}
+                      style={{ flex: 1, padding: '12px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, outline: 'none', cursor: 'pointer' }}
+                    >
+                      {AUDIO_FORMATS.map(f => (
+                        <option key={f.id} value={f.id}>{f.label} - {f.sub}</option>
+                      ))}
+                    </select>
+                    <button onClick={startMassDownload} style={{ flex: 1.5, padding: '12px', background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s', ':hover': { background: '#1ed760' } }}>
+                      Începe descărcarea
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </motion.div>
           )}
         </motion.div>
 

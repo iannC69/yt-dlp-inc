@@ -1,22 +1,17 @@
 import https from 'https'
-import spotifyUrlInfo from 'spotify-url-info'
 
-// Initialize spotify-url-info with native fetch
-const { getTracks } = spotifyUrlInfo(fetch);// ── Token Cache ──────────────────────────────────────────────────────────────
+// ── Token Cache ──────────────────────────────────────────────────────────────
 let tokenCache = null
 
 export async function getSpotifyToken(clientId, clientSecret) {
   if (tokenCache && Date.now() < tokenCache.expiresAt) {
     return tokenCache.accessToken
   }
-
   if (!clientId || !clientSecret) {
     throw new Error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET from request headers")
   }
-
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
   const data = 'grant_type=client_credentials'
-
   return new Promise((resolve, reject) => {
     const req = https.request('https://accounts.spotify.com/api/token', {
       method: 'POST',
@@ -66,11 +61,8 @@ function spotifyApiRequest(path, token) {
       res.on('data', chunk => body += chunk.toString())
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            resolve(JSON.parse(body))
-          } catch (e) {
-            reject(new Error("Failed to parse Spotify API response"))
-          }
+          try { resolve(JSON.parse(body)) }
+          catch (e) { reject(new Error("Failed to parse Spotify API response")) }
         } else {
           reject({ status: res.statusCode, body, headers: res.headers })
         }
@@ -79,71 +71,56 @@ function spotifyApiRequest(path, token) {
   })
 }
 
-// ── Fetch with Retry (401 refresh + 429 backoff) ─────────────────────────────
+// ── Fetch with Retry ─────────────────────────────────────────────────────────
 async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
   let token = accessToken || await getSpotifyToken(clientId, clientSecret)
-
   try {
     return await spotifyApiRequest(path, token)
   } catch (err) {
     if (err.status === 401) {
+      // OAuth expired — try refresh via client credentials
       if (accessToken && clientId && clientSecret) {
-        // OAuth token expired — fall back to client credentials silently
         console.warn('[spotify-api] OAuth token expired, falling back to client credentials')
         tokenCache = null
         token = await getSpotifyToken(clientId, clientSecret)
-        path = path.replace('market=from_token', 'market=US')
-        return await spotifyApiRequest(path, token)
+        return await spotifyApiRequest(path.replace('market=from_token', 'market=US'), token)
       }
-      if (accessToken) throw new Error("Spotify user token expired — please log in again.")
       tokenCache = null
       token = await getSpotifyToken(clientId, clientSecret)
-      path = path.replace('market=from_token', 'market=US')
-      return await spotifyApiRequest(path, token)
+      return await spotifyApiRequest(path.replace('market=from_token', 'market=US'), token)
     }
-
     if (err.status === 429) {
       const retryAfter = parseInt(err.headers?.['retry-after'] || '3', 10)
-      console.warn(`Spotify rate limited. Waiting ${retryAfter}s...`)
+      console.warn(`[spotify-api] Rate limited. Waiting ${retryAfter}s...`)
       await new Promise(r => setTimeout(r, retryAfter * 1000))
       return await spotifyApiRequest(path, token)
     }
-
+    if (err.status === 403) {
+      throw new Error(
+        `SPOTIFY_403: Această funcție necesită autentificare. (Diagnostic: Token=${!!accessToken}, Spotify Error: ${err.body})`
+      )
+    }
     if (err.status === 404) throw new Error("Spotify item not found. Check the URL.")
-
     throw new Error(`Spotify API error ${err.status}: ${err.body}`)
   }
 }
 
 // ── Pagination Helper ────────────────────────────────────────────────────────
-// Collects ALL items across all pages for any Spotify paginated response.
-// firstPage must be a Spotify paging object: { items, next, total }
-// Works for album tracks (50/page), playlist tracks (100/page), user playlists (50/page).
+// Fetches ALL pages of a Spotify paginated response.
+// firstPage: { items, next, total }
+// Works for album tracks (50/page), playlist tracks (100/page).
 async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
-  // Spread into a new array — never mutate the original
   const allItems = [...(firstPage?.items || [])]
-  let nextUrl = firstPage?.next || null  // null when no more pages
+  let nextUrl = firstPage?.next || null
 
   while (nextUrl) {
-    try {
-      const nextPath = nextUrl.replace('https://api.spotify.com', '')
-      const page = await fetchWithRetry(nextPath, clientId, clientSecret, accessToken)
-
-      if (page?.items?.length) {
-        allItems.push(...page.items)
-      }
-
-      nextUrl = page?.next || null
-    } catch (err) {
-      if (err.message.includes('403')) {
-        console.warn('[spotify-api] 403 Forbidden during pagination. Spotify restricts pagination without User OAuth. Returning items fetched so far.')
-        break
-      }
-      throw err
-    }
+    const nextPath = nextUrl.replace('https://api.spotify.com', '')
+    const page = await fetchWithRetry(nextPath, clientId, clientSecret, accessToken)
+    if (page?.items?.length) allItems.push(...page.items)
+    nextUrl = page?.next || null
   }
 
-  console.log(`[spotify-api] Pagination complete: fetched ${allItems.length} items total`)
+  console.log(`[spotify-api] Pagination complete: ${allItems.length} items total`)
   return allItems
 }
 
@@ -153,7 +130,7 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
     /open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/
   )
   if (!match) {
-    throw new Error(`Invalid Spotify URL (${spotifyUrlString}). Supported types: track, album, playlist.`)
+    throw new Error(`Invalid Spotify URL. Supported: track, album, playlist.`)
   }
 
   const type = match[1]
@@ -162,10 +139,8 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
   // ── Track ──────────────────────────────────────────────────────────────────
   if (type === 'track') {
     const track = await fetchWithRetry(`/v1/tracks/${id}`, clientId, clientSecret, accessToken)
-
     const artist = track.artists?.[0]?.name
-    if (!artist) throw new Error(`Could not resolve artist from Spotify API for track: ${id}`)
-
+    if (!artist) throw new Error(`Could not resolve artist for track: ${id}`)
     return {
       type: 'track',
       title: track.name,
@@ -175,7 +150,7 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
       year: track.album.release_date?.substring(0, 4) || '',
       trackNumber: track.track_number,
       totalTracks: track.album.total_tracks,
-      coverUrl: track.album.images?.[0]?.url || track.album.images?.[1]?.url || null,
+      coverUrl: track.album.images?.[0]?.url || null,
       spotifyId: track.id,
       spotifyUrl: `https://open.spotify.com/track/${track.id}`,
       durationMs: track.duration_ms
@@ -184,23 +159,20 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
 
   // ── Album ──────────────────────────────────────────────────────────────────
   if (type === 'album') {
-    // We add market parameter to ensure we get all tracks for the album.
-    // Without market, Spotify may return only globally available tracks.
-    const marketQuery = accessToken ? '?market=from_token' : '?market=US'; 
-    const album = await fetchWithRetry(`/v1/albums/${id}${marketQuery}`, clientId, clientSecret, accessToken)
-
+    const market = accessToken ? '?market=from_token' : '?market=US'
+    const album = await fetchWithRetry(`/v1/albums/${id}${market}`, clientId, clientSecret, accessToken)
     const artist = album.artists?.[0]?.name
-    if (!artist) throw new Error(`Could not resolve artist from Spotify API for album: ${id}`)
+    if (!artist) throw new Error(`Could not resolve artist for album: ${id}`)
 
-    const albumCover = album.images?.[0]?.url || album.images?.[1]?.url || null
+    const albumCover = album.images?.[0]?.url || null
     const albumYear = album.release_date?.substring(0, 4) || ''
     const totalTracks = album.total_tracks
 
-    // Paginate — Spotify returns max 50 tracks per page for albums
+    // Max 50 tracks per page for albums
     const allTracks = await fetchAllPages(album.tracks, clientId, clientSecret, accessToken)
 
     if (allTracks.length !== totalTracks) {
-      console.warn(`[spotify-api] Album track count mismatch: expected ${totalTracks}, got ${allTracks.length}`)
+      console.warn(`[spotify-api] Album mismatch: expected ${totalTracks}, got ${allTracks.length}`)
     }
 
     return {
@@ -211,7 +183,7 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
       year: albumYear,
       coverUrl: albumCover,
       trackCount: allTracks.length,
-      totalTracks: totalTracks,
+      totalTracks,
       spotifyId: album.id,
       tracks: allTracks.map(track => ({
         trackNumber: track.track_number,
@@ -220,66 +192,43 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
         allArtists: track.artists?.map(a => a.name).join(', ') || artist,
         album: album.name,
         year: albumYear,
-        coverUrl: albumCover,              // all tracks share the album cover
+        coverUrl: albumCover,
         spotifyId: track.id,
         spotifyUrl: `https://open.spotify.com/track/${track.id}`,
         durationMs: track.duration_ms,
-        totalTracks                           // needed for ID3 TRCK tag (e.g. "3/12")
+        totalTracks
       }))
     }
   }
 
   // ── Playlist ───────────────────────────────────────────────────────────────
   if (type === 'playlist') {
-    const marketQuery = accessToken ? '?market=from_token' : '?market=US';
-    const playlist = await fetchWithRetry(`/v1/playlists/${id}${marketQuery}`, clientId, clientSecret, accessToken)
+    const market = accessToken ? '&market=from_token' : '&market=US'
 
-    // ALWAYS fetch the tracks endpoint directly for reliable pagination!
-    // The main playlist object often omits tracks or items.
-    let allItems = [];
-    let fallbackUsed = false;
+    // Get playlist metadata first (name, cover, owner)
+    const playlist = await fetchWithRetry(
+      `/v1/playlists/${id}?fields=id,name,owner,images,tracks.total${market.replace('&', '&')}`,
+      clientId, clientSecret, accessToken
+    )
 
-    try {
-      let firstTracksPage = await fetchWithRetry(`/v1/playlists/${id}/tracks?limit=100${accessToken ? '&market=from_token' : '&market=US'}`, clientId, clientSecret, accessToken)
-      allItems = await fetchAllPages(firstTracksPage, clientId, clientSecret, accessToken)
-    } catch (err) {
-      if (err.message.includes('403')) {
-        console.warn('[spotify-api] 403 Forbidden on tracks endpoint. Using spotify-url-info fallback...');
-        fallbackUsed = true;
-        try {
-          const fallbackTracks = await getTracks(spotifyUrlString);
-          allItems = fallbackTracks.map(t => ({
-            track: {
-              type: 'track',
-              is_local: false,
-              name: t.name,
-              artists: [{ name: t.artist }],
-              album: { name: 'Unknown', images: [] },
-              id: t.uri ? t.uri.split(':').pop() : '',
-              duration_ms: t.duration
-            }
-          }));
-        } catch (fallbackErr) {
-          console.error('[spotify-api] Fallback scraper failed:', fallbackErr);
-          throw new Error('Spotify API restrictions require you to Log In to Spotify (or re-login to update permissions) to read this playlist, and the fallback scraper also failed.')
-        }
-      } else {
-        throw err;
-      }
-    }
+    // Fetch ALL tracks with full pagination — max 100 per page
+    // This is where 116-track playlists were getting cut to 100
+    const firstPage = await fetchWithRetry(
+      `/v1/playlists/${id}/tracks?limit=100${market}`,
+      clientId, clientSecret, accessToken
+    )
 
-    // Filter out episodes, local files, and null entries (deleted tracks)
+    const allItems = await fetchAllPages(firstPage, clientId, clientSecret, accessToken)
+
+    // Filter out episodes, deleted tracks, local files
     const validTracks = allItems.filter(
       item => item?.track && item.track.type === 'track' && !item.track.is_local
     )
 
-    const trackCount = validTracks.length;
-    if (fallbackUsed && trackCount === 100) {
-      console.warn('[spotify-api] Only 100 tracks fetched due to fallback.');
-    }
+    const trackCount = validTracks.length
 
     if (allItems.length !== validTracks.length) {
-      console.log(`[spotify-api] Filtered out ${allItems.length - validTracks.length} non-track items (episodes/local/deleted)`)
+      console.log(`[spotify-api] Filtered ${allItems.length - validTracks.length} non-track items`)
     }
 
     return {
@@ -287,17 +236,13 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
       title: playlist.name,
       owner: playlist.owner?.display_name || playlist.owner?.id || 'Unknown',
       coverUrl: playlist.images?.[0]?.url || null,
-      trackCount: trackCount,
+      trackCount,
       totalTracks: playlist.tracks?.total || trackCount,
       spotifyId: playlist.id,
       tracks: validTracks.map((item, index) => {
         const track = item.track
         const tArtist = track.artists?.[0]?.name
-
-        if (!tArtist) {
-          console.warn(`[spotify-api] No artist for track ${track.id} — skipping artist field`)
-        }
-
+        if (!tArtist) console.warn(`[spotify-api] No artist for track ${track.id}`)
         return {
           trackNumber: index + 1,
           title: track.name,
@@ -305,7 +250,7 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
           allArtists: track.artists?.map(a => a.name).join(', ') || tArtist || '',
           album: track.album?.name || '',
           year: track.album?.release_date?.substring(0, 4) || '',
-          coverUrl: track.album?.images?.[0]?.url || track.album?.images?.[1]?.url || null,
+          coverUrl: track.album?.images?.[0]?.url || null,
           spotifyId: track.id,
           spotifyUrl: `https://open.spotify.com/track/${track.id}`,
           durationMs: track.duration_ms,
@@ -318,39 +263,86 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
   throw new Error(`Unsupported Spotify URL type: ${type}`)
 }
 
+// Kept for backward compatibility — used as fallback in vite.config.js
+// Now throws a proper error instead of using broken scraper
 export async function resolveSpotifyFallback(url) {
+  let browser;
   try {
-    const { getDetails } = spotifyUrlInfo(fetch);
-    const details = await getDetails(url);
-    if (!details) throw new Error("Could not fetch details using fallback.");
-    
-    // Type checking
-    const type = details.preview?.type || 'playlist';
-    
-    // Convert tracks
-    const tracks = (details.tracks || []).map((t, i) => {
-      const spotifyId = t.uri ? t.uri.split(':').pop() : '';
-      return {
-        trackNumber: i + 1,
-        title: t.name,
-        artist: t.artist,
-        allArtists: t.artist,
-        durationMs: t.duration || 0,
-        spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : '',
-        coverUrl: details.preview?.image || null
-      };
+    const puppeteer = (await import('puppeteer')).default;
+    // Launchesc browser invizibil
+    browser = await puppeteer.launch({ 
+      headless: "new", 
+      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
     });
-
-    return {
-      type: type,
-      title: details.preview?.title || 'Spotify Audio',
-      trackCount: tracks.length,
-      totalTracks: tracks.length,
-      totalDurationMs: tracks.reduce((acc, t) => acc + (t.durationMs || 0), 0),
-      tracks: tracks,
-      coverUrl: details.preview?.image || null
-    };
+    const page = await browser.newPage();
+    
+    // Mascam ca un utilizator normal
+    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    
+    // Mergem la URL
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 });
+    
+    // Extragem datele din DOM-ul paginii Spotify Web
+    const data = await page.evaluate((url) => {
+      const titleEl = document.querySelector('h1');
+      const title = titleEl ? titleEl.innerText : 'Spotify Audio';
+      
+      const tracks = [];
+      const rows = document.querySelectorAll('[data-testid="tracklist-row"]');
+      
+      rows.forEach((row, index) => {
+        // Cautam numele melodiei
+        const nameEl = row.querySelector('.t_yrXoUO3qGsJS4Y6iXX, .standalone-ellipsis-one-line') || row.querySelector('div[dir="auto"]');
+        const name = nameEl ? nameEl.innerText : 'Track ' + (index + 1);
+        
+        // Cautam artistul
+        const artistEls = row.querySelectorAll('a[href^="/artist/"]');
+        const artists = Array.from(artistEls).map(a => a.innerText);
+        const artist = artists.length > 0 ? artists[0] : 'Unknown Artist';
+        const allArtists = artists.join(', ');
+        
+        // Cautam durata
+        const durationEl = row.querySelector('[data-testid="tracklist-duration"], .Btg2qCGi3mQ8gQ0FOUbQ') || row.querySelector('div[aria-colindex="last()"]');
+        let durationMs = 0;
+        if (durationEl && durationEl.innerText) {
+          const parts = durationEl.innerText.trim().split(':');
+          if (parts.length === 2) {
+            durationMs = (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10)) * 1000;
+          }
+        }
+        
+        tracks.push({
+          trackNumber: index + 1,
+          title: name,
+          artist,
+          allArtists,
+          durationMs,
+          coverUrl: null
+        });
+      });
+      
+      const coverEl = document.querySelector('img[data-testid="entity-image"], img[data-testid="cover-art-image"]');
+      const coverUrl = coverEl ? coverEl.src : null;
+      
+      return {
+        type: url.includes('/album/') ? 'album' : 'playlist',
+        title,
+        trackCount: tracks.length,
+        totalTracks: tracks.length,
+        totalDurationMs: tracks.reduce((acc, t) => acc + t.durationMs, 0),
+        tracks,
+        coverUrl
+      };
+    }, url);
+    
+    if (!data.tracks || data.tracks.length === 0) {
+      throw new Error("Puppeteer a gasit 0 melodii. Pagina s-ar putea sa necesite login sau s-a incarcat greu.");
+    }
+    
+    return data;
   } catch (err) {
-    throw new Error(`Fallback extraction failed: ${err.message}`);
+    throw new Error(`Extragere Puppeteer fallback esuata: ${err.message}`);
+  } finally {
+    if (browser) await browser.close();
   }
 }
