@@ -164,6 +164,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const [url, setUrl] = useState('');
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
 
   useEffect(() => {
     try {
@@ -177,6 +178,14 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     setHistory(prev => {
       const filtered = prev.filter(item => item.url !== newUrl);
       const updated = [{ url: newUrl, title: title || newUrl, thumbnail, date: Date.now() }, ...filtered].slice(0, 10);
+      localStorage.setItem('sp_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const removeFromHistory = (urlToRemove) => {
+    setHistory(prev => {
+      const updated = prev.filter(item => item.url !== urlToRemove);
       localStorage.setItem('sp_history', JSON.stringify(updated));
       return updated;
     });
@@ -936,45 +945,84 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           
           {!info && fetchStatus !== 'loading' && history.length > 0 && (
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
               style={{ marginTop: 20, textAlign: 'left', width: '100%', maxWidth: '800px', alignSelf: 'center' }}
             >
-              <span className="sp-suggestions-label">Căutări recente:</span>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
-                {history.map((h, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      setUrl(h.url);
-                      setTimeout(() => fetchInfo(h.url), 100);
-                    }}
-                    title={h.url}
-                    style={{
-                      background: 'rgba(29, 185, 84, 0.1)',
-                      border: '1px solid rgba(29, 185, 84, 0.2)',
-                      borderRadius: '20px',
-                      padding: '4px 12px 4px 6px',
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem'
-                    }}
-                  >
-                    {h.thumbnail ? (
-                      <img src={h.thumbnail} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
-                    ) : (
-                      <span style={{ color: '#1DB954', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, background: 'rgba(29,185,84,0.1)', borderRadius: '50%' }}><Clock size={10} /></span>
-                    )}
-                    <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {h.title || h.url}
-                    </span>
-                  </button>
-                ))}
+              <div 
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+                onClick={() => setIsHistoryCollapsed(!isHistoryCollapsed)}
+              >
+                <span className="sp-suggestions-label" style={{ marginBottom: 0 }}>Căutări recente:</span>
+                <button style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex' }}>
+                  {isHistoryCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                </button>
               </div>
+              <AnimatePresence>
+                {!isHistoryCollapsed && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
+                      {history.map((h, i) => (
+                        <div
+                          key={i}
+                          onClick={() => {
+                            setUrl(h.url);
+                            setTimeout(() => fetchInfo(h.url), 100);
+                          }}
+                          title={h.url}
+                          style={{
+                            background: 'rgba(29, 185, 84, 0.1)',
+                            border: '1px solid rgba(29, 185, 84, 0.2)',
+                            borderRadius: '20px',
+                            padding: '4px 8px 4px 6px',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem'
+                          }}
+                        >
+                          {h.thumbnail ? (
+                            <img src={h.thumbnail} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : (
+                            <span style={{ color: '#1DB954', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, background: 'rgba(29,185,84,0.1)', borderRadius: '50%' }}><Clock size={10} /></span>
+                          )}
+                          <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {h.title || h.url}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromHistory(h.url);
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'rgba(255,255,255,0.4)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              padding: '2px',
+                              marginLeft: '2px',
+                              borderRadius: '50%'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#ff4444'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
 

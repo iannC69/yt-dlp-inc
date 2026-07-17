@@ -342,12 +342,21 @@ export async function resolveSpotifyFallback(url) {
         const allArtists = artists.join(', ');
         
         // Cautam durata
-        const durationEl = row.querySelector('[data-testid="tracklist-duration"], .Btg2qCGi3mQ8gQ0FOUbQ') || row.querySelector('div[aria-colindex="last()"]');
+        const durationEl = row.querySelector('[data-testid="tracklist-duration"], .Btg2qCGi3mQ8gQ0FOUbQ, div[aria-colindex="last()"]');
         let durationMs = 0;
         if (durationEl && durationEl.innerText) {
-          const parts = durationEl.innerText.trim().split(':');
+          const text = durationEl.innerText.trim();
+          const parts = text.split(':');
           if (parts.length === 2) {
             durationMs = (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10)) * 1000;
+          } else if (parts.length === 3) {
+            durationMs = (parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10)) * 1000;
+          }
+        } else {
+          // Alternative: Search for time format in row text
+          const timeMatch = row.innerText.match(/\b(\d{1,2}):(\d{2})\b/);
+          if (timeMatch) {
+            durationMs = (parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10)) * 1000;
           }
         }
         
@@ -361,8 +370,8 @@ export async function resolveSpotifyFallback(url) {
         });
       });
       
-      const coverEl = document.querySelector('img[data-testid="entity-image"], img[data-testid="cover-art-image"]');
-      const coverUrl = coverEl ? coverEl.src : null;
+      const coverEl = document.querySelector('meta[property="og:image"], img[data-testid="entity-image"], img[data-testid="cover-art-image"]');
+      const coverUrl = coverEl ? (coverEl.content || coverEl.src) : null;
       
       return {
         type: url.includes('/album/') ? 'album' : 'playlist',
