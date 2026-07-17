@@ -112,7 +112,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
     try {
       const saved = localStorage.getItem('ytdl_history');
       if (saved) setHistory(JSON.parse(saved));
-    } catch {}
+    } catch { }
   }, []);
 
   const saveToHistory = (newUrl, title, thumbnail) => {
@@ -301,6 +301,24 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
           if (data.finalFilename) {
             setFinalFilename(data.finalFilename);
+
+            try {
+              let h = JSON.parse(localStorage.getItem('global_history') || '[]');
+              h.unshift({
+                id: 'youtube_' + Date.now(),
+                title: info ? info.title : url,
+                thumbnail: info ? info.thumbnail : null,
+                date: Date.now(),
+                source: 'youtube',
+                format: downloadFormat === 'audio' ? 'Audio' : 'Video',
+                filename: data.finalFilename
+              });
+              if (h.length > 500) h.length = 500;
+              localStorage.setItem('global_history', JSON.stringify(h));
+              window.dispatchEvent(new Event('history_updated'));
+            } catch (e) {
+              console.error('Failed to update global history', e);
+            }
           }
         }
       } catch (e) {
@@ -570,7 +588,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
           <div className="ytdl-header-center">
             <div className="ytdl-platform-badge">
               <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
               </svg>
               YouTube
             </div>
@@ -682,25 +700,28 @@ const YoutubeDownloader = ({ activeJobId }) => {
             )}
 
             <div className="ytdl-url-icon"><Link2 size={24} /></div>
-            <input
-              type="text"
-              placeholder={appMode === 'music' ? "Lipește link-ul piesei de YouTube Music..." : "Lipește link-ul de YouTube (Video)..."}
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              onFocus={() => setShowHistory(true)}
-              onBlur={() => setTimeout(() => setShowHistory(false), 200)}
-              onKeyDown={(e) => e.key === 'Enter' && fetchInfo()}
-              disabled={loadingInfo}
-              className="ytdl-url-input"
-            />
-            {url && (
-              <button className="ytdl-input-clear" style={{ position: 'absolute', right: '120px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', zIndex: 5 }} onClick={() => { setUrl(''); setInfo(null); setDownloadComplete(false); }}>
-                <XCircle size={16} />
-              </button>
-            )}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', position: 'relative' }}>
+              <input
+                type="text"
+                placeholder={appMode === 'music' ? "Lipește link-ul piesei de YouTube Music..." : "Lipește link-ul de YouTube (Video)..."}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onFocus={() => setShowHistory(true)}
+                onBlur={() => setTimeout(() => setShowHistory(false), 200)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchInfo()}
+                disabled={loadingInfo}
+                className="ytdl-url-input"
+                style={{ width: '100%', paddingRight: url ? '30px' : '0' }}
+              />
+              {url && (
+                <button className="ytdl-input-clear" style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', zIndex: 5, padding: 0, display: 'flex' }} onClick={() => { setUrl(''); setInfo(null); setDownloadComplete(false); }}>
+                  <XCircle size={16} />
+                </button>
+              )}
+            </div>
             <AnimatePresence>
               {showHistory && history.length > 0 && !url && (
-                <motion.div 
+                <motion.div
                   className="ytdl-history-dropdown"
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -709,8 +730,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
                 >
                   <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', padding: '0 0.5rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem' }}>Ultimele descărcări</div>
                   {history.map((h, i) => (
-                    <div 
-                      key={i} 
+                    <div
+                      key={i}
                       style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', color: '#fff' }}
                       onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}

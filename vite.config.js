@@ -138,7 +138,7 @@ setInterval(() => {
             downloadsDir: targetDir,
             state: { progress: 0, status: 'Se pregătește...', currentItem: 0, totalItems: 1 }
           });
-          spawnYtDlp(jobId);
+          enqueueJob(jobId);
         }
       } catch (err) {
         console.error('Failed to start scheduled job:', err);
@@ -177,6 +177,31 @@ function sendSse(res, data) {
 
 const COLLECTION_LIMIT = 5000
 const activeJobs = new Map()
+
+// --- Queue Manager Logic ---
+const MAX_CONCURRENT_JOBS = 2;
+let runningJobsCount = 0;
+
+function processQueue() {
+  const queuedJobs = Array.from(activeJobs.entries()).filter(([id, j]) => j.queueStatus === 'queued' && !j.isPaused && !j.isCancelled);
+  
+  while (runningJobsCount < MAX_CONCURRENT_JOBS && queuedJobs.length > 0) {
+    const [jobId, jobToRun] = queuedJobs.shift();
+    jobToRun.queueStatus = 'running';
+    runningJobsCount++;
+    broadcast(jobId, { queueStatus: 'running' });
+    spawnYtDlp(jobId);
+  }
+}
+
+function enqueueJob(jobId) {
+  const job = activeJobs.get(jobId);
+  if (!job) return;
+  job.queueStatus = 'queued';
+  broadcast(jobId, { queueStatus: 'queued' });
+  processQueue();
+}
+// ---------------------------
 
 function broadcast(jobId, data) {
   const job = activeJobs.get(jobId)
@@ -274,6 +299,9 @@ function spawnYtDlp(jobId) {
   })
 
   job.process.on('close', async code => {
+    runningJobsCount = Math.max(0, runningJobsCount - 1);
+    processQueue();
+
     if (settled) return;
     settled = true;
     job.process = null;
@@ -359,6 +387,9 @@ function spawnYtDlp(jobId) {
   });
 
   job.process.on('error', error => {
+    runningJobsCount = Math.max(0, runningJobsCount - 1);
+    processQueue();
+
     if (settled) return;
     settled = true;
     job.process = null;
