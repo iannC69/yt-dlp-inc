@@ -157,7 +157,20 @@ async function getValidAccessToken(clientId, clientSecret) {
       console.warn('[spotify] Token refresh failed:', e);
     }
   }
+  // Do not keep presenting an expired token as a valid login when its refresh
+  // failed. That used to leave the UI on "My Profile" while API requests were
+  // silently retried with client credentials (which cannot read private lists).
+  if (expiresAt && Date.now() >= expiresAt - 60000) {
+    clearSpotifyAuth();
+    return '';
+  }
   return accessToken;
+}
+
+function clearSpotifyAuth() {
+  localStorage.removeItem('spotify_access_token');
+  localStorage.removeItem('spotify_refresh_token');
+  localStorage.removeItem('spotify_expires_at');
 }
 
 export default function SpotifyDownloader({ activeDownloadId }) {
@@ -231,15 +244,15 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const storedToken = localStorage.getItem('spotify_access_token');
+      const clientId = localStorage.getItem('spotify_client_id') || '';
+      const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+      const storedToken = await getValidAccessToken(clientId, clientSecret);
       if (storedToken) setAccessToken(storedToken);
 
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
       if (code) {
         window.history.replaceState({}, null, '/');
-        const clientId = localStorage.getItem('spotify_client_id') || '';
-        const clientSecret = localStorage.getItem('spotify_client_secret') || '';
         if (!clientSecret) {
           alert('Lipsește Spotify Client Secret! Te rugăm să adaugi și Client Secret în Setări pentru a te putea autentifica.');
         } else if (clientId && clientSecret) {
@@ -284,7 +297,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
             if (newToken && newToken !== accessToken) {
               setAccessToken(newToken);
             } else {
-              localStorage.removeItem('spotify_access_token');
+              clearSpotifyAuth();
               setAccessToken('');
             }
             throw new Error('Unauthorized');
@@ -309,7 +322,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (res.status === 401) {
-        localStorage.removeItem('spotify_access_token');
+        clearSpotifyAuth();
         setAccessToken('');
         throw new Error('Token expired');
       }
@@ -338,7 +351,14 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
     const clientId = localStorage.getItem('spotify_client_id') || '';
     const clientSecret = localStorage.getItem('spotify_client_secret') || '';
-    const userAccessToken = localStorage.getItem('spotify_access_token') || '';
+    // A preview may be requested long after the user authenticated. Refresh the
+    // OAuth token first so private/collaborative playlists are read as the
+    // signed-in user instead of falling back to the public client flow.
+    const userAccessToken = await getValidAccessToken(clientId, clientSecret);
+    if (userAccessToken && userAccessToken !== accessToken) {
+      localStorage.setItem('spotify_access_token', userAccessToken);
+      setAccessToken(userAccessToken);
+    }
 
     if (!clientId.trim() || !clientSecret.trim()) {
       setFetchError('Add your Spotify credentials in Settings to use Spotify features.');
@@ -379,7 +399,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       setFetchError(e.message || 'Could not fetch Spotify info.');
       setFetchStatus('error');
     }
-  }, [url]);
+  }, [url, accessToken]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') fetchInfo();
@@ -844,7 +864,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                       </button>
                       <div className="sp-dropdown-divider" />
                       <button className="sp-dropdown-item sp-logout-item" onClick={() => {
-                        localStorage.removeItem('spotify_access_token');
+                        clearSpotifyAuth();
                         setAccessToken('');
                         setShowProfileMenu(false);
                       }}>

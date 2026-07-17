@@ -1652,6 +1652,29 @@ function youtubeDownloaderPlugin() {
         })
       })
 
+      const resolvePublicPlaylist = async (spotUrl) => {
+        // spotify-url-info uses Spotify's public page data rather than the
+        // restricted Web API endpoint. It is a reliable fallback for public
+        // playlists when an OAuth/client token was rejected.
+        const [{ default: createSpotifyUrlInfo }, { default: fetch }] = await Promise.all([
+          import('spotify-url-info'), import('node-fetch')
+        ])
+        const { getDetails } = createSpotifyUrlInfo(fetch)
+        const { preview, tracks } = await getDetails(spotUrl)
+        if (!tracks?.length) throw new Error('Pagina publică Spotify nu conține melodii pentru acest playlist.')
+        return {
+          type: 'playlist', title: preview?.title || 'Spotify Playlist', trackCount: tracks.length, totalTracks: tracks.length,
+          coverUrl: preview?.image || null,
+          totalDurationMs: tracks.reduce((total, track) => total + (track.duration || 0), 0),
+          tracks: tracks.map((track, index) => ({
+            trackNumber: index + 1, title: track.name, artist: track.artist,
+            allArtists: track.artist, durationMs: track.duration || 0,
+            spotifyUrl: track.uri ? `https://open.spotify.com/track/${track.uri.split(':').pop()}` : null,
+            coverUrl: preview?.image || null
+          }))
+        }
+      }
+
       server.middlewares.use('/api/spotify-info', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
@@ -1671,6 +1694,19 @@ function youtubeDownloaderPlugin() {
           try {
             metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
           } catch (err) {
+            if (/^SPOTIFY_403/.test(err.message || '') && /spotify\.com\/playlist\//.test(spotUrl)) {
+              console.log('Spotify API denied playlist access; reading public playlist metadata instead.')
+              metadata = await resolvePublicPlaylist(spotUrl)
+              return res.end(JSON.stringify(metadata))
+            }
+            // The browser fallback can only see Spotify's generic logged-out
+            // page for an inaccessible playlist. Returning that page as if it
+            // were the requested playlist produced bogus results such as
+            // "Your Library". Authentication and not-found errors must reach
+            // the UI unchanged.
+            if (/^(SPOTIFY_(401|403|404)|Spotify auth failed|Missing SPOTIFY)/.test(err.message || '')) {
+              throw err
+            }
             console.log(`resolveSpotifyMetadata failed (${err.message}), trying fallback...`);
             try {
               metadata = await resolveSpotifyFallback(spotUrl);
@@ -1811,11 +1847,16 @@ function youtubeDownloaderPlugin() {
           try {
             metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
           } catch (e) {
+            if (/^SPOTIFY_403/.test(e.message || '') && /spotify\.com\/playlist\//.test(spotUrl)) {
+              console.log('Spotify API denied playlist download metadata; reading the public playlist instead.')
+              metadata = await resolvePublicPlaylist(spotUrl)
+            } else {
             try {
               console.log(`resolveSpotifyMetadata failed during download (${e.message}), trying fallback...`);
               metadata = await resolveSpotifyFallback(spotUrl);
             } catch (fallbackErr) {
               throw new Error(`Spotify metadata fetch failed: ${e.message} (Fallback failed: ${fallbackErr.message})`);
+            }
             }
           }
 
@@ -1889,6 +1930,7 @@ function youtubeDownloaderPlugin() {
 
               const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe');
               const proc = spawn(spotdlPath, spotdlArgs, {
+                windowsHide: true,
                 env: {
                   ...process.env,
                   PYTHONIOENCODING: 'utf-8',
@@ -2032,6 +2074,7 @@ function youtubeDownloaderPlugin() {
 
                     const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe');
                     const proc = spawn(ytDlpPath, ytDlpArgs, {
+                      windowsHide: true,
                       env: {
                         ...process.env,
                         PYTHONIOENCODING: 'utf-8',
@@ -2194,7 +2237,7 @@ function youtubeDownloaderPlugin() {
                 if (process.platform === 'win32') {
                   const icoPath = path.join(metaDir, 'album.ico')
                   await new Promise((resolve) => {
-                    const child = spawn(ffmpegBin, ['-y', '-i', jpgPath, '-vf', 'scale=256:256', icoPath])
+                    const child = spawn(ffmpegBin, ['-y', '-i', jpgPath, '-vf', 'scale=256:256', icoPath], { windowsHide: true })
                     child.on('close', () => resolve())
                   })
 
