@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Film, Loader2, AlertCircle, CheckCircle2,
-  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft, CalendarClock, FolderOpen
+  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft, CalendarClock, FolderOpen, ChevronUp, ChevronDown
 } from 'lucide-react';
+import { getAverageColor } from './utils/colorUtils';
+import WaveformBg from './WaveformBg';
 import './YoutubeDownloader.css';
 
 const RESOLUTIONS = [
@@ -81,7 +83,10 @@ function formatViews(n) {
 function isPlaylistUrl(value) {
   try {
     const parsed = new URL(value);
-    return parsed.searchParams.has('list') || parsed.pathname.split('/').includes('playlist');
+    const list = parsed.searchParams.get('list');
+    // Ignore YouTube auto-generated radio mixes (RD...) as playlists
+    if (list && list.startsWith('RD')) return false;
+    return !!list || parsed.pathname.split('/').includes('playlist');
   } catch {
     return false;
   }
@@ -164,6 +169,16 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
   const [appMode, setAppMode] = useState(null);
   const [scheduleTime, setScheduleTime] = useState('');
+  const [ambientColor, setAmbientColor] = useState('rgba(239, 68, 68, 0.12)'); // default red glow
+  const [hideSuggestions, setHideSuggestions] = useState(() => {
+    return localStorage.getItem('ytdl_hide_suggestions') === 'true';
+  });
+
+  const toggleSuggestions = () => {
+    const newVal = !hideSuggestions;
+    setHideSuggestions(newVal);
+    localStorage.setItem('ytdl_hide_suggestions', String(newVal));
+  };
 
   useEffect(() => {
     fetch('/api/ytdl/get-config').then(r => r.json()).then(data => {
@@ -189,6 +204,21 @@ const YoutubeDownloader = ({ activeJobId }) => {
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [url, downloading, downloadComplete, info, appMode]);
+
+  // Emit download_update for Dynamic Island with title + thumbnail
+  useEffect(() => {
+    if (!downloading) return;
+    window.dispatchEvent(new CustomEvent('download_update', {
+      detail: {
+        source: 'youtube',
+        progress,
+        status: downloadStatus || 'Connecting...',
+        thumbnail: info?.thumbnail || null,
+        title: info?.title || url || 'YouTube',
+        done: false
+      }
+    }));
+  }, [downloading, progress, downloadStatus]);
 
 
 
@@ -265,6 +295,10 @@ const YoutubeDownloader = ({ activeJobId }) => {
         if (data.progress !== undefined) {
           setProgress(data.progress);
           if (data.progress > 0 && data.progress < 95) setStep(2);
+          window.dispatchEvent(new CustomEvent('download_update', { detail: {
+            source: 'youtube', progress: data.progress, status: data.status || 'Downloading...', 
+            thumbnail: null, title: null, done: false
+          }}));
         }
         if (data.status) {
           setDownloadStatus(data.status);
@@ -288,6 +322,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
           setCurrentJobId(null);
           localStorage.removeItem('ytdl_job_id');
           localStorage.removeItem('ytdl_job_scope');
+          window.dispatchEvent(new CustomEvent('download_update', { detail: { source: 'youtube', error: true } }));
           return;
         }
         if (data.done) {
@@ -298,6 +333,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
           setCurrentJobId(null);
           localStorage.removeItem('ytdl_job_id');
           localStorage.removeItem('ytdl_job_scope');
+          window.dispatchEvent(new CustomEvent('download_update', { detail: { source: 'youtube', done: true } }));
 
           if (data.finalFilename) {
             setFinalFilename(data.finalFilename);
@@ -368,6 +404,16 @@ const YoutubeDownloader = ({ activeJobId }) => {
         }
       }
       setInfo({ ...data, playlist });
+      
+      // Dynamic ambient color from thumbnail
+      if (data.thumbnail || (playlist && playlist.thumbnail)) {
+        getAverageColor(data.thumbnail || playlist.thumbnail).then(color => {
+          setAmbientColor(color.replace('rgb', 'rgba').replace(')', ', 0.15)'));
+        });
+      } else {
+        setAmbientColor('rgba(239, 68, 68, 0.12)');
+      }
+
       saveToHistory(url, playlist ? playlist.title : data.title, data.thumbnail);
       localStorage.setItem('ytdl_url', url);
       localStorage.setItem('ytdl_info', JSON.stringify({ ...data, playlist }));
@@ -571,8 +617,9 @@ const YoutubeDownloader = ({ activeJobId }) => {
   };
 
   return (
-    <div className="ytdl-page">
+    <div className="ytdl-page" style={{ '--ambient-color': ambientColor }}>
       <div className="ytdl-bg-glow" />
+      <WaveformBg isActive={downloading} color={ambientColor} />
 
       <div className="ytdl-layout">
         <motion.header
@@ -676,7 +723,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.1 }}
             className={`ytdl-url-card ${appMode === 'music' ? 'music-active' : 'youtube-active'}`}
-            style={{ position: 'relative' }}
+            style={{ position: 'relative', zIndex: 50 }}
           >
             {!info && (
               <button
@@ -726,7 +773,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -5 }}
-                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'rgba(30,30,40,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', zIndex: 10, marginTop: '0.5rem', backdropFilter: 'blur(10px)' }}
+                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#121218', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', zIndex: 100, marginTop: '0.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}
                 >
                   <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', padding: '0 0.5rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem' }}>Ultimele descărcări</div>
                   {history.map((h, i) => (
@@ -775,26 +822,42 @@ const YoutubeDownloader = ({ activeJobId }) => {
             transition={{ duration: 0.4, delay: 0.15 }}
             className="ytdl-suggestions-wrap"
           >
-            <span className="ytdl-suggestions-label">Try these:</span>
-            <div className="ytdl-suggestions-chips">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s.url}
-                  className="ytdl-suggestion-chip"
-                  style={{ '--chip-color': s.color }}
-                  onClick={() => {
-                    setUrl(s.url);
-                    setTimeout(() => fetchInfo(), 100);
-                  }}
-                  title={s.url}
-                >
-                  <span className="ytdl-chip-tag" style={{ background: s.color + '22', color: s.color, borderColor: s.color + '44' }}>
-                    {s.tag}
-                  </span>
-                  <span className="ytdl-chip-label">{s.label}</span>
-                </button>
-              ))}
+            <div className="ytdl-suggestions-header" onClick={toggleSuggestions} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', userSelect: 'none', width: 'fit-content' }}>
+              <span className="ytdl-suggestions-label">Try these:</span>
+              {hideSuggestions ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronUp size={16} color="#94a3b8" />}
             </div>
+            
+            <AnimatePresence>
+              {!hideSuggestions && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div className="ytdl-suggestions-chips" style={{ paddingTop: '0.5rem' }}>
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s.url}
+                        className="ytdl-suggestion-chip"
+                        style={{ '--chip-color': s.color }}
+                        onClick={() => {
+                          setUrl(s.url);
+                          setTimeout(() => fetchInfo(), 100);
+                        }}
+                        title={s.url}
+                      >
+                        <span className="ytdl-chip-tag" style={{ background: s.color + '22', color: s.color, borderColor: s.color + '44' }}>
+                          {s.tag}
+                        </span>
+                        <span className="ytdl-chip-label">{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 
@@ -814,16 +877,28 @@ const YoutubeDownloader = ({ activeJobId }) => {
         <AnimatePresence>
           {loadingInfo && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              transition={{ duration: 0.3 }}
               className="ytdl-skeleton-card"
             >
-              <div className="ytdl-skel-cover" />
+              <motion.div
+                className="ytdl-skel-cover"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.05, duration: 0.4 }}
+              />
               <div className="ytdl-skel-lines">
-                <div className="ytdl-skel-line long" />
-                <div className="ytdl-skel-line short" />
-                <div className="ytdl-skel-line chips" />
+                {[{ cls: 'long', delay: 0.1 }, { cls: 'short', delay: 0.18 }, { cls: 'chips', delay: 0.26 }].map(({ cls, delay }) => (
+                  <motion.div
+                    key={cls}
+                    className={`ytdl-skel-line ${cls}`}
+                    initial={{ opacity: 0, scaleX: 0, originX: 0 }}
+                    animate={{ opacity: 1, scaleX: 1 }}
+                    transition={{ delay, duration: 0.4, ease: 'easeOut' }}
+                  />
+                ))}
               </div>
             </motion.div>
           )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, ChevronLeft, ChevronRight, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo } from 'lucide-react';
+import DynamicIsland from './DynamicIsland';
 import YoutubeDownloader from './YoutubeDownloader';
 import SpotifyDownloader from './SpotifyDownloader';
 import LibraryModal from './LibraryModal';
@@ -208,6 +209,7 @@ export default function App() {
               <ChevronRight size={16} />
             </button>
           </div>
+          <DynamicIsland />
           <div className="global-top-actions">
             <button 
               className="settings-button"

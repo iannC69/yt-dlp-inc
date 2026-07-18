@@ -6,6 +6,8 @@ import {
   X, ChevronDown, ChevronUp, FolderOpen, Clock,
   Star, Calendar, Hash, Users, Archive, Play, User, LogOut, ListVideo, HardDrive, Database
 } from 'lucide-react';
+import { getAverageColor } from './utils/colorUtils';
+import WaveformBg from './WaveformBg';
 import './SpotifyDownloader.css';
 
 const AUDIO_FORMATS = [
@@ -173,21 +175,22 @@ function clearSpotifyAuth() {
   localStorage.removeItem('spotify_expires_at');
 }
 
-// ── Predefined bubble layout positions (percentage-based for a clustered aesthetic) ──
+
+
 const BUBBLE_POSITIONS = [
-  { x: 40, y: 45, size: 170 }, // Main large (center-left)
-  { x: 60, y: 35, size: 145 }, // Second large (center-right)
-  { x: 55, y: 65, size: 115 }, // Bottom medium-large
-  { x: 75, y: 50, size: 95 },  // Right medium
-  { x: 38, y: 65, size: 80 },  // Bottom left
-  { x: 70, y: 20, size: 75 },  // Top right
-  { x: 42, y: 25, size: 65 },  // Top left
-  { x: 85, y: 35, size: 85 },  // Far right
-  { x: 50, y: 80, size: 60 },  // Far bottom
-  { x: 80, y: 68, size: 105 }, // Bottom right
+  { x: 42, y: 50 },
+  { x: 65, y: 40 },
+  { x: 25, y: 65 },
+  { x: 75, y: 60 },
+  { x: 30, y: 35 },
+  { x: 55, y: 70 },
+  { x: 85, y: 35 },
+  { x: 15, y: 45 },
+  { x: 45, y: 25 },
+  { x: 70, y: 75 },
 ];
 
-function ArtistBubbles({ artists }) {
+function ArtistBubbles({ artists, onRemove }) {
   if (!artists || artists.length === 0) {
     return (
       <div className="sp-artist-bubbles sp-artist-bubbles--empty">
@@ -195,7 +198,7 @@ function ArtistBubbles({ artists }) {
           <div className="sp-bubbles-empty-icon">
             <User size={28} />
           </div>
-          <span>Descarcă ceva<br/>ca să apară artiștii</span>
+          <span>Descarca ceva<br/>ca sa apara artistii</span>
         </div>
       </div>
     );
@@ -216,38 +219,56 @@ function ArtistBubbles({ artists }) {
           const dy2 = (i % 3 === 0 ? -10 : i % 2 === 0 ? 15 : -8) - (i * 1.2);
           
           return (
-            <motion.div
+            <div
               key={artist.name + i}
-              className="sp-bubble"
+              className="sp-bubble-wrapper"
               style={{
+                position: 'absolute',
                 left: `${pos.x}%`,
                 top: `${pos.y}%`,
-                width: pos.size,
-                height: pos.size,
-              }}
-              initial={{ opacity: 0, scale: 0 }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                x: [0, dx1, dx2, 0],
-                y: [0, dy1, dy2, 0],
-              }}
-              transition={{
-                opacity: { duration: 0.5, delay: i * 0.12 },
-                scale: { duration: 0.5, delay: i * 0.12, type: 'spring', bounce: 0.4 },
-                x: { duration: 15 + i * 1.5, repeat: Infinity, ease: 'easeInOut', delay: i * 0.2 },
-                y: { duration: 18 + i * 1.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 },
+                width: 140,
+                height: 140,
+                transform: 'translate(-50%, -50%)',
+                zIndex: 1
               }}
             >
-              {artist.thumbnail ? (
-                <img src={artist.thumbnail} alt={artist.name} className="sp-bubble-img" />
-              ) : (
-                <div className="sp-bubble-fallback">
-                  <User size={pos.size * 0.35} />
-                </div>
-              )}
-              <div className="sp-bubble-name">{artist.name}</div>
-            </motion.div>
+              <motion.div
+                className="sp-bubble"
+                style={{ position: 'relative', left: 0, top: 0, width: '100%', height: '100%', transform: 'none' }}
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{
+                  opacity: 1,
+                  scale: 1,
+                  x: [0, dx1, dx2, 0],
+                  y: [0, dy1, dy2, 0],
+                }}
+                transition={{
+                  opacity: { duration: 0.5, delay: i * 0.12 },
+                  scale: { duration: 0.5, delay: i * 0.12, type: 'spring', bounce: 0.4 },
+                  x: { duration: 15 + i * 1.5, repeat: Infinity, ease: 'easeInOut', delay: i * 0.2 },
+                  y: { duration: 18 + i * 1.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 },
+                }}
+              >
+                {artist.thumbnail ? (
+                  <img src={artist.thumbnail} alt={artist.name} className="sp-bubble-img" />
+                ) : (
+                  <div className="sp-bubble-fallback">
+                    <User size={140 * 0.35} />
+                  </div>
+                )}
+                <div className="sp-bubble-name">{artist.name}</div>
+                <button 
+                  className="sp-bubble-delete"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    if (onRemove) onRemove(artist.name); 
+                  }}
+                  title="Remove artist from history"
+                >
+                  <X size={14} />
+                </button>
+              </motion.div>
+            </div>
           );
         })}
       </motion.div>
@@ -260,6 +281,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
+  const [ambientColor, setAmbientColor] = useState('rgba(29, 185, 84, 0.12)'); // default green glow
 
   useEffect(() => {
     try {
@@ -281,6 +303,14 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const removeFromHistory = (urlToRemove) => {
     setHistory(prev => {
       const updated = prev.filter(item => item.url !== urlToRemove);
+      localStorage.setItem('sp_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const removeArtistFromHistory = (artistName) => {
+    setHistory(prev => {
+      const updated = prev.filter(item => (item.artist || item.title) !== artistName);
       localStorage.setItem('sp_history', JSON.stringify(updated));
       return updated;
     });
@@ -322,6 +352,30 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
   const spotifyType = isSpotifyUrl(url) ? getSpotifyType(url) : null;
 
+  // Emit download_update for Dynamic Island
+  useEffect(() => {
+    const isActive = downloadState?.active && !downloadState?.done;
+    if (isActive) {
+      const completed = downloadState.current ?? 0;
+      const total = downloadState.total ?? 1;
+      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+      window.dispatchEvent(new CustomEvent('download_update', {
+        detail: {
+          source: 'spotify',
+          progress: pct,
+          status: `${completed} / ${total} tracks`,
+          thumbnail: info?.coverUrl || info?.thumbnail || info?.playlistCover || null,
+          title: info?.title || info?.name || 'Spotify',
+          done: false
+        }
+      }));
+    } else if (downloadState?.done && !downloadState?.error) {
+      window.dispatchEvent(new CustomEvent('download_update', { detail: { source: 'spotify', done: true } }));
+    } else if (downloadState?.done && downloadState?.error) {
+      window.dispatchEvent(new CustomEvent('download_update', { detail: { source: 'spotify', error: true } }));
+    }
+  }, [downloadState]);
+
   // Auto-paste removed to prevent interference with manual pasting
 
   useEffect(() => {
@@ -336,7 +390,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       if (code) {
         window.history.replaceState({}, null, '/');
         if (!clientSecret) {
-          alert('Lipsește Spotify Client Secret! Te rugăm să adaugi și Client Secret în Setări pentru a te putea autentifica.');
+          alert('LipseÈ™te Spotify Client Secret! Te rugÄƒm sÄƒ adaugi È™i Client Secret Ã®n SetÄƒri pentru a te putea autentifica.');
         } else if (clientId && clientSecret) {
           try {
             const res = await fetch('/api/spotify-oauth', {
@@ -355,10 +409,10 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               if (data.expires_in) localStorage.setItem('spotify_expires_at', Date.now() + data.expires_in * 1000);
               setAccessToken(data.access_token);
             } else {
-              console.error(`Eroare la obținerea token-ului Spotify: ${data.error || 'Necunoscut'}`);
+              console.error(`Eroare la obÈ›inerea token-ului Spotify: ${data.error || 'Necunoscut'}`);
             }
           } catch (err) {
-            alert(`Eroare de rețea la autentificarea Spotify: ${err.message}`);
+            alert(`Eroare de reÈ›ea la autentificarea Spotify: ${err.message}`);
           }
         }
       }
@@ -470,6 +524,17 @@ export default function SpotifyDownloader({ activeDownloadId }) {
         throw new Error(data.error || 'Failed to fetch info');
       }
       setInfo(data);
+      
+      // Extract color for dynamic background
+      const imgUrl = data.coverUrl || data.thumbnail || data.playlistCover || data.artistThumbnail || data.ownerThumbnail;
+      if (imgUrl) {
+        getAverageColor(imgUrl).then(color => {
+          setAmbientColor(color.replace('rgb', 'rgba').replace(')', ', 0.15)'));
+        });
+      } else {
+        setAmbientColor('rgba(29, 185, 84, 0.12)'); // fallback
+      }
+
       if (data.type !== 'track' && data.tracks) {
         setSelectedTracks(new Set(data.tracks.map(t => t.trackNumber)));
       } else {
@@ -741,7 +806,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const handleMassFetch = async () => {
     setMassFetchError('');
     if (!bulkMeta.trim() || !bulkMeta.includes('spotify.com/playlist')) {
-      setMassFetchError("Te rugăm să introduci un link valid de Playlist Spotify.");
+      setMassFetchError("Te rugÄƒm sÄƒ introduci un link valid de Playlist Spotify.");
       return;
     }
     setIsExtracting(true);
@@ -856,7 +921,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     if (massDownloadIdRef.current) {
       try { await fetch(`/api/spotify-mass-cancel?downloadId=${massDownloadIdRef.current}`); } catch { }
     }
-    setMassDlState(prev => ({ ...prev, active: false, done: true, cancelled: true, error: 'Descărcarea a fost anulată' }));
+    setMassDlState(prev => ({ ...prev, active: false, done: true, cancelled: true, error: 'DescÄƒrcarea a fost anulatÄƒ' }));
   };
 
   const handleCancel = async () => {
@@ -902,7 +967,12 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     const seen = new Set();
     const artists = [];
     for (const h of history) {
-      const name = h.artist || h.title || '';
+      const type = getSpotifyType(h.url);
+      if (type === 'playlist') continue;
+      
+      let name = h.artist;
+      if (type === 'artist' && !name) name = h.title;
+      
       if (name && !seen.has(name)) {
         seen.add(name);
         artists.push({ name, thumbnail: h.artistThumbnail || null });
@@ -912,887 +982,774 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   }, [history]);
 
   return (
-    <div className="sp-page">
+    <div className="sp-page" style={{ '--ambient-color': ambientColor }}>
       {/* Background orbs */}
       <div className="sp-orb sp-orb-1" />
       <div className="sp-orb sp-orb-2" />
       <div className="sp-orb sp-orb-3" />
+      <WaveformBg isActive={downloadState?.active && !downloadState?.done} color={ambientColor} />
 
-      <div className="sp-landscape">
-      <div className="sp-container">
+      {/* â”€â”€ Scroll area â”€â”€ */}
+      <div className="sp-scroll-area">
+        <div className="sp-main">
 
-        {/* ── Hero ── */}
-        <motion.div className="sp-hero" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <div className="sp-header-actions">
-            {!accessToken ? (
-              <button className="sp-login-btn" onClick={() => {
-                const clientId = localStorage.getItem('spotify_client_id');
-                if (!clientId) return alert('Please set your Client ID in Settings first!');
-                const redirectUri = window.location.origin + '/';
-                const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
-                window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true&_cb=${Date.now()}`;
-              }}>
-                <User size={16} /> Login to Spotify
-              </button>
-            ) : (
-              <div className="sp-profile-container">
-                <button className="sp-profile-btn" onClick={() => setShowProfileMenu(!showProfileMenu)}>
-                  {userProfile?.images?.[0]?.url ? (
-                    <img src={userProfile.images[0].url} alt="Profile" className="sp-profile-img" />
-                  ) : (
-                    <User size={16} />
-                  )}
-                  <span className="sp-profile-name">{userProfile?.display_name || 'My Profile'}</span>
-                  <ChevronDown size={14} className={`sp-profile-chevron ${showProfileMenu ? 'open' : ''}`} />
-                </button>
-
-                <AnimatePresence>
-                  {showProfileMenu && (
-                    <motion.div 
-                      className="sp-profile-dropdown"
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      <button className="sp-dropdown-item" onClick={() => { setShowProfileMenu(false); fetchMyPlaylists(); }}>
-                        <List size={16} /> My Playlists
-                      </button>
-                      <div className="sp-dropdown-divider" />
-                      <button className="sp-dropdown-item sp-logout-item" onClick={() => {
-                        clearSpotifyAuth();
-                        setAccessToken('');
-                        setShowProfileMenu(false);
-                      }}>
-                        <LogOut size={16} /> Log Out
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+          {/* â”€â”€ HERO â”€â”€ */}
+          <motion.div className="sp-hero" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+            <div className="sp-hero-top">
+              <div className="sp-hero-brand">
+                <div className="sp-logo-pill">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="sp-logo-icon">
+                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+                  </svg>
+                  Spotify
+                </div>
+                <h1 className="sp-title">Spotify Downloader</h1>
+                <p className="sp-subtitle">Download tracks, albums &amp; playlists as high-quality audio</p>
+                <div className="sp-feature-pills">
+                  <span className="sp-feature-pill sp-feature-pill--track"><Disc size={10} /> Track</span>
+                  <span className="sp-feature-pill sp-feature-pill--album"><Music size={10} /> Album</span>
+                  <span className="sp-feature-pill sp-feature-pill--playlist"><List size={10} /> Playlist</span>
+                </div>
               </div>
-            )}
-          </div>
-          <div className="sp-logo">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="sp-logo-icon">
-              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
-            </svg>
-            <span>Spotify</span>
-          </div>
-          <h1 className="sp-title">Spotify Downloader</h1>
-          <p className="sp-subtitle">Download tracks, albums &amp; playlists as high-quality audio</p>
-        </motion.div>
 
-        {/* ── URL Input ── */}
-        <motion.div className="sp-input-section" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
-          <div className="sp-input-wrapper">
-            <AnimatePresence>
-              {clipboardToast && (
-                <motion.div className="sp-clipboard-toast" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                  <Clipboard size={13} /> Spotify link detected from clipboard!
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <div className="sp-input-icon"><Link2 size={17} /></div>
-            <input
-              ref={inputRef}
-              type="text"
-              className="sp-input"
-              value={url}
-              onChange={e => { setUrl(e.target.value); setFetchStatus('idle'); setInfo(null); setFetchError(''); setDownloadState(null); }}
-              onFocus={() => setShowHistory(true)}
-              onBlur={() => setTimeout(() => setShowHistory(false), 200)}
-              onKeyDown={handleKeyDown}
-              placeholder="https://open.spotify.com/track/..."
-            />
-            {spotifyType && (
-              <div className="sp-input-type-pill">
-                <SpotifyBadge type={spotifyType} />
-              </div>
-            )}
-            {url && (
-              <button className="sp-input-clear" style={{ right: spotifyType ? '160px' : '90px', zIndex: 5 }} onClick={reset} title="Clear">
-                <X size={14} />
-              </button>
-            )}
-            <AnimatePresence>
-              {showHistory && history.length > 0 && !url && (
-                <motion.div 
-                  className="sp-history-dropdown"
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'rgba(30,30,40,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', zIndex: 10, marginTop: '0.5rem', backdropFilter: 'blur(10px)', textAlign: 'left' }}
-                >
-                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', padding: '0 0.5rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem' }}>Ultimele căutări</div>
-                  {history.map((h, i) => (
-                    <div 
-                      key={i} 
-                      style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', fontSize: '0.85rem', color: '#fff' }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      onMouseDown={() => {
-                        setUrl(h.url);
-                        setShowHistory(false);
-                        setTimeout(() => fetchInfo(h.url), 100);
-                      }}
-                    >
-                      {h.thumbnail ? (
-                        <img src={h.thumbnail} alt="" style={{ width: 24, height: 24, borderRadius: '4px', objectFit: 'cover' }} />
+              <div className="sp-header-actions">
+                {!accessToken ? (
+                  <button className="sp-login-btn" onClick={() => {
+                    const clientId = localStorage.getItem('spotify_client_id');
+                    if (!clientId) return alert('Please set your Client ID in Settings first!');
+                    const redirectUri = window.location.origin + '/';
+                    const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+                    window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true&_cb=${Date.now()}`;
+                  }}>
+                    <User size={16} /> Login to Spotify
+                  </button>
+                ) : (
+                  <div className="sp-profile-container">
+                    <button className="sp-profile-btn" onClick={() => setShowProfileMenu(!showProfileMenu)}>
+                      {userProfile?.images?.[0]?.url ? (
+                        <img src={userProfile.images[0].url} alt="Profile" className="sp-profile-img" />
                       ) : (
-                        <Clock size={14} style={{ opacity: 0.5 }} />
+                        <User size={16} />
                       )}
-                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.title}</span>
-                      </div>
-                    </div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <button
-              className="sp-fetch-btn"
-              onClick={() => fetchInfo()}
-              disabled={fetchStatus === 'loading'}
-            >
-              {fetchStatus === 'loading' ? <Loader2 size={15} className="sp-spin" /> : <Search size={15} />}
-              {fetchStatus === 'loading' ? 'Loading...' : 'Preview'}
-            </button>
-          </div>
-          
-          {!info && fetchStatus !== 'loading' && history.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              style={{ marginTop: 20, textAlign: 'left', width: '100%', maxWidth: '800px', alignSelf: 'center' }}
-            >
-              <div 
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
-                onClick={() => setIsHistoryCollapsed(!isHistoryCollapsed)}
-              >
-                <span className="sp-suggestions-label" style={{ marginBottom: 0 }}>Căutări recente:</span>
-                <button style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex' }}>
-                  {isHistoryCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-                </button>
-              </div>
-              <AnimatePresence>
-                {!isHistoryCollapsed && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    style={{ overflow: 'hidden' }}
-                  >
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
-                      {history.map((h, i) => (
-                        <div
-                          key={i}
-                          onClick={() => {
-                            setUrl(h.url);
-                            setTimeout(() => fetchInfo(h.url), 100);
-                          }}
-                          title={h.url}
-                          style={{
-                            background: 'rgba(29, 185, 84, 0.1)',
-                            border: '1px solid rgba(29, 185, 84, 0.2)',
-                            borderRadius: '20px',
-                            padding: '4px 8px 4px 6px',
-                            color: '#fff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            cursor: 'pointer',
-                            fontSize: '0.85rem'
-                          }}
+                      <span className="sp-profile-name">{userProfile?.display_name || 'My Profile'}</span>
+                      <ChevronDown size={14} className={`sp-profile-chevron ${showProfileMenu ? 'open' : ''}`} />
+                    </button>
+
+                    <AnimatePresence>
+                      {showProfileMenu && (
+                        <motion.div
+                          className="sp-profile-dropdown"
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          transition={{ duration: 0.15 }}
                         >
-                          {h.thumbnail ? (
-                            <img src={h.thumbnail} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
-                          ) : (
-                            <span style={{ color: '#1DB954', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, background: 'rgba(29,185,84,0.1)', borderRadius: '50%' }}><Clock size={10} /></span>
-                          )}
-                          <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {h.title || h.url}
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFromHistory(h.url);
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: 'rgba(255,255,255,0.4)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              padding: '2px',
-                              marginLeft: '2px',
-                              borderRadius: '50%'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.color = '#ff4444'}
-                            onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
-                          >
-                            <X size={14} />
+                          <button className="sp-dropdown-item" onClick={() => { setShowProfileMenu(false); fetchMyPlaylists(); }}>
+                            <List size={16} /> My Playlists
                           </button>
-                        </div>
-                      ))}
-                    </div>
+                          <div className="sp-dropdown-divider" />
+                          <button className="sp-dropdown-item sp-logout-item" onClick={() => {
+                            clearSpotifyAuth();
+                            setAccessToken('');
+                            setShowProfileMenu(false);
+                          }}>
+                            <LogOut size={16} /> Log Out
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+
+          {/* â”€â”€ URL INPUT CARD â”€â”€ */}
+          <motion.div className="sp-input-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
+            <div className="sp-input-wrapper">
+              <AnimatePresence>
+                {clipboardToast && (
+                  <motion.div className="sp-clipboard-toast" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    <Clipboard size={13} /> Spotify link detected!
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.div>
-          )}
-
-          <div className="sp-suggestions">
-            <span className="sp-suggestions-label">Supports:</span>
-            <span className="sp-badge sp-badge-track"><Disc size={10} /> Track</span>
-            <span className="sp-badge sp-badge-album"><Music size={10} /> Album</span>
-            <span className="sp-badge sp-badge-playlist"><List size={10} /> Playlist</span>
-          </div>
-
-          {!showBulk ? (
-            <div style={{ textAlign: 'center', marginTop: 15 }}>
-              <button className="sp-bulk-btn" onClick={() => setShowBulk(true)} style={{ padding: '8px 12px', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid #3b82f6', borderRadius: 8, color: '#60a5fa', cursor: 'pointer', fontSize: '0.85rem' }}>
-                <ListVideo size={14} style={{ verticalAlign: 'middle', marginRight: 6 }}/>
-                Peste 100 Melodii? (Spotify Mass Downloader)
+              <div className="sp-input-icon"><Link2 size={17} /></div>
+              <input
+                ref={inputRef}
+                type="text"
+                className="sp-input"
+                value={url}
+                onChange={e => { setUrl(e.target.value); setFetchStatus('idle'); setInfo(null); setFetchError(''); setDownloadState(null); }}
+                onFocus={() => setShowHistory(true)}
+                onBlur={() => setTimeout(() => setShowHistory(false), 200)}
+                onKeyDown={handleKeyDown}
+                placeholder="https://open.spotify.com/track/..."
+              />
+              {url && (
+                <button className="sp-input-clear" onClick={reset} title="Clear">
+                  <X size={14} />
+                </button>
+              )}
+              {spotifyType && (
+                <div className="sp-input-type-pill">
+                  <SpotifyBadge type={spotifyType} />
+                </div>
+              )}
+              <AnimatePresence>
+                {showHistory && history.length > 0 && !url && (
+                  <motion.div
+                    className="sp-history-dropdown"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                  >
+                    <div className="sp-history-label">Ultimele cautari</div>
+                    {history.map((h, i) => (
+                      <div
+                        key={i}
+                        className="sp-history-item"
+                        onMouseDown={() => { setUrl(h.url); setShowHistory(false); setTimeout(() => fetchInfo(h.url), 100); }}
+                      >
+                        {h.thumbnail ? (
+                          <img src={h.thumbnail} alt="" className="sp-history-item-thumb" />
+                        ) : (
+                          <div className="sp-history-item-icon"><Clock size={13} /></div>
+                        )}
+                        <span className="sp-history-item-name">{h.title}</span>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <button className="sp-fetch-btn" onClick={() => fetchInfo()} disabled={fetchStatus === 'loading'}>
+                {fetchStatus === 'loading' ? <Loader2 size={15} className="sp-spin" /> : <Search size={15} />}
+                {fetchStatus === 'loading' ? 'Loading...' : 'Preview'}
               </button>
             </div>
-          ) : (
-            <motion.div 
-              className="sp-bulk-container" 
-              initial={{ opacity: 0, y: 10 }} 
-              animate={{ opacity: 1, y: 0 }} 
-              exit={{ opacity: 0, y: -10 }}
-              style={{ textAlign: 'left', width: '100%', marginTop: 20, background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 20, border: '1px solid rgba(255,255,255,0.08)' }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <ListVideo size={18} color="#1DB954" /> Mass Downloader
-                </h3>
-                <button onClick={() => { setShowBulk(false); setMassFetchInfo(null); setMassDlState(null); setMassFetchError(''); }} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', transition: 'color 0.2s', padding: 4, borderRadius: 4 }}><X size={18} /></button>
-              </div>
 
-              {!massFetchInfo && !massDlState ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ padding: '5px 0' }}>
-                  <p style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: 15, lineHeight: 1.5 }}>
-                    Introdu link-ul către un <b>Playlist Spotify</b>. Aplicația va ocoli limitele de paginare și va scana sute de piese, pregătindu-le pentru descărcare simultană.
-                  </p>
-                  <div style={{ position: 'relative' }}>
-                    <input 
+            <div className="sp-input-row-bottom">
+              <div className="sp-type-pills">
+                <span className="sp-type-label">Supports:</span>
+                <span className="sp-type-badge" style={{ background: 'rgba(29,185,84,0.1)', color: '#1DB954', borderColor: 'rgba(29,185,84,0.25)' }}><Disc size={10} /> Track</span>
+                <span className="sp-type-badge" style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa', borderColor: 'rgba(139,92,246,0.25)' }}><Music size={10} /> Album</span>
+                <span className="sp-type-badge" style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c', borderColor: 'rgba(251,146,60,0.25)' }}><List size={10} /> Playlist</span>
+              </div>
+              {!showBulk && (
+                <button className="sp-mass-trigger-btn" onClick={() => setShowBulk(true)}>
+                  <ListVideo size={13} /> 100+ Melodii? Mass Downloader
+                </button>
+              )}
+            </div>
+
+
+          </motion.div>
+
+          {/* â”€â”€ MASS DOWNLOADER CARD â”€â”€ */}
+          <AnimatePresence>
+            {showBulk && (
+              <motion.div className="sp-mass-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                <div className="sp-mass-card-header">
+                  <h3 className="sp-mass-card-title">
+                    <ListVideo size={18} color="#93c5fd" /> Mass Downloader
+                  </h3>
+                  <button className="sp-mass-close-btn" onClick={() => { setShowBulk(false); setMassFetchInfo(null); setMassDlState(null); setMassFetchError(''); }}>
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {!massFetchInfo && !massDlState ? (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <p className="sp-mass-description">
+                      Introdu link-ul unui <strong>Playlist Spotify</strong>. AplicaÈ›ia va scana toate piesele, depÄƒÈ™ind limitele de paginare, È™i le va pregÄƒti pentru descÄƒrcare.
+                    </p>
+                    <input
                       type="text"
                       value={bulkMeta}
-                      onChange={(e) => { setBulkMeta(e.target.value); setMassFetchError(''); }}
+                      onChange={e => { setBulkMeta(e.target.value); setMassFetchError(''); }}
                       placeholder="https://open.spotify.com/playlist/..."
                       disabled={isExtracting}
-                      style={{ width: '100%', padding: '12px 15px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, outline: 'none', fontSize: '0.9rem' }}
+                      className="sp-mass-input"
                     />
-                  </div>
-                  <button 
-                    disabled={isExtracting}
-                    onClick={handleMassFetch}
-                    style={{ width: '100%', padding: '12px', marginTop: 15, background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 8, cursor: isExtracting ? 'not-allowed' : 'pointer', opacity: isExtracting ? 0.8 : 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}
-                  >
-                    {isExtracting ? (
-                      <>
-                        <Loader2 size={18} className="sp-spin" />
-                        <span>Se scanează playlist-ul<motion.span animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1.5 }}>...</motion.span></span>
-                      </>
-                    ) : (
-                      <>
-                        <Download size={18} /> Preia toate piesele
-                      </>
-                    )}
-                  </button>
-
-                  <AnimatePresence>
-                    {massFetchError && (
-                      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} style={{ marginTop: 15, padding: 15, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#ef4444', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                          <div style={{ flex: 1 }}>{massFetchError}</div>
-                        </div>
-                        {massFetchError.includes('SPOTIFY_403') && (
-                          <button onClick={() => {
-                            const clientId = localStorage.getItem('spotify_client_id');
-                            if (!clientId) return alert('Please set your Client ID in Settings first!');
-                            const redirectUri = window.location.origin + '/';
-                            const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
-                            window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true&_cb=${Date.now()}`;
-                          }} style={{ marginTop: 12, width: '100%', padding: '10px', background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
-                            <User size={16} /> Login to Spotify
-                          </button>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              ) : massDlState ? (
-                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>
-                  {!massDlState.done ? (
-                    <>
-                      {/* Rotating Vinyl/Cover */}
-                      <div style={{ position: 'relative', width: 120, height: 120, marginBottom: 20 }}>
-                        <motion.img 
-                          src={massDlState.coverUrl || massFetchInfo?.playlistCover || 'https://via.placeholder.com/150'} 
-                          animate={{ rotate: 360 }} 
-                          transition={{ repeat: Infinity, duration: 8, ease: "linear" }}
-                          style={{ width: 120, height: 120, borderRadius: '50%', objectFit: 'cover', border: '4px solid #1DB954', boxShadow: '0 0 30px rgba(29, 185, 84, 0.4)' }}
-                        />
-                        <div style={{ position: 'absolute', top: '50%', left: '50%', width: 24, height: 24, background: '#121212', borderRadius: '50%', transform: 'translate(-50%, -50%)', border: '2px solid #1DB954' }} />
-                      </div>
-
-                      {/* Current Track Info */}
-                      <div style={{ textAlign: 'center', marginBottom: 25, width: '100%' }}>
-                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>
-                          {massDlState.title || 'Se pregătește...'}
-                        </div>
-                        <div style={{ fontSize: '0.9rem', color: '#a0a0a0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {massDlState.artist || 'Așteptare...'}
-                        </div>
-                        {massDlState.status && <div style={{ color: '#1DB954', fontSize: '0.8rem', marginTop: 6, fontWeight: 500 }}>{massDlState.status}</div>}
-                      </div>
-
-                      {/* Progress Bars */}
-                      <div style={{ width: '100%', marginBottom: 20 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#a0a0a0', marginBottom: 6 }}>
-                          <span>{massDlState.current} / {massDlState.total} piese</span>
-                          <span>{massDlState.percent || 0}%</span>
-                        </div>
-                        <div style={{ width: '100%', height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
-                          <motion.div animate={{ width: `${massDlState.percent || 0}%` }} transition={{ duration: 0.3 }} style={{ height: '100%', background: '#1DB954' }} />
-                        </div>
-                        <div style={{ width: '100%', height: 2, background: 'rgba(255,255,255,0.05)', borderRadius: 1, overflow: 'hidden' }}>
-                          <motion.div animate={{ width: `${massDlState.trackProgress || 0}%` }} transition={{ duration: 0.1 }} style={{ height: '100%', background: 'rgba(255,255,255,0.4)' }} />
-                        </div>
-                      </div>
-
-                      {/* Stats row */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.85rem', color: '#a0a0a0', marginBottom: 25, background: 'rgba(0,0,0,0.3)', padding: '12px 15px', borderRadius: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={15} color="#1DB954" /> <span style={{ color: '#fff' }}>{massDlState.current ? massDlState.current - 1 - (massDlState.failed || 0) : 0}</span> ok</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertCircle size={15} color={massDlState.failed ? '#ef4444' : '#a0a0a0'} /> <span style={{ color: massDlState.failed ? '#ef4444' : '#fff' }}>{massDlState.failed || 0}</span> failed</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={15} color="#60a5fa" /> <span style={{ color: '#fff' }}>{massDlState.estimatedSecondsRemaining ? `~${Math.ceil(massDlState.estimatedSecondsRemaining / 60)}m` : '...'}</span></div>
-                      </div>
-
-                      <button onClick={cancelMassDownload} style={{ width: '100%', padding: '12px', background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#ef4444', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s', ':hover': { background: 'rgba(239, 68, 68, 0.1)' } }}>
-                        Anulează descărcarea
-                      </button>
-                    </>
-                  ) : (
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ textAlign: 'center', padding: '10px 0', width: '100%' }}>
-                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }} style={{ width: 64, height: 64, borderRadius: '50%', background: massDlState.cancelled ? 'rgba(239,68,68,0.1)' : 'rgba(29,185,84,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px' }}>
-                        {massDlState.cancelled ? <AlertCircle size={32} color="#ef4444" /> : <CheckCircle2 size={32} color="#1DB954" />}
-                      </motion.div>
-                      
-                      <h3 style={{ color: '#fff', margin: '0 0 8px 0', fontSize: '1.2rem' }}>
-                        {massDlState.cancelled ? 'Descărcare Anulată' : 'Descărcare Completă!'}
-                      </h3>
-                      
-                      <p style={{ color: '#a0a0a0', fontSize: '0.95rem', margin: '0 0 25px 0' }}>
-                        {massDlState.completedCount || 0} piese descărcate • {massDlState.failedCount || 0} eșuate
-                        {massDlState.error && <span style={{ display: 'block', color: '#ef4444', marginTop: 10, padding: 10, background: 'rgba(239,68,68,0.1)', borderRadius: 6, fontSize: '0.85rem' }}>Eroare: {massDlState.error}</span>}
-                      </p>
-                      
-                      <div style={{ display: 'flex', gap: 10 }}>
-                        {massDlState.zipPath && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
-                          <button onClick={() => window.location.href = `/api/download-file?file=${encodeURIComponent(massDlState.zipPath)}`} style={{ flex: 1.5, padding: '12px', background: '#1DB954', border: 'none', color: '#000', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                            Salvează ZIP
-                          </button>
-                        )}
-                        <button onClick={openFolder} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
-                          <FolderOpen size={16} style={{ verticalAlign: 'text-bottom', marginRight: 4 }} /> Deschide
-                        </button>
-                        <button onClick={() => { setMassDlState(null); setMassFetchInfo(null); }} style={{ flex: 1, padding: '12px', background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
-                          Nouă
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </motion.div>
-              ) : (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                  {/* Header */}
-                  <div style={{ display: 'flex', gap: 20, background: 'rgba(0,0,0,0.2)', padding: 15, borderRadius: 10 }}>
-                    {massFetchInfo.playlistCover ? (
-                      <img src={massFetchInfo.playlistCover} alt="Cover" style={{ width: 80, height: 80, borderRadius: 10, objectFit: 'cover', boxShadow: '0 8px 16px rgba(0,0,0,0.3)' }} />
-                    ) : (
-                      <div style={{ width: 80, height: 80, borderRadius: 10, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.3)' }}><Music size={32} color="#a0a0a0" /></div>
-                    )}
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
-                      <h4 style={{ margin: '0 0 4px 0', color: '#fff', fontSize: '1.1rem', fontWeight: 600 }}>{massFetchInfo.playlistName}</h4>
-                      <div style={{ color: '#1DB954', fontSize: '0.85rem', marginBottom: 10, fontWeight: 500 }}>by {massFetchInfo.owner || 'Unknown'}</div>
-                      
-                      <div style={{ display: 'flex', gap: 15, color: '#a0a0a0', fontSize: '0.85rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Music size={14} /> {massFetchInfo.totalTracks} tracks</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={14} /> {fmtTotalDuration(massFetchInfo.tracks.reduce((acc, t) => acc + (t.durationMs || 0), 0))}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><HardDrive size={14} /> ~{estimateSize(massFetchInfo.tracks.reduce((acc, t) => acc + (t.durationMs || 0), 0), AUDIO_FORMATS.find(f => f.id === massFormat)?.kbps || 320)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.1)' }} />
-
-                  {/* Metadata Sources */}
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: '#a0a0a0', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, letterSpacing: 0.5 }}><Database size={13} /> METADATA SOURCES</div>
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      {(() => {
-                        const counts = {
-                          spotify: massFetchInfo.tracks.filter(t => t.metadataSource === 'spotify').length,
-                          itunes: massFetchInfo.tracks.filter(t => t.metadataSource === 'itunes').length,
-                          yt: massFetchInfo.tracks.filter(t => t.metadataSource === 'youtube_music').length,
-                        };
-                        return (
-                          <>
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, border: `1px solid ${counts.spotify > 0 ? '#1DB954' : 'rgba(255,255,255,0.05)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: counts.spotify > 0 ? '#1DB954' : '#666', fontSize: '0.75rem', fontWeight: 600 }}>
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" /></svg>
-                                Spotify API
-                              </div>
-                              <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} style={{ fontSize: '1.2rem', color: counts.spotify > 0 ? '#fff' : '#666', fontWeight: 'bold' }}>{counts.spotify}</motion.div>
-                            </motion.div>
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, border: `1px solid ${counts.itunes > 0 ? '#fb923c' : 'rgba(255,255,255,0.05)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: counts.itunes > 0 ? '#fb923c' : '#666', fontSize: '0.75rem', fontWeight: 600 }}>
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M17.05 15.48c-.02-2.85 2.33-4.22 2.44-4.29-1.32-1.93-3.38-2.19-4.1-2.23-1.75-.18-3.41 1.03-4.3 1.03-.89 0-2.27-1.01-3.73-.98-1.9.03-3.66 1.1-4.63 2.8-1.97 3.41-.5 8.45 1.41 11.22.94 1.35 2.05 2.88 3.51 2.83 1.42-.05 1.95-.92 3.66-.92 1.7 0 2.19.92 3.68.89 1.51-.03 2.48-1.4 3.41-2.76 1.07-1.56 1.51-3.08 1.53-3.16-.03-.01-2.85-1.1-2.88-4.43zM14.65 5.54c.78-.94 1.3-2.25 1.16-3.54-1.11.04-2.47.74-3.27 1.69-.71.84-1.34 2.18-1.18 3.44 1.24.1 2.51-.65 3.29-1.59z"/></svg>
-                                iTunes
-                              </div>
-                              <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} style={{ fontSize: '1.2rem', color: counts.itunes > 0 ? '#fff' : '#666', fontWeight: 'bold' }}>{counts.itunes}</motion.div>
-                            </motion.div>
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ flex: 1, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12, border: `1px solid ${counts.yt > 0 ? '#f43f5e' : 'rgba(255,255,255,0.05)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: counts.yt > 0 ? '#f43f5e' : '#666', fontSize: '0.75rem', fontWeight: 600 }}>
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M21.582 6.186a2.684 2.684 0 00-1.884-1.898C17.983 3.8 12 3.8 12 3.8s-5.983 0-7.698.488A2.684 2.684 0 002.418 6.186C1.94 7.915 1.94 12 1.94 12s0 4.085.478 5.814a2.684 2.684 0 001.884 1.898C5.983 20.2 12 20.2 12 20.2s5.983 0 7.698-.488a2.684 2.684 0 001.884-1.898C22.06 16.085 22.06 12 22.06 12s0-4.085-.478-5.814zM9.913 14.894V9.106l5.244 2.894-5.244 2.894z"/></svg>
-                                YT Music
-                              </div>
-                              <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} style={{ fontSize: '1.2rem', color: counts.yt > 0 ? '#fff' : '#666', fontWeight: 'bold' }}>{counts.yt}</motion.div>
-                            </motion.div>
-                          </>
-                        )
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                    <select 
-                      value={massFormat} 
-                      onChange={(e) => setMassFormat(e.target.value)}
-                      style={{ flex: 1, padding: '12px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, outline: 'none', cursor: 'pointer' }}
-                    >
-                      {AUDIO_FORMATS.map(f => (
-                        <option key={f.id} value={f.id}>{f.label} - {f.sub}</option>
-                      ))}
-                    </select>
-                    <button onClick={startMassDownload} style={{ flex: 1.5, padding: '12px', background: '#1DB954', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s', ':hover': { background: '#1ed760' } }}>
-                      Începe descărcarea
+                    <button disabled={isExtracting} onClick={handleMassFetch} className="sp-mass-fetch-btn">
+                      {isExtracting ? (
+                        <><Loader2 size={18} className="sp-spin" /> Se scaneazÄƒ playlist-ul...</>
+                      ) : (
+                        <><Download size={18} /> Preia toate piesele</>
+                      )}
                     </button>
-                  </div>
-                </motion.div>
-              )}
-            </motion.div>
-          )}
-        </motion.div>
 
-        {/* ── Error ── */}
-        <AnimatePresence>
-          {fetchStatus === 'error' && (
-            <motion.div className="sp-error-card" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-              <AlertCircle size={17} />
-              <span>{fetchError}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ── Info Card ── */}
-        <AnimatePresence>
-          {info && fetchStatus === 'done' && (
-            <motion.div className="sp-info-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-
-              {/* Thumbnail + meta top */}
-              <div className="sp-info-top">
-                <div className="sp-info-thumb-wrap">
-                  {info.coverUrl ? (
-                    <img src={info.coverUrl} alt={info.title} className="sp-info-thumb" />
-                  ) : (
-                    <div className="sp-info-thumb-fallback"><Music size={28} /></div>
-                  )}
-                  <SpotifyBadge type={info.type} />
-                </div>
-
-                <div className="sp-info-meta">
-                  <h3 className="sp-info-title">{info.title}</h3>
-                  {info.artist && <p className="sp-info-artist">{info.artist}</p>}
-                  {info.owner && <p className="sp-info-owner"><Users size={12} /> {info.owner}</p>}
-
-                  <div className="sp-info-pills">
-                    {info.releaseDate && (
-                      <span className="sp-info-pill"><Calendar size={11} /> {info.releaseDate.slice(0, 4)}</span>
-                    )}
-                    {info.totalTracks > 1 && info.type !== 'track' && (
-                      <span className="sp-info-pill">
-                        <Hash size={11} /> 
-                        {info.trackCount < info.totalTracks 
-                          ? `${info.trackCount} / ${info.totalTracks} tracks`
-                          : `${info.trackCount} tracks`}
-                      </span>
-                    )}
-                    {info.type === 'track' && info.totalTracks > 1 && (
-                      <span className="sp-info-pill">
-                        <Hash size={11} /> 
-                        Track {info.trackNumber} / {info.totalTracks}
-                      </span>
-                    )}
-                    {info.durationMs > 0 && (
-                      <span className="sp-info-pill"><Clock size={11} /> {fmtDuration(info.durationMs)}</span>
-                    )}
-                    {info.totalDurationMs > 0 && (
-                      <span className="sp-info-pill"><Clock size={11} /> {fmtTotalDuration(info.totalDurationMs)}</span>
-                    )}
-                    {info.album && info.type === 'track' && (
-                      <span className="sp-info-pill sp-info-pill--album"><Disc size={11} /> {info.album}</span>
-                    )}
-                  </div>
-
-                  {info.type === 'track' && info.popularity > 0 && (
-                    <PopularityMeter value={info.popularity} />
-                  )}
-
-                  {info.description && (
-                    <p className="sp-info-desc">{info.description.replace(/<[^>]*>/g, '').slice(0, 120)}{info.description.length > 120 ? '…' : ''}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Tracklist (album/playlist) */}
-              {info.tracks?.length > 1 && (
-                info.type === 'playlist' ? (
-                  <div className="sp-playlist-panel">
-                    <div className="sp-playlist-panel-top">
-                      <div className="sp-playlist-panel-icon">
-                        <ListVideo size={20} />
-                      </div>
-                      <div>
-                        <span className="sp-eyebrow">PLAYLIST GĂSIT</span>
-                        <strong>{info.title}</strong>
-                      </div>
-                      <div className="sp-playlist-count">
-                        {info.totalTracks}
-                        <small>MELODI{info.totalTracks !== 1 && 'I'}</small>
-                      </div>
-                    </div>
-
-                    <div className="sp-playlist-preview">
-                      {tracksToShow.map((track, i) => (
-                        <div key={i} className="sp-playlist-preview-row">
-                          <span>{String(track.trackNumber ?? i + 1).padStart(2, '0')}</span>
-                          <strong>{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</strong>
-                          <small>{fmtDuration(track.durationMs)}</small>
-                        </div>
-                      ))}
-                      {info.totalTracks > 5 && !showAllTracks && (
-                        <div className="sp-playlist-utility" onClick={() => setShowAllTracks(true)} style={{ cursor: 'pointer', padding: '0.5rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', textAlign: 'center', marginTop: '0.5rem' }}>
-                          <Music size={12} style={{ marginRight: '6px' }} />
-                          Afișează încă {info.totalTracks - 5} melodii
-                        </div>
-                      )}
-                      {showAllTracks && info.totalTracks > info.tracks.length && (
-                        <div className="sp-playlist-utility" style={{ padding: '0.5rem', color: '#9ca3af', textAlign: 'center', marginTop: '0.5rem' }}>
-                          (Spotify ascunde restul de {info.totalTracks - info.tracks.length} piese. Loghează-te în Setări cu API keys pentru a le vedea pe toate.)
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="sp-tracklist">
-                    <div className="sp-tracklist-header">
-                      <span className="sp-tracklist-title"><List size={13} /> Tracks</span>
-                      <span className="sp-tracklist-count">{info.trackCount} songs</span>
-                    </div>
-                    <div className="sp-tracklist-body">
-                      {tracksToShow.map((track, i) => (
-                        <div key={i} className="sp-tracklist-row">
-                          <span className="sp-tracklist-idx">{String(track.index ?? track.trackNumber ?? i + 1).padStart(2, '0')}</span>
-                          <div className="sp-tracklist-info">
-                            <span className="sp-tracklist-name">{track.title}</span>
-                            {track.artist && track.artist !== info.artist && (
-                              <span className="sp-tracklist-sub">{track.artist}</span>
+                    <AnimatePresence>
+                      {massFetchError && (
+                        <motion.div className="sp-mass-error" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                          <div style={{ flex: 1 }}>
+                            {massFetchError}
+                            {massFetchError.includes('SPOTIFY_403') && (
+                              <button onClick={() => {
+                                const clientId = localStorage.getItem('spotify_client_id');
+                                if (!clientId) return alert('Please set your Client ID in Settings first!');
+                                const redirectUri = window.location.origin + '/';
+                                const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+                                window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true&_cb=${Date.now()}`;
+                              }} className="sp-mass-fetch-btn" style={{ marginTop: 10 }}>
+                                <User size={16} /> Login to Spotify
+                              </button>
                             )}
                           </div>
-                          <span className="sp-tracklist-dur">{fmtDuration(track.durationMs)}</span>
-                        </div>
-                      ))}
-                      {info.type !== 'playlist' && info.trackCount > 5 && !showAllTracks && (
-                        <div className="sp-tracklist-utility" onClick={() => setShowAllTracks(true)} style={{ cursor: 'pointer' }}>
-                          <Music size={12} />
-                          și încă {info.trackCount - 5} melodii descărcabile... (Apasă pentru a vedea tot)
-                        </div>
+                        </motion.div>
                       )}
-                      {info.type !== 'playlist' && info.trackCount < info.totalTracks && (
-                        <div className="sp-tracklist-utility" style={{ color: '#fb923c', background: 'rgba(251,146,60,0.1)' }}>
-                          <AlertCircle size={12} />
-                          + alte {info.totalTracks - info.trackCount} melodii ascunse/indisponibile
+                    </AnimatePresence>
+                  </motion.div>
+                ) : massDlState ? (
+                  <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+                    {!massDlState.done ? (
+                      <div className="sp-mass-progress">
+                        <div className="sp-mass-vinyl-wrap">
+                          <motion.img
+                            src={massDlState.coverUrl || massFetchInfo?.playlistCover || 'https://via.placeholder.com/150'}
+                            animate={{ rotate: 360 }}
+                            transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
+                            className="sp-mass-vinyl"
+                          />
+                          <div className="sp-mass-vinyl-hole" />
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                        <div className="sp-mass-current-title">{massDlState.title || 'Se pregÄƒteÈ™te...'}</div>
+                        <div className="sp-mass-current-artist">{massDlState.artist || 'AÈ™teptare...'}</div>
+                        {massDlState.status && <div className="sp-mass-current-status">{massDlState.status}</div>}
 
-        {/* ── Download Action ── */}
-        <AnimatePresence>
-          {info && fetchStatus === 'done' && !downloadState && (
-            <motion.div className="sp-dl-actions" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <button
-                className={`sp-dl-btn ${info.trackCount === 1 ? 'sp-single-dl-btn' : 'sp-playlist-dl-btn'}`}
-                onClick={openDownloadModal}
-              >
-                {info.trackCount > 1 ? <><List size={22} /> Descarcă playlistul</> : <><Download size={22} /> Descarcă acum</>}
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ── Download Modal ── */}
-        <AnimatePresence>
-          {showDownloadModal && info && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="sp-modal-overlay"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="sp-modal"
-              >
-                <h3 className="sp-modal-title">
-                  Setări descărcare {info.trackCount > 1 && 'Playlist'}
-                </h3>
-
-                <div className="sp-modal-settings">
-                  <div className="sp-setting-group">
-                    <span className="sp-setting-label">Formatul dorit</span>
-                    <div className="sp-format-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-                      {AUDIO_FORMATS.map(fmt => (
-                        <button
-                          key={fmt.id}
-                          className={`sp-format-card ${selectedFormat === fmt.id ? 'sp-format-card--active' : ''}`}
-                          onClick={() => setSelectedFormat(fmt.id)}
-                        >
-                          <div className="sp-format-top-row">
-                            <span className="sp-format-label">{fmt.label}</span>
-                            {fmt.id === 'mp3_320' && <span className="sp-format-rec">Best</span>}
+                        <div className="sp-mass-progress-bars">
+                          <div className="sp-mass-progress-row">
+                            <span>{massDlState.current} / {massDlState.total} piese</span>
+                            <span>{massDlState.percent || 0}%</span>
                           </div>
-                          <span className="sp-format-sub">{fmt.sub}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {info.trackCount > 1 && info.tracks && (
-                    <div className="sp-track-selection-section">
-                      <div className="sp-track-selection-header">
-                        <label className="sp-modal-label">
-                          {info.type === 'playlist' ? 'MELODIILE DIN PLAYLIST' : `SELECTEAZĂ MELODIILE (${selectedTracks.size} ALESE)`}
-                        </label>
-                        {info.type !== 'playlist' && (
-                          <div className="sp-track-utils">
-                            <button className="sp-track-util-btn" onClick={selectAllTracks}>Toate</button>
-                            <button className="sp-track-util-btn" onClick={deselectAllTracks}>Niciuna</button>
+                          <div className="sp-mass-progress-bar-track">
+                            <motion.div className="sp-mass-progress-bar-fill" animate={{ width: `${massDlState.percent || 0}%` }} transition={{ duration: 0.3 }} />
                           </div>
-                        )}
+                          <div className="sp-mass-track-bar-track">
+                            <motion.div className="sp-mass-track-bar-fill" animate={{ width: `${massDlState.trackProgress || 0}%` }} transition={{ duration: 0.1 }} />
+                          </div>
+                        </div>
+
+                        <div className="sp-mass-stats-row">
+                          <div className="sp-mass-stat-item"><CheckCircle2 size={14} color="#1DB954" /><span style={{ color: '#fff' }}>{massDlState.current ? massDlState.current - 1 - (massDlState.failed || 0) : 0}</span> ok</div>
+                          <div className="sp-mass-stat-item"><AlertCircle size={14} color={massDlState.failed ? '#ef4444' : '#6b7280'} /><span style={{ color: massDlState.failed ? '#ef4444' : '#fff' }}>{massDlState.failed || 0}</span> failed</div>
+                          <div className="sp-mass-stat-item"><Clock size={14} color="#60a5fa" /><span style={{ color: '#fff' }}>{massDlState.estimatedSecondsRemaining ? `~${Math.ceil(massDlState.estimatedSecondsRemaining / 60)}m` : '...'}</span></div>
+                        </div>
+
+                        <button onClick={cancelMassDownload} className="sp-mass-cancel-btn">AnuleazÄƒ descÄƒrcarea</button>
                       </div>
-                      <div className="track-list">
-                        {info.tracks?.slice(0, info.type === 'playlist' ? 5 : undefined).map((track) => {
-                          const isSelected = info.type === 'playlist' || selectedTracks.has(track.trackNumber);
+                    ) : (
+                      <motion.div className="sp-mass-done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+                        <motion.div className="sp-mass-done-icon" style={{ background: massDlState.cancelled ? 'rgba(239,68,68,0.1)' : 'rgba(29,185,84,0.1)' }} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
+                          {massDlState.cancelled ? <AlertCircle size={32} color="#ef4444" /> : <CheckCircle2 size={32} color="#1DB954" />}
+                        </motion.div>
+                        <h3 className="sp-mass-done-title">{massDlState.cancelled ? 'DescÄƒrcare AnulatÄƒ' : 'DescÄƒrcare CompletÄƒ!'}</h3>
+                        <p className="sp-mass-done-sub">{massDlState.completedCount || 0} piese descÄƒrcate Â· {massDlState.failedCount || 0} eÈ™uate</p>
+                        {massDlState.error && <div className="sp-mass-done-error">Eroare: {massDlState.error}</div>}
+                        <div className="sp-mass-done-actions">
+                          {massDlState.zipPath && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                            <button onClick={() => window.location.href = `/api/download-file?file=${encodeURIComponent(massDlState.zipPath)}`} className="sp-mass-save-btn">SalveazÄƒ ZIP</button>
+                          )}
+                          <button onClick={openFolder} className="sp-mass-open-btn"><FolderOpen size={15} style={{ marginRight: 4 }} /> Deschide</button>
+                          <button onClick={() => { setMassDlState(null); setMassFetchInfo(null); }} className="sp-mass-new-btn">NouÄƒ</button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div className="sp-mass-result" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                    <div className="sp-mass-result-header">
+                      {massFetchInfo.playlistCover ? (
+                        <img src={massFetchInfo.playlistCover} alt="Cover" className="sp-mass-cover" />
+                      ) : (
+                        <div className="sp-mass-cover-placeholder"><Music size={32} color="#6b7280" /></div>
+                      )}
+                      <div className="sp-mass-meta">
+                        <div className="sp-mass-name">{massFetchInfo.playlistName}</div>
+                        <div className="sp-mass-owner">by {massFetchInfo.owner || 'Unknown'}</div>
+                        <div className="sp-mass-stats">
+                          <div className="sp-mass-stat"><Music size={13} /> {massFetchInfo.totalTracks} tracks</div>
+                          <div className="sp-mass-stat"><Clock size={13} /> {fmtTotalDuration(massFetchInfo.tracks.reduce((a, t) => a + (t.durationMs || 0), 0))}</div>
+                          <div className="sp-mass-stat"><HardDrive size={13} /> ~{estimateSize(massFetchInfo.tracks.reduce((a, t) => a + (t.durationMs || 0), 0), AUDIO_FORMATS.find(f => f.id === massFormat)?.kbps || 320)}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="sp-meta-sources">
+                      <div className="sp-meta-sources-label"><Database size={12} /> Metadata Sources</div>
+                      <div className="sp-meta-sources-grid">
+                        {(() => {
+                          const counts = {
+                            spotify: massFetchInfo.tracks.filter(t => t.metadataSource === 'spotify').length,
+                            itunes: massFetchInfo.tracks.filter(t => t.metadataSource === 'itunes').length,
+                            yt: massFetchInfo.tracks.filter(t => t.metadataSource === 'youtube_music').length,
+                          };
                           return (
-                            <div
-                              key={track.trackNumber}
-                              className={`sp-track-item ${isSelected ? 'selected' : ''}`}
-                              onClick={() => info.type !== 'playlist' && toggleTrack(track.trackNumber)}
-                              style={{ cursor: info.type === 'playlist' ? 'default' : 'pointer' }}
-                            >
-                              {info.type !== 'playlist' && <div className="sp-track-checkbox" />}
-                              <span className="sp-track-index">{track.trackNumber}.</span>
-                              <span className="sp-track-name">{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</span>
-                              <span className="sp-track-duration">{fmtDuration(track.durationMs)}</span>
-                            </div>
+                            <>
+                              <motion.div className="sp-meta-source-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ borderColor: counts.spotify > 0 ? '#1DB954' : 'rgba(255,255,255,0.05)' }}>
+                                <div className="sp-meta-source-name" style={{ color: counts.spotify > 0 ? '#1DB954' : '#666' }}>
+                                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" /></svg>
+                                  Spotify
+                                </div>
+                                <div className="sp-meta-source-count" style={{ color: counts.spotify > 0 ? '#fff' : '#666' }}>{counts.spotify}</div>
+                              </motion.div>
+                              <motion.div className="sp-meta-source-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ borderColor: counts.itunes > 0 ? '#fb923c' : 'rgba(255,255,255,0.05)' }}>
+                                <div className="sp-meta-source-name" style={{ color: counts.itunes > 0 ? '#fb923c' : '#666' }}>
+                                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M17.05 15.48c-.02-2.85 2.33-4.22 2.44-4.29-1.32-1.93-3.38-2.19-4.1-2.23-1.75-.18-3.41 1.03-4.3 1.03-.89 0-2.27-1.01-3.73-.98-1.9.03-3.66 1.1-4.63 2.8-1.97 3.41-.5 8.45 1.41 11.22.94 1.35 2.05 2.88 3.51 2.83 1.42-.05 1.95-.92 3.66-.92 1.7 0 2.19.92 3.68.89 1.51-.03 2.48-1.4 3.41-2.76 1.07-1.56 1.51-3.08 1.53-3.16-.03-.01-2.85-1.1-2.88-4.43z"/></svg>
+                                  iTunes
+                                </div>
+                                <div className="sp-meta-source-count" style={{ color: counts.itunes > 0 ? '#fff' : '#666' }}>{counts.itunes}</div>
+                              </motion.div>
+                              <motion.div className="sp-meta-source-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ borderColor: counts.yt > 0 ? '#f43f5e' : 'rgba(255,255,255,0.05)' }}>
+                                <div className="sp-meta-source-name" style={{ color: counts.yt > 0 ? '#f43f5e' : '#666' }}>
+                                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M21.582 6.186a2.684 2.684 0 00-1.884-1.898C17.983 3.8 12 3.8 12 3.8s-5.983 0-7.698.488A2.684 2.684 0 002.418 6.186C1.94 7.915 1.94 12 1.94 12s0 4.085.478 5.814a2.684 2.684 0 001.884 1.898C5.983 20.2 12 20.2 12 20.2s5.983 0 7.698-.488a2.684 2.684 0 001.884-1.898C22.06 16.085 22.06 12 22.06 12s0-4.085-.478-5.814zM9.913 14.894V9.106l5.244 2.894-5.244 2.894z"/></svg>
+                                  YT Music
+                                </div>
+                                <div className="sp-meta-source-count" style={{ color: counts.yt > 0 ? '#fff' : '#666' }}>{counts.yt}</div>
+                              </motion.div>
+                            </>
                           );
-                        })}
-                        {info.type === 'playlist' && info.totalTracks > 5 && (
-                          <p style={{textAlign: 'center', marginTop: '10px', fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)'}}>
-                            ... și încă {info.totalTracks - 5} melodii...
-                          </p>
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="sp-mass-actions">
+                      <select value={massFormat} onChange={e => setMassFormat(e.target.value)} className="sp-mass-format-select">
+                        {AUDIO_FORMATS.map(f => <option key={f.id} value={f.id}>{f.label} - {f.sub}</option>)}
+                      </select>
+                      <button onClick={startMassDownload} className="sp-mass-start-btn">Începe descărcarea</button>
+                    </div>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* â”€â”€ Error â”€â”€ */}
+          <AnimatePresence>
+            {fetchStatus === 'error' && (
+              <motion.div className="sp-error-card" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+                <AlertCircle size={17} style={{ flexShrink: 0 }} />
+                <span>{fetchError}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* â”€â”€ Info Card â”€â”€ */}
+          <AnimatePresence>
+            {info && fetchStatus === 'done' && (
+              <motion.div className="sp-info-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+
+                <div className="sp-info-top">
+                  <div className="sp-info-thumb-wrap">
+                    {info.coverUrl ? (
+                      <img src={info.coverUrl} alt={info.title} className="sp-info-thumb" />
+                    ) : (
+                      <div className="sp-info-thumb-fallback"><Music size={28} /></div>
+                    )}
+                    <SpotifyBadge type={info.type} />
+                  </div>
+
+                  <div className="sp-info-meta">
+                    <h3 className="sp-info-title">{info.title}</h3>
+                    {info.artist && <p className="sp-info-artist">{info.artist}</p>}
+                    {info.owner && <p className="sp-info-owner"><Users size={12} /> {info.owner}</p>}
+
+                    <div className="sp-info-pills">
+                      {info.releaseDate && (
+                        <span className="sp-info-pill"><Calendar size={11} /> {info.releaseDate.slice(0, 4)}</span>
+                      )}
+                      {info.totalTracks > 1 && info.type !== 'track' && (
+                        <span className="sp-info-pill">
+                          <Hash size={11} />
+                          {info.trackCount < info.totalTracks
+                            ? `${info.trackCount} / ${info.totalTracks} tracks`
+                            : `${info.trackCount} tracks`}
+                        </span>
+                      )}
+                      {info.type === 'track' && info.totalTracks > 1 && (
+                        <span className="sp-info-pill">
+                          <Hash size={11} /> Track {info.trackNumber} / {info.totalTracks}
+                        </span>
+                      )}
+                      {info.durationMs > 0 && (
+                        <span className="sp-info-pill"><Clock size={11} /> {fmtDuration(info.durationMs)}</span>
+                      )}
+                      {info.totalDurationMs > 0 && (
+                        <span className="sp-info-pill"><Clock size={11} /> {fmtTotalDuration(info.totalDurationMs)}</span>
+                      )}
+                      {info.album && info.type === 'track' && (
+                        <span className="sp-info-pill sp-info-pill--album"><Disc size={11} /> {info.album}</span>
+                      )}
+                    </div>
+
+                    {info.type === 'track' && info.popularity > 0 && (
+                      <PopularityMeter value={info.popularity} />
+                    )}
+
+                    {info.description && (
+                      <p className="sp-info-desc">{info.description.replace(/<[^>]*>/g, '').slice(0, 120)}{info.description.length > 120 ? 'â€¦' : ''}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tracklist */}
+                {info.tracks?.length > 1 && (
+                  info.type === 'playlist' ? (
+                    <div className="sp-playlist-panel">
+                      <div className="sp-playlist-panel-top">
+                        <div className="sp-playlist-panel-icon"><ListVideo size={20} /></div>
+                        <div>
+                          <span className="sp-eyebrow">PLAYLIST GÄ‚SIT</span>
+                          <strong>{info.title}</strong>
+                        </div>
+                        <div className="sp-playlist-count">
+                          {info.totalTracks}
+                          <small>MELODI{info.totalTracks !== 1 && 'I'}</small>
+                        </div>
+                      </div>
+                      <div className="sp-playlist-preview">
+                        {tracksToShow.map((track, i) => (
+                          <div key={i} className="sp-playlist-preview-row">
+                            <span>{String(track.trackNumber ?? i + 1).padStart(2, '0')}</span>
+                            <strong>{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</strong>
+                            <small>{fmtDuration(track.durationMs)}</small>
+                          </div>
+                        ))}
+                        {info.totalTracks > 5 && !showAllTracks && (
+                          <div className="sp-playlist-utility" onClick={() => setShowAllTracks(true)}>
+                            <Music size={12} /> AfiÈ™eazÄƒ Ã®ncÄƒ {info.totalTracks - 5} melodii
+                          </div>
+                        )}
+                        {showAllTracks && info.totalTracks > info.tracks.length && (
+                          <div className="sp-playlist-utility" style={{ color: '#9ca3af', cursor: 'default' }}>
+                            (Spotify ascunde restul pieselor. LogheazÄƒ-te pentru toate.)
+                          </div>
                         )}
                       </div>
                     </div>
-                  )}
-
-                  {sizeEstimate && (
-                    <div className="sp-format-summary" style={{ marginTop: '1rem' }}>
-                      <Archive size={13} />
-                      <span>Estimated size: <strong>{sizeEstimate}</strong></span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="sp-modal-actions">
-                  <button className="sp-modal-cancel" onClick={() => setShowDownloadModal(false)}>
-                    Anulează
-                  </button>
-                  <button
-                    className="sp-modal-confirm"
-                    onClick={handleDownload}
-                    disabled={info.trackCount > 1 && selectedTracks.size === 0}
-                  >
-                    Începe descărcarea
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ── Download Progress ── */}
-        <AnimatePresence>
-          {downloadState && (
-            <motion.div className="sp-progress-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-
-              {/* Animated album art while downloading */}
-              {isDownloading && info?.thumbnail && (
-                <div className="sp-dl-art-row">
-                  <div className="sp-dl-art-wrapper">
-                    <img src={info.thumbnail} alt="" className="sp-dl-art" />
-                    <div className="sp-dl-art-pulse" />
-                  </div>
-                  <div className="sp-dl-meta">
-                    <div className="sp-dl-title">{downloadState.trackTitle || info.title}</div>
-                    <div className="sp-dl-artist">{downloadState.trackArtist || info.artist}</div>
-                    <div className="sp-dl-status-row">
-                      <EqualizerBars active={isDownloading} />
-                      <span className="sp-dl-status-text">{downloadState.status}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Overall progress bar */}
-              {isDownloading && (
-                <>
-                  <div className="sp-progress-label-row">
-                    <span className="sp-progress-label">
-                      {downloadState.totalTracks > 1
-                        ? `Track ${downloadState.currentTrack || 0} of ${downloadState.totalTracks}`
-                        : 'Downloading...'}
-                    </span>
-                    <span className="sp-progress-pct">{Math.round(downloadState.progress || 0)}%</span>
-                  </div>
-                  <div className="sp-progress-bar-track">
-                    <motion.div
-                      className="sp-progress-bar-fill"
-                      animate={{ width: `${downloadState.progress || 0}%` }}
-                      transition={{ duration: 0.4 }}
-                    />
-                  </div>
-                  {downloadState.totalTracks > 1 && (
-                    <div className="sp-progress-sub">
-                      <div className="sp-progress-bar-track sp-progress-bar-track--thin">
-                        <motion.div
-                          className="sp-progress-bar-fill sp-progress-bar-fill--track"
-                          animate={{ width: `${downloadState.trackProgress || 0}%` }}
-                          transition={{ duration: 0.3 }}
-                        />
+                  ) : (
+                    <div className="sp-tracklist">
+                      <div className="sp-tracklist-header">
+                        <span className="sp-tracklist-title"><List size={13} /> Tracks</span>
+                        <span className="sp-tracklist-count">{info.trackCount} songs</span>
+                      </div>
+                      <div className="sp-tracklist-body">
+                        {tracksToShow.map((track, i) => (
+                          <div key={i} className="sp-tracklist-row">
+                            <span className="sp-tracklist-idx">{String(track.index ?? track.trackNumber ?? i + 1).padStart(2, '0')}</span>
+                            <div className="sp-tracklist-info">
+                              <span className="sp-tracklist-name">{track.title}</span>
+                              {track.artist && track.artist !== info.artist && (
+                                <span className="sp-tracklist-sub">{track.artist}</span>
+                              )}
+                            </div>
+                            <span className="sp-tracklist-dur">{fmtDuration(track.durationMs)}</span>
+                          </div>
+                        ))}
+                        {info.type !== 'playlist' && info.trackCount > 5 && !showAllTracks && (
+                          <div className="sp-tracklist-utility" onClick={() => setShowAllTracks(true)} style={{ cursor: 'pointer' }}>
+                            <Music size={12} /> È™i Ã®ncÄƒ {info.trackCount - 5} melodii...
+                          </div>
+                        )}
+                        {info.type !== 'playlist' && info.trackCount < info.totalTracks && (
+                          <div className="sp-tracklist-utility" style={{ color: '#fb923c' }}>
+                            <AlertCircle size={12} /> + {info.totalTracks - info.trackCount} indisponibile
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                  <button className="sp-cancel-btn" onClick={handleCancel}>
-                    <X size={14} /> Cancel
-                  </button>
-                </>
-              )}
+                  )
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Per-track list during multi-track download */}
-              {isDownloading && info?.tracks?.length > 1 && (
-                <div className="sp-dl-tracklist">
-                  {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).slice(0, 20).map((track, i) => (
-                    <TrackRow
-                      key={track.trackNumber}
-                      track={track}
-                            overrideUrl={trackOverrides[track.trackNumber - 1]}
-                            onOverrideChange={(val) => setTrackOverrides(prev => ({ ...prev, [track.trackNumber - 1]: val }))}
-                      status={trackStatuses[track.trackNumber - 1] || 'pending'}
-                      progress={track.trackNumber === downloadState.currentTrack ? downloadState.trackProgress : 0}
-                      errorText={trackErrors[track.trackNumber - 1]}
-                    />
-                  ))}
-                  {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length > 20 && (
-                    <div className="sp-dl-tracklist-more">+{info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length - 20} more tracks</div>
-                  )}
-                </div>
-              )}
+          {/* â”€â”€ Download Action â”€â”€ */}
+          <AnimatePresence>
+            {info && fetchStatus === 'done' && !downloadState && (
+              <motion.div className="sp-dl-actions" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <button
+                  className={`sp-dl-btn ${info.trackCount === 1 ? 'sp-single-dl-btn' : 'sp-playlist-dl-btn'}`}
+                  onClick={openDownloadModal}
+                >
+                  {info.trackCount > 1 ? <><List size={22} /> Descarcă playlistul</> : <><Download size={22} /> Descarcă acum</>}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Error */}
-              {hasError && (
-                <div className="sp-result sp-result--error">
-                  <AlertCircle size={20} />
-                  <div>
-                    <strong>Download Failed</strong>
-                    <p>{downloadState.error}</p>
-                  </div>
-                  <div className="sp-result-actions">
-                    <button className="sp-retry-btn" onClick={() => { setDownloadState(null); setTrackStatuses({}); }}>Try Again</button>
-                    <button className="sp-secondary-btn" onClick={reset}>New URL</button>
-                  </div>
-                </div>
-              )}
+          {/* â”€â”€ Download Modal â”€â”€ */}
+          <AnimatePresence>
+            {showDownloadModal && info && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="sp-modal-overlay">
+                <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="sp-modal">
+                  <h3 className="sp-modal-title">SetÄƒri descÄƒrcare {info.trackCount > 1 && 'Playlist'}</h3>
+                  <div className="sp-modal-settings">
+                    <div className="sp-setting-group">
+                      <span className="sp-setting-label">Formatul dorit</span>
+                      <div className="sp-format-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                        {AUDIO_FORMATS.map(fmt => (
+                          <button key={fmt.id} className={`sp-format-card ${selectedFormat === fmt.id ? 'sp-format-card--active' : ''}`} onClick={() => setSelectedFormat(fmt.id)}>
+                            <div className="sp-format-top-row">
+                              <span className="sp-format-label">{fmt.label}</span>
+                              {fmt.id === 'mp3_320' && <span className="sp-format-rec">Best</span>}
+                            </div>
+                            <span className="sp-format-sub">{fmt.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              {/* Success */}
-              {isSuccess && (
-                <div className="sp-result sp-result--success">
-                  <div className="sp-success-icon-wrap">
-                    <CheckCircle2 size={32} className="sp-success-icon" />
-                    <div className="sp-success-ring" />
-                  </div>
-                  <div className="sp-success-info">
-                    <strong>Download Complete!</strong>
-                    <p className="sp-success-filename">{downloadState.finalFilename}</p>
-                    {downloadState.completedTracks > 1 && (
-                      <p className="sp-success-sub">
-                        {downloadState.completedTracks} tracks downloaded
-                        {downloadState.failedTracks > 0 && ` · ${downloadState.failedTracks} failed`}
-                      </p>
+                    {info.trackCount > 1 && info.tracks && (
+                      <div className="sp-track-selection-section">
+                        <div className="sp-track-selection-header">
+                          <label className="sp-modal-label">
+                            {info.type === 'playlist' ? 'MELODIILE DIN PLAYLIST' : `SELECTEAZÄ‚ (${selectedTracks.size} ALESE)`}
+                          </label>
+                          {info.type !== 'playlist' && (
+                            <div className="sp-track-utils">
+                              <button className="sp-track-util-btn" onClick={selectAllTracks}>Toate</button>
+                              <button className="sp-track-util-btn" onClick={deselectAllTracks}>Niciuna</button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="sp-track-list">
+                          {info.tracks?.slice(0, info.type === 'playlist' ? 5 : undefined).map(track => {
+                            const isSelected = info.type === 'playlist' || selectedTracks.has(track.trackNumber);
+                            return (
+                              <div key={track.trackNumber} className={`sp-track-item ${isSelected ? 'selected' : ''}`}
+                                onClick={() => info.type !== 'playlist' && toggleTrack(track.trackNumber)}
+                                style={{ cursor: info.type === 'playlist' ? 'default' : 'pointer' }}>
+                                {info.type !== 'playlist' && <div className="sp-track-checkbox" />}
+                                <span className="sp-track-index">{track.trackNumber}.</span>
+                                <span className="sp-track-name">{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</span>
+                                <span className="sp-track-duration">{fmtDuration(track.durationMs)}</span>
+                              </div>
+                            );
+                          })}
+                          {info.type === 'playlist' && info.totalTracks > 5 && (
+                            <p style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
+                              ... È™i Ã®ncÄƒ {info.totalTracks - 5} melodii
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {sizeEstimate && (
+                      <div className="sp-format-summary">
+                        <Archive size={13} />
+                        <span>Estimated size: <strong>{sizeEstimate}</strong></span>
+                      </div>
                     )}
                   </div>
-                  <div className="sp-result-actions">
-                    {downloadState.downloadUrl && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
-                      <a className="sp-download-link" href={downloadState.downloadUrl} download={downloadState.finalFilename}>
-                        <Download size={14} /> Save File
-                      </a>
-                    )}
-                    <button className="sp-open-folder-btn" onClick={openFolder}>
-                      <FolderOpen size={14} /> Open Folder
+
+                  <div className="sp-modal-actions">
+                    <button className="sp-modal-cancel" onClick={() => setShowDownloadModal(false)}>AnuleazÄƒ</button>
+                    <button className="sp-modal-confirm" onClick={handleDownload} disabled={info.trackCount > 1 && selectedTracks.size === 0}>
+                      ÃŽncepe descÄƒrcarea
                     </button>
-                    <button className="sp-retry-btn" onClick={reset}>New Download</button>
                   </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* â”€â”€ Download Progress â”€â”€ */}
+          <AnimatePresence>
+            {downloadState && (
+              <motion.div className="sp-progress-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+
+                {isDownloading && info?.thumbnail && (
+                  <div className="sp-dl-art-row">
+                    <div className="sp-dl-art-wrapper">
+                      <img src={info.thumbnail} alt="" className="sp-dl-art" />
+                      <div className="sp-dl-art-pulse" />
+                    </div>
+                    <div className="sp-dl-meta">
+                      <div className="sp-dl-title">{downloadState.trackTitle || info.title}</div>
+                      <div className="sp-dl-artist">{downloadState.trackArtist || info.artist}</div>
+                      <div className="sp-dl-status-row">
+                        <EqualizerBars active={isDownloading} />
+                        <span className="sp-dl-status-text">{downloadState.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isDownloading && (
+                  <>
+                    <div className="sp-progress-label-row">
+                      <span className="sp-progress-label">
+                        {downloadState.totalTracks > 1
+                          ? `Track ${downloadState.currentTrack || 0} of ${downloadState.totalTracks}`
+                          : 'Downloading...'}
+                      </span>
+                      <span className="sp-progress-pct">{Math.round(downloadState.progress || 0)}%</span>
+                    </div>
+                    <div className="sp-progress-bar-track">
+                      <motion.div className="sp-progress-bar-fill" animate={{ width: `${downloadState.progress || 0}%` }} transition={{ duration: 0.4 }} />
+                    </div>
+                    {downloadState.totalTracks > 1 && (
+                      <div className="sp-progress-sub">
+                        <div className="sp-progress-bar-track sp-progress-bar-track--thin">
+                          <motion.div className="sp-progress-bar-fill sp-progress-bar-fill--track" animate={{ width: `${downloadState.trackProgress || 0}%` }} transition={{ duration: 0.3 }} />
+                        </div>
+                      </div>
+                    )}
+                    <button className="sp-cancel-btn" onClick={handleCancel}><X size={14} /> Cancel</button>
+                  </>
+                )}
+
+                {isDownloading && info?.tracks?.length > 1 && (
+                  <div className="sp-dl-tracklist">
+                    {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).slice(0, 20).map(track => (
+                      <TrackRow
+                        key={track.trackNumber}
+                        track={track}
+                        overrideUrl={trackOverrides[track.trackNumber - 1]}
+                        onOverrideChange={val => setTrackOverrides(prev => ({ ...prev, [track.trackNumber - 1]: val }))}
+                        status={trackStatuses[track.trackNumber - 1] || 'pending'}
+                        progress={track.trackNumber === downloadState.currentTrack ? downloadState.trackProgress : 0}
+                        errorText={trackErrors[track.trackNumber - 1]}
+                      />
+                    ))}
+                    {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length > 20 && (
+                      <div className="sp-dl-tracklist-more">+{info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length - 20} more tracks</div>
+                    )}
+                  </div>
+                )}
+
+                {hasError && (
+                  <div className="sp-result sp-result--error">
+                    <AlertCircle size={20} />
+                    <div>
+                      <strong>Download Failed</strong>
+                      <p>{downloadState.error}</p>
+                      <div className="sp-result-actions">
+                        <button className="sp-retry-btn" onClick={() => { setDownloadState(null); setTrackStatuses({}); }}>Try Again</button>
+                        <button className="sp-secondary-btn" onClick={reset}>New URL</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isSuccess && (
+                  <div className="sp-result sp-result--success">
+                    <div className="sp-success-icon-wrap">
+                      <CheckCircle2 size={32} className="sp-success-icon" />
+                      <div className="sp-success-ring" />
+                    </div>
+                    <div className="sp-success-info">
+                      <strong>Download Complete!</strong>
+                      <p className="sp-success-filename">{downloadState.finalFilename}</p>
+                      {downloadState.completedTracks > 1 && (
+                        <p className="sp-success-sub">
+                          {downloadState.completedTracks} tracks downloaded
+                          {downloadState.failedTracks > 0 && ` Â· ${downloadState.failedTracks} failed`}
+                        </p>
+                      )}
+                      <div className="sp-result-actions">
+                        {downloadState.downloadUrl && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                          <a className="sp-download-link" href={downloadState.downloadUrl} download={downloadState.finalFilename}>
+                            <Download size={14} /> Save File
+                          </a>
+                        )}
+                        <button className="sp-open-folder-btn" onClick={openFolder}><FolderOpen size={14} /> Open Folder</button>
+                        <button className="sp-retry-btn" onClick={reset}>New Download</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+        </div>
+
+        {/* ── Artist Gallery Section ── */}
+        <div className="sp-gallery-section">
+          <div className="sp-gallery-title">Artist History</div>
+          <ArtistBubbles artists={historyArtists} onRemove={removeArtistFromHistory} />
+        </div>
+
+        {/* â”€â”€ Recent Downloads Section â”€â”€ */}
+        {history && history.length > 0 && (
+          <div className="sp-recent-section">
+            <div className="sp-recent-title">Recent Downloads</div>
+            <div className="sp-recent-list">
+              {history.slice(0, 5).map((item, i) => (
+                <div key={i} className="sp-recent-item" onClick={() => { setUrl(item.url); fetchInfo(item.url); }}>
+                  {item.thumbnail ? (
+                    <img src={item.thumbnail} alt={item.title} className="sp-recent-thumb" />
+                  ) : (
+                    <div className="sp-recent-thumb sp-recent-thumb-fallback"><Music size={16} /></div>
+                  )}
+                  <div className="sp-recent-info">
+                    <div className="sp-recent-song-title">{item.title}</div>
+                    <div className="sp-recent-artist">{item.artist || 'Unknown Artist'}</div>
+                  </div>
+                  <div className="sp-recent-type">
+                    <span className={`sp-feature-pill sp-feature-pill--${item.type}`}>{item.type}</span>
+                  </div>
+                  <button 
+                    className="sp-recent-delete" 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      removeFromHistory(item.url); 
+                    }}
+                    title="Remove from history"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
-              )}
+              ))}
+            </div>
+          </div>
+        )}
 
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* ── Spacer ── */}
+        <div style={{ height: '2rem' }} />
 
+        {/* ── FOOTER ── */}
+        <footer className="sp-footer">
+          <div className="sp-footer-inner">
+            <div className="sp-footer-brand">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style={{ color: '#1DB954' }}>
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+              </svg>
+              <div className="sp-footer-brand-dot" />
+              <span>Spotify Downloader</span>
+            </div>
+            <div className="sp-footer-links">
+              <span className="sp-footer-badge">
+                <HardDrive size={10} /> yt-dlp
+              </span>
+              <span className="sp-footer-badge">
+                <Music size={10} /> Spotify API
+              </span>
+              <span className="sp-footer-link">
+                <CheckCircle2 size={11} /> High Quality Audio
+              </span>
+            </div>
+          </div>
+          <div className="sp-footer-copy">Download for personal use only &middot; Respect artists and their work</div>
+        </footer>
+      </div>
+
+      {/* â”€â”€ My Playlists Modal â”€â”€ */}
       <AnimatePresence>
         {showPlaylists && (
-          <motion.div 
+          <motion.div
             className="sp-playlists-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={(e) => e.target === e.currentTarget && setShowPlaylists(false)}
+            onClick={e => e.target === e.currentTarget && setShowPlaylists(false)}
           >
-            <motion.div 
+            <motion.div
               className="sp-playlists-content"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -1800,17 +1757,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
             >
               <div className="sp-playlists-header">
                 <h2>My Playlists</h2>
-                {!accessToken ? (
-                <button className="sp-login-btn" onClick={() => setShowPlaylists(!showPlaylists)}>
-                  <User size={18} /> Login to Spotify
-                </button>
-              ) : (
-                <button className="sp-login-btn sp-logged-in-btn" onClick={() => setShowPlaylists(!showPlaylists)}>
-                  <User size={18} /> My Playlists
-                </button>
-              )}
+                <button className="sp-login-btn" onClick={() => setShowPlaylists(false)}><X size={16} /> Close</button>
               </div>
-              
+
               {myPlaylistsStatus === 'loading' && (
                 <div className="sp-pl-loading">
                   <Loader2 className="sp-spin" size={32} />
@@ -1820,10 +1769,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               {myPlaylistsStatus === 'error' && (
                 <div className="sp-pl-error">
                   <AlertCircle size={24} />
-                  <span>Failed to load playlists. Your token may have expired. Please log in again.</span>
+                  <span>Failed to load playlists. Please log in again.</span>
                 </div>
               )}
-              
               {myPlaylistsStatus === 'done' && (
                 <div className="sp-playlists-grid">
                   {myPlaylists?.map(p => (
@@ -1835,7 +1783,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                       <img src={p.images?.[0]?.url || 'https://via.placeholder.com/150'} alt="" />
                       <div className="sp-playlist-meta">
                         <div className="sp-playlist-title">{p.name}</div>
-                        <div className="sp-playlist-owner">{p.owner?.display_name} • {p.tracks?.total ?? '?'} tracks</div>
+                        <div className="sp-playlist-owner">{p.owner?.display_name} Â· {p.tracks?.total ?? '?'} tracks</div>
                       </div>
                     </div>
                   ))}
@@ -1845,13 +1793,6 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           </motion.div>
         )}
       </AnimatePresence>
-      </div>
-
-      {/* ── Right Panel: Artist Bubbles ── */}
-      <div className="sp-right-panel">
-        <ArtistBubbles artists={historyArtists} />
-      </div>
-      </div>
     </div>
   );
 }
