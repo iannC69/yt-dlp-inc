@@ -173,6 +173,88 @@ function clearSpotifyAuth() {
   localStorage.removeItem('spotify_expires_at');
 }
 
+// ── Predefined bubble layout positions (percentage-based for a clustered aesthetic) ──
+const BUBBLE_POSITIONS = [
+  { x: 40, y: 45, size: 170 }, // Main large (center-left)
+  { x: 60, y: 35, size: 145 }, // Second large (center-right)
+  { x: 55, y: 65, size: 115 }, // Bottom medium-large
+  { x: 75, y: 50, size: 95 },  // Right medium
+  { x: 38, y: 65, size: 80 },  // Bottom left
+  { x: 70, y: 20, size: 75 },  // Top right
+  { x: 42, y: 25, size: 65 },  // Top left
+  { x: 85, y: 35, size: 85 },  // Far right
+  { x: 50, y: 80, size: 60 },  // Far bottom
+  { x: 80, y: 68, size: 105 }, // Bottom right
+];
+
+function ArtistBubbles({ artists }) {
+  if (!artists || artists.length === 0) {
+    return (
+      <div className="sp-artist-bubbles sp-artist-bubbles--empty">
+        <div className="sp-bubbles-empty-hint">
+          <div className="sp-bubbles-empty-icon">
+            <User size={28} />
+          </div>
+          <span>Descarcă ceva<br/>ca să apară artiștii</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sp-artist-bubbles">
+      <motion.div 
+        className="sp-bubbles-field"
+        animate={{ rotate: [0, 3, -2, 0] }}
+        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        {artists.slice(0, 10).map((artist, i) => {
+          const pos = BUBBLE_POSITIONS[i % BUBBLE_POSITIONS.length];
+          const dx1 = (i % 3 === 0 ? 15 : i % 2 === 0 ? -12 : 8) + (i * 1.5);
+          const dx2 = (i % 2 === 0 ? -10 : i % 3 === 0 ? 12 : -15) - i;
+          const dy1 = (i % 2 === 0 ? 12 : i % 3 === 0 ? -14 : 10) + i;
+          const dy2 = (i % 3 === 0 ? -10 : i % 2 === 0 ? 15 : -8) - (i * 1.2);
+          
+          return (
+            <motion.div
+              key={artist.name + i}
+              className="sp-bubble"
+              style={{
+                left: `${pos.x}%`,
+                top: `${pos.y}%`,
+                width: pos.size,
+                height: pos.size,
+              }}
+              initial={{ opacity: 0, scale: 0 }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                x: [0, dx1, dx2, 0],
+                y: [0, dy1, dy2, 0],
+              }}
+              transition={{
+                opacity: { duration: 0.5, delay: i * 0.12 },
+                scale: { duration: 0.5, delay: i * 0.12, type: 'spring', bounce: 0.4 },
+                x: { duration: 15 + i * 1.5, repeat: Infinity, ease: 'easeInOut', delay: i * 0.2 },
+                y: { duration: 18 + i * 1.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 },
+              }}
+            >
+              {artist.thumbnail ? (
+                <img src={artist.thumbnail} alt={artist.name} className="sp-bubble-img" />
+              ) : (
+                <div className="sp-bubble-fallback">
+                  <User size={pos.size * 0.35} />
+                </div>
+              )}
+              <div className="sp-bubble-name">{artist.name}</div>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+    </div>
+  );
+}
+
 export default function SpotifyDownloader({ activeDownloadId }) {
   const [url, setUrl] = useState('');
   const [history, setHistory] = useState([]);
@@ -186,11 +268,11 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     } catch {}
   }, []);
 
-  const saveToHistory = (newUrl, title, thumbnail) => {
+  const saveToHistory = (newUrl, title, thumbnail, artist, artistThumbnail) => {
     if (!newUrl) return;
     setHistory(prev => {
       const filtered = prev.filter(item => item.url !== newUrl);
-      const updated = [{ url: newUrl, title: title || newUrl, thumbnail, date: Date.now() }, ...filtered].slice(0, 10);
+      const updated = [{ url: newUrl, title: title || newUrl, thumbnail, artist: artist || '', artistThumbnail: artistThumbnail || null, date: Date.now() }, ...filtered].slice(0, 10);
       localStorage.setItem('sp_history', JSON.stringify(updated));
       return updated;
     });
@@ -393,7 +475,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       } else {
         setSelectedTracks(new Set());
       }
-      saveToHistory(target, data.title || data.name, data.coverUrl || data.thumbnail || data.playlistCover);
+      saveToHistory(target, data.title || data.name, data.coverUrl || data.thumbnail || data.playlistCover, data.artist || data.owner || '', data.artistThumbnail || data.ownerThumbnail || null);
       setFetchStatus('done');
     } catch (e) {
       setFetchError(e.message || 'Could not fetch Spotify info.');
@@ -678,7 +760,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       const data = await res.json();
       if (res.ok) {
         setMassFetchInfo(data);
-        saveToHistory(bulkMeta, data.playlistName || data.title, data.playlistCover || data.coverUrl);
+        saveToHistory(bulkMeta, data.playlistName || data.title, data.playlistCover || data.coverUrl, data.owner || '', data.ownerThumbnail || null);
       } else {
         throw new Error(data.error || 'Failed to fetch playlist');
       }
@@ -816,6 +898,19 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const hasError = downloadState?.done && downloadState?.error;
   const isSuccess = downloadState?.done && !downloadState?.error;
 
+  const historyArtists = useMemo(() => {
+    const seen = new Set();
+    const artists = [];
+    for (const h of history) {
+      const name = h.artist || h.title || '';
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        artists.push({ name, thumbnail: h.artistThumbnail || null });
+      }
+    }
+    return artists;
+  }, [history]);
+
   return (
     <div className="sp-page">
       {/* Background orbs */}
@@ -823,6 +918,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       <div className="sp-orb sp-orb-2" />
       <div className="sp-orb sp-orb-3" />
 
+      <div className="sp-landscape">
       <div className="sp-container">
 
         {/* ── Hero ── */}
@@ -1329,12 +1425,18 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                     {info.releaseDate && (
                       <span className="sp-info-pill"><Calendar size={11} /> {info.releaseDate.slice(0, 4)}</span>
                     )}
-                    {info.totalTracks > 1 && (
+                    {info.totalTracks > 1 && info.type !== 'track' && (
                       <span className="sp-info-pill">
                         <Hash size={11} /> 
                         {info.trackCount < info.totalTracks 
                           ? `${info.trackCount} / ${info.totalTracks} tracks`
                           : `${info.trackCount} tracks`}
+                      </span>
+                    )}
+                    {info.type === 'track' && info.totalTracks > 1 && (
+                      <span className="sp-info-pill">
+                        <Hash size={11} /> 
+                        Track {info.trackNumber} / {info.totalTracks}
                       </span>
                     )}
                     {info.durationMs > 0 && (
@@ -1743,6 +1845,12 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
+
+      {/* ── Right Panel: Artist Bubbles ── */}
+      <div className="sp-right-panel">
+        <ArtistBubbles artists={historyArtists} />
+      </div>
       </div>
     </div>
   );

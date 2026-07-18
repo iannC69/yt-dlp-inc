@@ -212,13 +212,19 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
   const cacheKey = `${match[1]}_${match[2]}`
   const cache = loadCache()
   if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < 48 * 60 * 60 * 1000) {
-    console.log(`[spotify-api] Smart Caching HIT for ${cacheKey}`)
-    console.log('[spotify-api] Cached data:', JSON.stringify({
-      type: cache[cacheKey].data?.type,
-      title: cache[cacheKey].data?.title,
-      trackCount: cache[cacheKey].data?.trackCount
-    }))
-    return cache[cacheKey].data
+    const cachedData = cache[cacheKey].data;
+    // Bust cache if we don't have artistThumbnail (added recently)
+    if (cachedData && (cachedData.type === 'track' || cachedData.type === 'album') && cachedData.artistThumbnail === undefined) {
+      console.log(`[spotify-api] Cache BUST for ${cacheKey} due to missing artistThumbnail`);
+    } else {
+      console.log(`[spotify-api] Smart Caching HIT for ${cacheKey}`)
+      console.log('[spotify-api] Cached data:', JSON.stringify({
+        type: cachedData?.type,
+        title: cachedData?.title,
+        trackCount: cachedData?.trackCount
+      }))
+      return cachedData
+    }
   }
 
   const data = await _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret, accessToken)
@@ -249,6 +255,14 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
   if (type === 'track') {
     const track = await fetchWithRetry(`/v1/tracks/${id}`, clientId, clientSecret, accessToken)
     const artist = track.artists?.[0]?.name
+    const artistId = track.artists?.[0]?.id
+    let artistThumbnail = null
+    if (artistId) {
+      try {
+        const artistData = await fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken)
+        artistThumbnail = artistData.images?.[0]?.url || null
+      } catch(e) {}
+    }
     if (!artist) throw new Error(`Could not resolve artist for track: ${id}`)
     return {
       type: 'track',
@@ -262,7 +276,8 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       coverUrl: track.album.images?.[0]?.url || null,
       spotifyId: track.id,
       spotifyUrl: `https://open.spotify.com/track/${track.id}`,
-      durationMs: track.duration_ms
+      durationMs: track.duration_ms,
+      artistThumbnail
     }
   }
 
@@ -271,6 +286,14 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
     const market = accessToken ? '?market=from_token' : '?market=US'
     const album = await fetchWithRetry(`/v1/albums/${id}${market}`, clientId, clientSecret, accessToken)
     const artist = album.artists?.[0]?.name
+    const artistId = album.artists?.[0]?.id
+    let artistThumbnail = null
+    if (artistId) {
+      try {
+        const artistData = await fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken)
+        artistThumbnail = artistData.images?.[0]?.url || null
+      } catch(e) {}
+    }
     if (!artist) throw new Error(`Could not resolve artist for album: ${id}`)
 
     const albumCover = album.images?.[0]?.url || null
@@ -290,6 +313,7 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       allArtists: album.artists.map(a => a.name).join(', '),
       year: albumYear,
       coverUrl: albumCover,
+      artistThumbnail,
       trackCount: allTracks.length,
       totalTracks,
       spotifyId: album.id,
@@ -339,6 +363,7 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       type: 'playlist',
       title: playlist.name,
       owner: playlist.owner?.display_name || playlist.owner?.id || 'Unknown',
+      ownerThumbnail: playlist.owner?.images?.[0]?.url || null,
       coverUrl: playlist.images?.[0]?.url || null,
       trackCount,
       totalTracks: playlist.tracks?.total || trackCount,

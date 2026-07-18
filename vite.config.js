@@ -1361,39 +1361,43 @@ function youtubeDownloaderPlugin() {
           res.setHeader('Content-Type', 'application/json')
           let metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
 
-          for (let i = 0; i < metadata.tracks.length; i++) {
-            const track = metadata.tracks[i]
-            let source = 'spotify'
-            const hasIncomplete = !track.coverUrl || !track.album || !track.year || !track.durationMs
+          const concurrency = 20;
+          for (let i = 0; i < metadata.tracks.length; i += concurrency) {
+            const chunk = metadata.tracks.slice(i, i + concurrency);
+            await Promise.all(chunk.map(async (track, idx) => {
+              const actualIdx = i + idx;
+              let source = 'spotify';
+              const hasIncomplete = !track.coverUrl || !track.album || !track.year || !track.durationMs;
 
-            if (hasIncomplete) {
-              const page = Math.floor(i / 100)
-              const fallbackSource = (page % 2 === 0) ? 'itunes' : 'youtube_music'
+              if (hasIncomplete) {
+                const page = Math.floor(actualIdx / 100);
+                const fallbackSource = (page % 2 === 0) ? 'itunes' : 'youtube_music';
 
-              if (fallbackSource === 'itunes') {
-                const itunesData = await fetchItunesMetadata(track.title, track.artist)
-                if (itunesData) {
-                  track.title = itunesData.title || track.title
-                  track.artist = itunesData.artist || track.artist
-                  track.album = itunesData.album || track.album
-                  track.year = itunesData.year || track.year
-                  track.coverUrl = itunesData.coverUrl || track.coverUrl
-                  source = 'itunes'
-                }
-              } else {
-                const ytmData = await fetchYouTubeMusicMetadata(track.title, track.artist)
-                if (ytmData) {
-                  track.title = ytmData.title || track.title
-                  track.artist = ytmData.artist || track.artist
-                  track.album = ytmData.album || track.album
-                  track.year = ytmData.year || track.year
-                  track.coverUrl = ytmData.coverUrl || track.coverUrl
-                  source = 'youtube_music'
+                if (fallbackSource === 'itunes') {
+                  const itunesData = await fetchItunesMetadata(track.title, track.artist);
+                  if (itunesData) {
+                    track.title = itunesData.title || track.title;
+                    track.artist = itunesData.artist || track.artist;
+                    track.album = itunesData.album || track.album;
+                    track.year = itunesData.year || track.year;
+                    track.coverUrl = itunesData.coverUrl || track.coverUrl;
+                    source = 'itunes';
+                  }
+                } else {
+                  const ytmData = await fetchYouTubeMusicMetadata(track.title, track.artist);
+                  if (ytmData) {
+                    track.title = ytmData.title || track.title;
+                    track.artist = ytmData.artist || track.artist;
+                    track.album = ytmData.album || track.album;
+                    track.year = ytmData.year || track.year;
+                    track.coverUrl = ytmData.coverUrl || track.coverUrl;
+                    source = 'youtube_music';
+                  }
                 }
               }
-            }
-            track.metadataSource = source
-            track.index = i + 1
+              track.metadataSource = source;
+              track.index = actualIdx + 1;
+            }));
           }
 
           res.end(JSON.stringify({
