@@ -16,7 +16,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 .ytdl-page {
-  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
   background: var(--theme-bg);
   font-family: 'Inter', sans-serif;
   color: #e2e8f0;

@@ -1343,6 +1343,27 @@ function youtubeDownloaderPlugin() {
         })
       }
 
+      // ── Public playlist fallback (used by both spotify-info and mass-fetch) ──
+      const resolvePublicPlaylist = async (spotUrl) => {
+        const [{ default: createSpotifyUrlInfo }, { default: fetch }] = await Promise.all([
+          import('spotify-url-info'), import('node-fetch')
+        ])
+        const { getDetails } = createSpotifyUrlInfo(fetch)
+        const { preview, tracks } = await getDetails(spotUrl)
+        if (!tracks?.length) throw new Error('Pagina publică Spotify nu conține melodii pentru acest playlist.')
+        return {
+          type: 'playlist', title: preview?.title || 'Spotify Playlist', trackCount: tracks.length, totalTracks: tracks.length,
+          coverUrl: preview?.image || null,
+          totalDurationMs: tracks.reduce((total, track) => total + (track.duration || 0), 0),
+          tracks: tracks.map((track, index) => ({
+            trackNumber: index + 1, title: track.name, artist: track.artist,
+            allArtists: track.artist, durationMs: track.duration || 0,
+            spotifyUrl: track.uri ? `https://open.spotify.com/track/${track.uri.split(':').pop()}` : null,
+            coverUrl: preview?.image || null
+          }))
+        }
+      }
+
       server.middlewares.use('/api/spotify-mass-fetch', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
@@ -1409,6 +1430,29 @@ function youtubeDownloaderPlugin() {
             tracks: metadata.tracks
           }))
         } catch (err) {
+          // If Spotify API returns 403 (private playlist or expired token),
+          // fall back to public page scraping — same as /api/spotify-info does.
+          if (/^SPOTIFY_403/.test(err?.message || '') && /spotify\.com\/playlist\//.test(spotUrl)) {
+            try {
+              console.log('[mass-fetch] 403 on API → trying public playlist fallback')
+              const pubMetadata = await resolvePublicPlaylist(spotUrl)
+              pubMetadata.tracks.forEach((t, i) => { t.index = i + 1; t.metadataSource = 'spotify-public'; })
+              return res.end(JSON.stringify({
+                playlistId: null,
+                playlistName: pubMetadata.title,
+                playlistCover: pubMetadata.coverUrl,
+                owner: 'Unknown',
+                totalTracks: pubMetadata.tracks.length,
+                tracks: pubMetadata.tracks,
+                _usedPublicFallback: true
+              }))
+            } catch (pubErr) {
+              console.error('[mass-fetch] Public fallback also failed:', pubErr.message)
+              // Public fallback failed — playlist is truly private
+              res.statusCode = 403
+              return res.end(JSON.stringify({ error: 'SPOTIFY_403: Playlist privat. Te autentifică prin "My Profile" cu un cont Spotify care are acces la acest playlist.' }))
+            }
+          }
           console.error('Mass fetch error:', err)
           res.statusCode = 500
           res.end(JSON.stringify({ error: err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err)) }))
@@ -1460,7 +1504,17 @@ function youtubeDownloaderPlugin() {
         const runMassDownload = async () => {
           send({ current: 0, status: 'Fetching complete track list...' })
 
-          let metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
+          let metadata
+          try {
+            metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
+          } catch (err) {
+            if (/^SPOTIFY_403/.test(err?.message || '') && /spotify\.com\/playlist\//.test(spotUrl)) {
+              console.log('[mass-download] 403 on API → trying public playlist fallback')
+              metadata = await resolvePublicPlaylist(spotUrl)
+            } else {
+              throw err
+            }
+          }
           const tracks = metadata.tracks
 
           const safeName = sanitizeFilename(metadata.title) || 'playlist'
@@ -1512,48 +1566,66 @@ function youtubeDownloaderPlugin() {
             })
 
             try {
-              await new Promise((resolve, reject) => {
-                const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
-                const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
-                const finalOutputName = `${safeArtist} - ${safeTitle}.${audioFormat}`;
+              const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
+              const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_')
+              const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_')
+              const finalOutputName = `${safeArtist} - ${safeTitle}.%(ext)s`
 
-                const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
-                const args = [
-                  `ytsearch1:${track.artist} ${track.title} audio`,
-                  '-x', '--audio-format', audioFormat,
-                  '--audio-quality', '0',
-                  '-o', path.join(tempDir, finalOutputName),
-                  '--no-playlist'
-                ]
+              // Try multiple search queries — fall back if the first fails
+              const searchQueries = [
+                `ytsearch1:${track.artist} - ${track.title} audio`,
+                `ytsearch1:${track.artist} ${track.title}`,
+                `ytsearch1:${track.title} ${track.artist} official audio`,
+              ]
 
-                const proc = spawn(ytDlpPath, args, {
-                  env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` }
+              let downloadedOk = false
+              for (const query of searchQueries) {
+                if (dlState.cancelled) break
+                const ok = await new Promise((resolve) => {
+                  const args = [
+                    query,
+                    '-x', '--audio-format', audioFormat,
+                    '--audio-quality', '0',
+                    '-o', path.join(tempDir, finalOutputName),
+                    '--no-playlist',
+                    '--ffmpeg-location', ffmpegDir,
+                  ]
+                  const proc = spawn(ytDlpPath, args, {
+                    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` }
+                  })
+                  dlState.proc = proc
+                  let stderr = ''
+                  proc.stderr.on('data', chunk => { stderr += chunk.toString() })
+                  proc.on('close', code => {
+                    if (code === 0) resolve(true)
+                    else { console.warn(`[mass-dl] yt-dlp failed (${code}) for query "${query}": ${stderr.slice(0, 200)}`); resolve(false) }
+                  })
+                  proc.on('error', () => resolve(false))
                 })
-                dlState.proc = proc
-
-                proc.on('close', code => {
-                  if (code === 0) resolve()
-                  else reject(new Error('yt-dlp error code ' + code))
-                })
-                proc.on('error', reject)
-              })
+                if (ok) { downloadedOk = true; break }
+              }
 
               if (dlState.cancelled) break
 
-              // Find newest file in tempDir
+              // Find file downloaded during this track's slot
+              const AUDIO_EXTS = ['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'aac']
               let finalFilename = ''
-              const files = fs.readdirSync(tempDir).filter(f => f.endsWith('.' + audioFormat))
-              let newestTime = 0
-              for (const f of files) {
-                const stat = fs.statSync(path.join(tempDir, f))
-                if (stat.mtimeMs > newestTime && stat.mtimeMs >= trackStartTime) {
-                  newestTime = stat.mtimeMs
-                  newestFile = f
-                  finalFilename = f
+              try {
+                const files = fs.readdirSync(tempDir).filter(f => {
+                  const ext = f.split('.').pop().toLowerCase()
+                  return AUDIO_EXTS.includes(ext)
+                })
+                let newestTime = 0
+                for (const f of files) {
+                  const stat = fs.statSync(path.join(tempDir, f))
+                  if (stat.mtimeMs > newestTime && stat.mtimeMs >= trackStartTime) {
+                    newestTime = stat.mtimeMs
+                    finalFilename = f
+                  }
                 }
-              }
+              } catch (e) { }
 
-              if (finalFilename) {
+              if (downloadedOk && finalFilename) {
                 const filePath = path.join(tempDir, finalFilename)
                 let coverBuffer = null
                 if (track.coverUrl && audioFormat === 'mp3') {
@@ -1583,16 +1655,18 @@ function youtubeDownloaderPlugin() {
                   if (coverBuffer) {
                     tags.image = { mime: "image/jpeg", type: { id: 3 }, description: "Cover", imageBuffer: coverBuffer }
                   }
-                  NodeID3.update(tags, filePath)
+                  try { NodeID3.update(tags, filePath) } catch (e) { }
                 }
                 completedCount++
                 startTimes.push(Date.now() - trackStartTime)
                 if (startTimes.length > 10) startTimes.shift() // Rolling average of last 10
               } else {
                 failedCount++
+                console.warn(`[mass-dl] Track failed after all retries: "${track.artist} - ${track.title}"`)
               }
             } catch (err) {
               failedCount++
+              console.warn(`[mass-dl] Track exception: ${err.message}`)
             }
           }
 
@@ -1656,28 +1730,7 @@ function youtubeDownloaderPlugin() {
         })
       })
 
-      const resolvePublicPlaylist = async (spotUrl) => {
-        // spotify-url-info uses Spotify's public page data rather than the
-        // restricted Web API endpoint. It is a reliable fallback for public
-        // playlists when an OAuth/client token was rejected.
-        const [{ default: createSpotifyUrlInfo }, { default: fetch }] = await Promise.all([
-          import('spotify-url-info'), import('node-fetch')
-        ])
-        const { getDetails } = createSpotifyUrlInfo(fetch)
-        const { preview, tracks } = await getDetails(spotUrl)
-        if (!tracks?.length) throw new Error('Pagina publică Spotify nu conține melodii pentru acest playlist.')
-        return {
-          type: 'playlist', title: preview?.title || 'Spotify Playlist', trackCount: tracks.length, totalTracks: tracks.length,
-          coverUrl: preview?.image || null,
-          totalDurationMs: tracks.reduce((total, track) => total + (track.duration || 0), 0),
-          tracks: tracks.map((track, index) => ({
-            trackNumber: index + 1, title: track.name, artist: track.artist,
-            allArtists: track.artist, durationMs: track.duration || 0,
-            spotifyUrl: track.uri ? `https://open.spotify.com/track/${track.uri.split(':').pop()}` : null,
-            coverUrl: preview?.image || null
-          }))
-        }
-      }
+      // resolvePublicPlaylist is now defined above (before spotify-mass-fetch middleware)
 
       server.middlewares.use('/api/spotify-info', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
