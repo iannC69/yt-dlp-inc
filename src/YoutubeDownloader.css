@@ -85,10 +85,10 @@
   width: 100%;
   max-width: 900px;
   margin: 0 auto;
-  padding: 3rem 2rem;
+  padding: 2rem 2rem;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.25rem;
   align-items: center;
 }
 
@@ -627,6 +627,7 @@
   font-size: 0.95rem;
   line-height: 1.3;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1767,5 +1768,255 @@
   font-weight: 500;
   color: #e2e8f0;
   white-space: nowrap;
+}
+
+/* ── Step Timeline (Phase 2.3) ──────────────────────────────────── */
+
+.ytdl-step-timeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0.75rem 0 1rem;
+}
+
+.ytdl-step-timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.ytdl-step-node {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.3);
+  transition: all 0.3s;
+  flex-shrink: 0;
+}
+
+.ytdl-step-node.active {
+  background: rgba(239,68,68,0.15);
+  border-color: rgba(239,68,68,0.5);
+  color: #f87171;
+}
+
+.ytdl-step-node.current {
+  background: rgba(239,68,68,0.25);
+  border-color: #ef4444;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(239,68,68,0.4);
+}
+
+.ytdl-step-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.25);
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+
+.ytdl-step-label.active {
+  color: #f1f5f9;
+}
+
+.ytdl-step-connector {
+  flex: 1;
+  height: 1.5px;
+  background: rgba(255,255,255,0.1);
+  margin: 0 0.5rem;
+  min-width: 20px;
+  transition: background 0.3s;
+}
+
+.ytdl-step-connector.filled {
+  background: rgba(239,68,68,0.5);
+}
+
+/* Paused fill variant */
+.sp-prog-bar-fill--paused {
+  background: linear-gradient(90deg, #fb923c, #fbbf24) !important;
+  opacity: 0.7;
+}
+
+/* ── Phase 3.2 — YoutubeDownloader UI Redesign ──────────────────── */
+
+/* Hide old full-page mode selector */
+.ytdl-mode-selector {
+  display: none !important;
+}
+
+/* URL card: single-row flex, no wrap */
+.ytdl-url-card {
+  padding: 0.6rem 0.85rem !important;
+  gap: 0.55rem !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+}
+
+/* Inline mode toggle pill */
+.ytdl-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 999px;
+  padding: 3px;
+  flex-shrink: 0;
+}
+
+/* Hide the link icon when toggle is present — saves horizontal space */
+.ytdl-url-card .ytdl-url-icon {
+  display: none !important;
+}
+
+.ytdl-mode-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.4);
+  transition: all 0.2s;
+  font-family: var(--font);
+  white-space: nowrap;
+}
+
+.ytdl-mode-toggle-btn.active {
+  background: var(--theme-primary, #ef4444);
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--theme-primary, #ef4444) 40%, transparent);
+}
+
+.ytdl-mode-toggle-btn:nth-child(2).active {
+  background: var(--theme-music, #fb923c);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--theme-music, #fb923c) 40%, transparent);
+}
+
+/* ── Horizontal suggestions scroll row ─────────────────────────── */
+.ytdl-suggestions-scroll-row {
+  width: 100%;
+  max-width: 700px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.25rem;
+}
+
+.ytdl-suggestions-scroll-row .ytdl-suggestions-label {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.25);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ytdl-suggestions-chips-inline {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex: 1;
+  padding: 0.25rem 0;
+}
+
+.ytdl-suggestions-chips-inline::-webkit-scrollbar {
+  display: none;
+}
+
+/* Chips in scroll row — clean pill, no inner badge */
+.ytdl-suggestions-chips-inline .ytdl-suggestion-chip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1rem !important;
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  border-radius: 999px !important;
+  cursor: pointer;
+  transition: all 0.2s !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.ytdl-suggestions-chips-inline .ytdl-suggestion-chip:hover {
+  background: rgba(255,255,255,0.09) !important;
+  border-color: var(--chip-color) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--chip-color) 20%, transparent) !important;
+}
+
+/* Hide the inner tag pill in scroll row — use colored dot instead */
+.ytdl-suggestions-chips-inline .ytdl-chip-tag {
+  display: none !important;
+}
+
+.ytdl-suggestions-chips-inline .ytdl-suggestion-chip::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip-color);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--chip-color);
+}
+
+.ytdl-suggestions-chips-inline .ytdl-chip-label {
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  color: #cbd5e1 !important;
+  white-space: nowrap !important;
+}
+
+/* Focus glow handled by base css (color-mix) — no override needed */
+
+/* Main card info: two-column layout */
+.ytdl-preview-section {
+  display: flex !important;
+  gap: 1.25rem !important;
+  align-items: center !important;
+}
+
+.ytdl-thumbnail-wrapper {
+  flex-shrink: 0 !important;
+}
+
+.ytdl-thumbnail {
+  width: 120px !important;
+  height: 68px !important;
+  border-radius: 8px !important;
+  object-fit: cover !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+}
+
+.ytdl-video-meta {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.ytdl-video-title {
+  font-size: 1rem !important;
+  white-space: normal !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
 }
 

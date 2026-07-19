@@ -468,6 +468,7 @@
 }
 .settings-color-input-wrapper input[type="color"] {
   -webkit-appearance: none;
+  appearance: none;
   border: none;
   width: 28px;
   height: 28px;
@@ -590,4 +591,407 @@
   width: auto;
   min-width: 200px;
   float: right;
+}
+
+/* ── Phase 3.3 — Settings Redesign ────────────────────────────── */
+
+/* Credential header */
+.settings-cred-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+}
+
+.settings-cred-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-cred-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.settings-cred-dot.ok { background: #1DB954; box-shadow: 0 0 6px #1DB95488; }
+.settings-cred-dot.err { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
+
+.settings-cred-status-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.settings-help-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 6px;
+  display: flex;
+  transition: all 0.2s;
+}
+
+.settings-help-btn:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+
+/* Masked input */
+.settings-masked-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settings-masked-input {
+  width: 100%;
+  padding: 0.7rem 2.5rem 0.7rem 0.85rem;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 0.88rem;
+  font-family: monospace;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.settings-masked-input:focus { border-color: rgba(59,130,246,0.5); }
+.settings-masked-input::placeholder { color: rgba(255,255,255,0.2); font-family: inherit; }
+
+.settings-input-check {
+  position: absolute;
+  right: 0.65rem;
+  display: flex;
+  pointer-events: none;
+}
+
+/* Settings field labels */
+.settings-label-row {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 0.65rem;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.settings-field > label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+/* Preset cards */
+.settings-preset-cards {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.settings-preset-card {
+  flex: 1 1 auto;
+  min-width: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem 0.5rem;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.settings-preset-card:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.15);
+}
+
+.settings-preset-card.active {
+  background: rgba(59,130,246,0.15);
+  border-color: rgba(59,130,246,0.5);
+  box-shadow: 0 0 12px rgba(59,130,246,0.15);
+}
+
+.settings-preset-icon { display: flex; align-items: center; justify-content: center; color: #94a3b8; }
+.settings-preset-label { font-size: 0.78rem; font-weight: 700; color: #e2e8f0; }
+.settings-preset-sub { font-size: 0.65rem; color: #64748b; }
+
+/* HW toggle pills */
+.settings-hw-toggle {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.settings-hw-btn {
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: #94a3b8;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.settings-hw-btn:hover { color: #e2e8f0; border-color: rgba(255,255,255,0.2); }
+.settings-hw-btn.active {
+  background: rgba(59,130,246,0.15);
+  border-color: rgba(59,130,246,0.5);
+  color: #60a5fa;
+}
+
+.settings-hint {
+  font-size: 0.75rem;
+  color: #475569;
+  margin: 0;
+}
+
+/* Update engine button */
+.settings-update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.3);
+  color: #60a5fa;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.settings-update-btn:hover { background: rgba(59,130,246,0.2); }
+
+/* Swatch grid */
+.settings-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.settings-swatch {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem 0.4rem 0.4rem;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.settings-swatch:hover { border-color: rgba(255,255,255,0.2); }
+.settings-swatch.active {
+  border-color: var(--swatch-color);
+  background: color-mix(in srgb, var(--swatch-color) 15%, transparent);
+}
+
+.settings-swatch-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--swatch-color);
+  flex-shrink: 0;
+}
+
+.settings-swatch-label { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; }
+
+/* Hex input in color picker */
+.settings-hex-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  width: 70px;
+  text-transform: uppercase;
+}
+
+/* Reset button */
+.settings-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #64748b;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  margin-top: 0.5rem;
+}
+
+.settings-reset-btn:hover { color: #94a3b8; background: rgba(255,255,255,0.08); }
+
+/* CTA Save button */
+.settings-save-btn--cta {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  background: linear-gradient(135deg, #3b82f6, #6366f1) !important;
+  color: #fff !important;
+  border: none !important;
+  padding: 0.75rem 1.5rem !important;
+  border-radius: 10px !important;
+  font-size: 0.95rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  font-family: inherit !important;
+  box-shadow: 0 4px 16px rgba(59,130,246,0.35) !important;
+  transition: all 0.2s !important;
+}
+
+.settings-save-btn--cta:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 24px rgba(59,130,246,0.5) !important;
+}
+
+/* Platform bar tooltip labels */
+.settings-button {
+  position: relative;
+}
+
+.settings-button::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15,15,25,0.95);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #e2e8f0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.settings-button:hover::after {
+  opacity: 1;
+}
+
+/* ── Phase 3.6 — App Shell Polish ───────────────────────────────── */
+
+/* Tighter bar with glass separator */
+.platform-bar {
+  background: rgba(6, 8, 14, 0.9) !important;
+  backdrop-filter: blur(28px) saturate(2) !important;
+  border-bottom-color: rgba(255,255,255,0.05) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03), 0 4px 20px rgba(0,0,0,0.3) !important;
+}
+
+/* Brand logo — gradient pulse on hover */
+.platform-brand-logo {
+  background: linear-gradient(135deg, var(--primary, #ef4444) 0%, #a855f7 100%) !important;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--primary, #ef4444) 50%, transparent), 0 0 4px rgba(168,85,247,0.4) !important;
+}
+
+/* Tab active — glowing underline indicator */
+.platform-tab-indicator {
+  opacity: 0.12 !important;
+}
+
+.platform-tab--active {
+  text-shadow: 0 0 16px rgba(255,255,255,0.15);
+}
+
+/* Arrow nav count uses tab color */
+.platform-arrow-label {
+  color: var(--primary, #ef4444) !important;
+}
+
+/* Action buttons — subtle ring on hover */
+.settings-button {
+  border-radius: 8px !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s !important;
+}
+
+.settings-button:hover {
+  border-color: rgba(255,255,255,0.1) !important;
+  background: rgba(255,255,255,0.06) !important;
+  color: #fff !important;
+}
+
+/* Settings status dot — animated pulse for configured */
+.settings-status-dot {
+  animation: status-pulse 3s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Panel transition — subtle fade between slides */
+.panel-slide {
+  background: var(--bg-base, #080a0f);
+}
+
+/* Scrollbar polish for all panels */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.07) transparent;
+}
+
+*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* Improve settings sidebar active tab — use theme primary */
+.cp-tab.active {
+  background: color-mix(in srgb, var(--primary, #3b82f6) 15%, transparent) !important;
+  color: var(--primary, #60a5fa) !important;
+  box-shadow: inset 3px 0 0 var(--primary, #3b82f6) !important;
+}
+
+/* Section dividers — cleaner */
+.settings-section {
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  margin-bottom: 1.5rem !important;
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0 !important;
 }

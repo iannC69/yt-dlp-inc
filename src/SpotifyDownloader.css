@@ -2722,30 +2722,26 @@
   transform: scale(1.1);
 }
 
-/* FOOTER */
+/* FOOTER — compact, scrolls with content */
 .sp-footer {
   position: relative;
   z-index: 1;
   width: 100%;
-  background: rgba(8, 12, 8, 0.95);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 2.5rem 2rem;
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 0.75rem 2rem;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
   flex-shrink: 0;
   margin-top: auto;
+  flex-wrap: wrap;
 }
 
 .sp-footer-inner {
-  width: 100%;
-  max-width: 800px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  display: contents;
 }
 
 .sp-footer-brand {
@@ -2794,6 +2790,7 @@
 }
 
 .sp-footer-copy {
+  display: none;
   font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.2);
   text-align: center;
@@ -2839,4 +2836,490 @@
 
 .sp-override-input:focus {
   border-color: rgba(29, 185, 84, 0.5);
+}
+
+/* ── Premium Progress Card ─────────────────────────────────────── */
+
+.sp-prog-spotlight {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0 0.75rem;
+}
+
+.sp-prog-vinyl-wrap {
+  flex-shrink: 0;
+}
+
+.sp-prog-vinyl {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, #111 28%, #222 29%, #1a1a1a 55%, #111 56%);
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.06);
+  position: relative;
+}
+
+.sp-prog-vinyl-hole {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0a0a0a;
+  border: 2px solid rgba(255,255,255,0.08);
+  position: absolute;
+}
+
+.sp-prog-spotlight-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-prog-now-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--sp-green);
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.sp-prog-track-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-prog-track-artist {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.3rem;
+}
+
+.sp-prog-eq-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sp-prog-status-text {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.sp-prog-counters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.sp-prog-counter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+}
+
+.sp-prog-counter--done {
+  color: #1DB954;
+  background: rgba(29, 185, 84, 0.1);
+}
+
+.sp-prog-counter--fail {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.sp-prog-counter--remain {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.sp-prog-bar-section {
+  padding: 0 0 0.5rem;
+}
+
+.sp-prog-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.45);
+  margin-bottom: 0.4rem;
+}
+
+.sp-prog-bar-outer {
+  position: relative;
+  height: 6px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 999px;
+  overflow: visible;
+}
+
+.sp-prog-bar-outer--thin {
+  height: 3px;
+}
+
+.sp-prog-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1DB954, #4ade80);
+  border-radius: 999px;
+  position: relative;
+}
+
+.sp-prog-bar-fill--track {
+  background: linear-gradient(90deg, #60a5fa, #93c5fd);
+}
+
+.sp-prog-bar-glow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px 4px rgba(29, 185, 84, 0.6);
+  pointer-events: none;
+}
+
+.sp-prog-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0.5rem 0;
+}
+
+.sp-prog-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sp-prog-dot--pending {
+  background: rgba(255,255,255,0.12);
+}
+
+.sp-prog-dot--downloading {
+  background: #60a5fa;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.8);
+  animation: sp-dot-pulse 1s ease-in-out infinite;
+}
+
+.sp-prog-dot--done {
+  background: #1DB954;
+}
+
+.sp-prog-dot--error {
+  background: #ef4444;
+}
+
+@keyframes sp-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.sp-prog-failed {
+  margin-top: 0.5rem;
+  border-radius: 8px;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+  overflow: hidden;
+}
+
+.sp-prog-failed summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+  user-select: none;
+}
+
+.sp-prog-failed summary::-webkit-details-marker { display: none; }
+
+.sp-prog-failed-list {
+  padding: 0 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.sp-prog-failed-row {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+  align-items: baseline;
+}
+
+.sp-prog-failed-name {
+  color: rgba(255,255,255,0.7);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.sp-prog-failed-err {
+  color: rgba(239,68,68,0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Phase 3.1 — SpotifyDownloader UI Redesign ──────────────────── */
+
+/* Hero: compact inline badge+title on one line */
+.sp-hero-brand {
+  gap: 0.35rem !important;
+}
+
+.sp-hero-top {
+  align-items: center !important;
+}
+
+.sp-logo-pill {
+  font-size: 0.6rem !important;
+  padding: 0.3rem 0.8rem !important;
+}
+
+.sp-title {
+  font-size: clamp(1.4rem, 3.5vw, 1.9rem) !important;
+  letter-spacing: -0.04em !important;
+}
+
+.sp-subtitle {
+  font-size: 0.84rem !important;
+  margin-top: 0.1rem !important;
+}
+
+.sp-feature-pills {
+  margin-top: 0.1rem !important;
+  gap: 0.35rem !important;
+}
+
+/* Input card: animated glow border + deeper glassmorphism */
+.sp-input-card {
+  background: rgba(8, 14, 8, 0.75) !important;
+  border-color: rgba(29, 185, 84, 0.12) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03) !important;
+  transition: box-shadow 0.3s, border-color 0.3s !important;
+}
+
+.sp-input-card:focus-within {
+  border-color: rgba(29, 185, 84, 0.35) !important;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(29,185,84,0.12), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+.sp-input-wrapper {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  border-radius: 10px !important;
+  padding: 0.6rem 0.6rem 0.6rem 1rem !important;
+  transition: border-color 0.25s, box-shadow 0.25s !important;
+}
+
+.sp-input-wrapper:focus-within {
+  border-color: rgba(29, 185, 84, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.1), 0 0 16px rgba(29, 185, 84, 0.08) !important;
+}
+
+/* Info card: two-column with larger cover + reflection */
+.sp-info-card {
+  padding: 1.25rem !important;
+  background: rgba(8, 14, 8, 0.8) !important;
+  border-color: rgba(29,185,84,0.12) !important;
+}
+
+.sp-info-top {
+  gap: 1.25rem !important;
+  align-items: center !important;
+}
+
+.sp-info-thumb-wrap {
+  position: relative !important;
+}
+
+.sp-info-thumb {
+  width: 110px !important;
+  height: 110px !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6) !important;
+}
+
+.sp-info-thumb-fallback {
+  width: 110px !important;
+  height: 110px !important;
+  border-radius: 12px !important;
+}
+
+/* Reflection pseudo-element */
+.sp-info-thumb-wrap::after {
+  content: '';
+  display: block;
+  width: 110px;
+  height: 30px;
+  background: linear-gradient(to bottom, rgba(29,185,84,0.08), transparent);
+  border-radius: 0 0 12px 12px;
+  margin-top: -2px;
+  filter: blur(4px);
+  transform: scaleY(-1) translateY(-4px);
+  opacity: 0.5;
+}
+
+.sp-info-title {
+  font-size: 1.1rem !important;
+  white-space: normal !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+.sp-info-artist {
+  font-size: 0.88rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  background: rgba(29,185,84,0.1) !important;
+  border: 1px solid rgba(29,185,84,0.2) !important;
+  padding: 0.2rem 0.65rem !important;
+  border-radius: 999px !important;
+  width: max-content !important;
+  max-width: 100% !important;
+}
+
+/* Download CTA — full-width gradient + pulse animation */
+.sp-dl-btn {
+  width: 100% !important;
+  background: linear-gradient(135deg, #1DB954 0%, #1ed760 100%) !important;
+  padding: 1rem 1.5rem !important;
+  border-radius: 12px !important;
+  font-size: 1rem !important;
+  box-shadow: 0 4px 20px rgba(29,185,84,0.35), 0 2px 8px rgba(0,0,0,0.3) !important;
+  animation: sp-cta-pulse 3s ease-in-out infinite !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.sp-dl-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: sp-cta-shine 3s ease-in-out infinite;
+}
+
+@keyframes sp-cta-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(29,185,84,0.35), 0 2px 8px rgba(0,0,0,0.3); }
+  50% { box-shadow: 0 6px 30px rgba(29,185,84,0.55), 0 2px 12px rgba(0,0,0,0.4); }
+}
+
+@keyframes sp-cta-shine {
+  0% { transform: translateX(-100%); }
+  60%, 100% { transform: translateX(200%); }
+}
+
+.sp-dl-btn:hover {
+  background: linear-gradient(135deg, #1ed760 0%, #4ade80 100%) !important;
+  transform: translateY(-2px) !important;
+  animation: none !important;
+}
+
+/* Format grid → pill-group row */
+.sp-format-grid {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.5rem !important;
+  grid-template-columns: unset !important;
+}
+
+.sp-format-card {
+  flex: 0 0 auto !important;
+  padding: 0.45rem 0.9rem !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.4rem !important;
+  min-width: unset !important;
+  text-align: left !important;
+}
+
+.sp-format-card .sp-format-top-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+.sp-format-card .sp-format-sub {
+  display: none !important;
+}
+
+.sp-format-card--active {
+  background: rgba(29,185,84,0.15) !important;
+  border-color: rgba(29,185,84,0.5) !important;
+  color: #1DB954 !important;
+  box-shadow: 0 0 12px rgba(29,185,84,0.15) !important;
+}
+
+/* Tracklist — compact zebra rows */
+.sp-tracklist-body {
+  max-height: 240px !important;
+}
+
+.sp-tracklist-row:nth-child(odd) {
+  background: rgba(255,255,255,0.015) !important;
+}
+
+.sp-tracklist-row:hover {
+  background: rgba(29,185,84,0.05) !important;
+}
+
+.sp-tracklist-name {
+  font-weight: 600 !important;
+}
+
+/* Playlist preview rows — zebra */
+.sp-playlist-preview-row:nth-child(odd) {
+  background: rgba(255,255,255,0.015);
+  border-radius: 4px;
+}
+
+/* Mass start button — gradient CTA */
+.sp-mass-start-btn {
+  background: linear-gradient(135deg, #1DB954 0%, #1ed760 100%) !important;
+  border-radius: 10px !important;
+  font-size: 0.95rem !important;
+  box-shadow: 0 4px 16px rgba(29,185,84,0.3) !important;
+  transition: all 0.2s !important;
+}
+
+.sp-mass-start-btn:hover {
+  background: linear-gradient(135deg, #1ed760 0%, #4ade80 100%) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 24px rgba(29,185,84,0.4) !important;
 }

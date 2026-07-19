@@ -1,8 +1,16 @@
-import { motion } from 'framer-motion';
-import { Film, FolderOpen, Play, Music } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Film, FolderOpen, Play, Music, LayoutGrid, List, X, ChevronDown } from 'lucide-react';
 import './LibraryModal.css';
 
+const FILTERS = ['All', 'YouTube', 'Spotify', 'Audio', 'Video'];
+const SORTS = ['Date', 'Name', 'Source'];
+
 export default function LibraryModal({ historyData, onClose }) {
+  const [filter, setFilter] = useState('All');
+  const [sortBy, setSortBy] = useState('Date');
+  const [viewMode, setViewMode] = useState('grid');
+
   const handleOpenFolder = async (filename) => {
     try {
       await fetch('/api/ytdl/open-folder', {
@@ -15,81 +23,151 @@ export default function LibraryModal({ historyData, onClose }) {
     }
   };
 
+  const filtered = useMemo(() => {
+    let items = [...historyData];
+    if (filter === 'YouTube') items = items.filter(i => i.source !== 'spotify');
+    else if (filter === 'Spotify') items = items.filter(i => i.source === 'spotify');
+    else if (filter === 'Audio') items = items.filter(i => i.format && /mp3|ogg|wav|flac|m4a/i.test(i.format));
+    else if (filter === 'Video') items = items.filter(i => i.format && /mp4|webm|mkv/i.test(i.format));
+
+    if (sortBy === 'Name') items.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    else if (sortBy === 'Source') items.sort((a, b) => (a.source || '').localeCompare(b.source || ''));
+    else items.sort((a, b) => (b.date || 0) - (a.date || 0));
+
+    return items;
+  }, [historyData, filter, sortBy]);
+
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className="global-library-overlay"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="global-library-header">
-        <h2>Librărie Descărcări</h2>
-        <button className="global-modal-cancel" onClick={onClose}>Închide</button>
-      </div>
-      <div className="global-library-grid">
-        {historyData.length === 0 ? (
-          <div style={{ color: '#94a3b8', textAlign: 'center', marginTop: '2rem' }}>
-            Nicio descărcare recentă.
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.97 }}
+        className="lib-modal"
+      >
+        {/* Header */}
+        <div className="lib-header">
+          <div className="lib-header-left">
+            <h2 className="lib-title">Library</h2>
+            <span className="lib-count">{filtered.length} items</span>
           </div>
-        ) : (
-          historyData.map((item) => {
-            const isSpotify = item.source === 'spotify';
-            
-            return (
-              <div key={item.id} className="global-library-card">
-                <div className="global-lib-thumb-wrapper">
-                  {item.thumbnail && item.thumbnail !== 'undefined' && item.thumbnail !== 'null' ? (
-                    <img
-                      src={item.thumbnail}
-                      alt="thumbnail"
-                      className="global-lib-thumb"
-                      onError={(e) => {
-                        if (!e.target.dataset.triedLocal) {
-                          e.target.dataset.triedLocal = 'true';
-                          e.target.src = `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`;
-                        } else {
-                          e.target.style.display = 'none';
-                          e.target.nextElementSibling.style.display = 'flex';
-                        }
-                      }}
-                    />
-                  ) : (
-                    <img
-                      src={`/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
-                      alt="thumbnail"
-                      className="global-lib-thumb"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextElementSibling.style.display = 'flex';
-                      }}
-                    />
-                  )}
-                  <div className="global-lib-thumb-fallback" style={{ display: 'none' }}>
-                    <Film size={32} color="rgba(255,255,255,0.2)" />
-                  </div>
-                  
-                  {/* Source Badge */}
-                  <div className={`global-lib-badge ${isSpotify ? 'badge-spotify' : 'badge-youtube'}`}>
-                    {isSpotify ? <Music size={12} /> : <Play size={12} />}
-                    <span>{isSpotify ? 'Spotify' : 'YouTube'}</span>
-                  </div>
-                </div>
+          <button className="lib-close-btn" onClick={onClose}><X size={18} /></button>
+        </div>
 
-                <div className="global-lib-info">
-                  <h4 className="global-lib-title" title={item.title}>{item.title}</h4>
-                  <div className="global-lib-meta">
-                    <span>{item.format}</span>
-                    <span>{new Date(item.date).toLocaleDateString()}</span>
-                  </div>
-                  <button className="global-lib-open-btn" onClick={() => handleOpenFolder(item.filename)}>
-                    <FolderOpen size={16} /> Folder
-                  </button>
+        {/* Toolbar */}
+        <div className="lib-toolbar">
+          <div className="lib-filters">
+            {FILTERS.map(f => (
+              <button
+                key={f}
+                className={`lib-filter-btn ${filter === f ? 'active' : ''}`}
+                onClick={() => setFilter(f)}
+              >{f}</button>
+            ))}
+          </div>
+          <div className="lib-toolbar-right">
+            <div className="lib-sort">
+              <ChevronDown size={13} />
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="lib-sort-select">
+                {SORTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="lib-view-toggle">
+              <button className={viewMode === 'grid' ? 'active' : ''} onClick={() => setViewMode('grid')}><LayoutGrid size={15} /></button>
+              <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}><List size={15} /></button>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className={`lib-content ${viewMode === 'list' ? 'lib-content--list' : 'lib-content--grid'}`}>
+          <AnimatePresence mode="popLayout">
+            {filtered.length === 0 ? (
+              <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lib-empty">
+                <div className="lib-empty-icon">
+                  <Film size={48} strokeWidth={1} />
                 </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+                <p className="lib-empty-title">No downloads yet</p>
+                <p className="lib-empty-sub">Your completed downloads will appear here.</p>
+              </motion.div>
+            ) : (
+              filtered.map((item) => {
+                const isSpotify = item.source === 'spotify';
+                return viewMode === 'grid' ? (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    className="lib-card"
+                  >
+                    <div className="lib-card-thumb">
+                      <img
+                        src={item.thumbnail && item.thumbnail !== 'undefined' ? item.thumbnail : `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
+                        alt=""
+                        className="lib-thumb-img"
+                        onError={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
+                      />
+                      <div className="lib-thumb-fallback"><Film size={28} /></div>
+                      <span className={`lib-source-badge ${isSpotify ? 'lib-badge--spotify' : 'lib-badge--youtube'}`}>
+                        {isSpotify ? <Music size={10} /> : <Play size={10} />}
+                        {isSpotify ? 'Spotify' : 'YouTube'}
+                      </span>
+                    </div>
+                    <div className="lib-card-body">
+                      <p className="lib-card-title" title={item.title}>{item.title}</p>
+                      <div className="lib-card-meta">
+                        <span>{item.format}</span>
+                        <span>{new Date(item.date).toLocaleDateString()}</span>
+                      </div>
+                      <button className="lib-open-btn" onClick={() => handleOpenFolder(item.filename)}>
+                        <FolderOpen size={13} /> Open folder
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="lib-list-row"
+                  >
+                    <img
+                      src={item.thumbnail && item.thumbnail !== 'undefined' ? item.thumbnail : `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
+                      alt=""
+                      className="lib-list-thumb"
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <div className="lib-list-info">
+                      <p className="lib-list-title">{item.title}</p>
+                      <div className="lib-list-meta">
+                        <span className={`lib-source-badge ${isSpotify ? 'lib-badge--spotify' : 'lib-badge--youtube'}`}>
+                          {isSpotify ? <Music size={9} /> : <Play size={9} />}
+                          {isSpotify ? 'Spotify' : 'YouTube'}
+                        </span>
+                        <span>{item.format}</span>
+                        <span>{new Date(item.date).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <button className="lib-open-btn lib-open-btn--sm" onClick={() => handleOpenFolder(item.filename)}>
+                      <FolderOpen size={13} />
+                    </button>
+                  </motion.div>
+                );
+              })
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

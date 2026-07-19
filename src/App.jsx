@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, ChevronLeft, ChevronRight, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo } from 'lucide-react';
+import { Play, ChevronLeft, ChevronRight, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot } from 'lucide-react';
 import DynamicIsland from './DynamicIsland';
 import YoutubeDownloader from './YoutubeDownloader';
 import SpotifyDownloader from './SpotifyDownloader';
@@ -335,55 +335,90 @@ export default function App() {
 
                   {activeSettingsTab === 'theme' && (
                     <div className="settings-section">
-                      <h3>Culori (Hex)</h3>
+                      <div className="settings-field">
+                        <label className="settings-label-row">Theme Presets</label>
+                        <div className="settings-swatch-grid">
+                          {[
+                            { label: 'Red', primary: '#ef4444', bgBase: '#0a080f' },
+                            { label: 'Green', primary: '#22c55e', bgBase: '#06110a' },
+                            { label: 'Blue', primary: '#3b82f6', bgBase: '#080c18' },
+                            { label: 'Purple', primary: '#a855f7', bgBase: '#0d0814' },
+                            { label: 'Orange', primary: '#f97316', bgBase: '#110a05' },
+                            { label: 'Cyan', primary: '#06b6d4', bgBase: '#04101a' },
+                          ].map(t => (
+                            <button
+                              key={t.label}
+                              className={`settings-swatch ${customTheme.primary === t.primary ? 'active' : ''}`}
+                              style={{ '--swatch-color': t.primary }}
+                              onClick={() => setCustomTheme(prev => ({ ...prev, primary: t.primary, bgBase: t.bgBase }))}
+                              title={t.label}
+                            >
+                              <span className="settings-swatch-dot" />
+                              <span className="settings-swatch-label">{t.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div className="settings-theme-pickers">
                         <div className="settings-color-picker-item">
-                          <label>Accent Principal</label>
+                          <label>Accent Color</label>
                           <div className="settings-color-input-wrapper">
                             <input
                               type="color"
                               value={customTheme.primary}
                               onChange={(e) => setCustomTheme(prev => ({ ...prev, primary: e.target.value }))}
                             />
-                            <span>{customTheme.primary.toUpperCase()}</span>
+                            <input
+                              type="text"
+                              className="settings-hex-input"
+                              value={customTheme.primary.toUpperCase()}
+                              onChange={(e) => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setCustomTheme(prev => ({ ...prev, primary: e.target.value })); }}
+                              maxLength={7}
+                            />
                           </div>
                         </div>
                         <div className="settings-color-picker-item">
-                          <label>Culoare Fundal</label>
+                          <label>Background</label>
                           <div className="settings-color-input-wrapper">
                             <input
                               type="color"
                               value={customTheme.bgBase}
                               onChange={(e) => setCustomTheme(prev => ({ ...prev, bgBase: e.target.value }))}
                             />
-                            <span>{customTheme.bgBase.toUpperCase()}</span>
+                            <input
+                              type="text"
+                              className="settings-hex-input"
+                              value={customTheme.bgBase.toUpperCase()}
+                              onChange={(e) => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setCustomTheme(prev => ({ ...prev, bgBase: e.target.value })); }}
+                              maxLength={7}
+                            />
                           </div>
                         </div>
-                        <div className="settings-color-picker-item">
-                          <button
-                            className="settings-save-btn"
-                            style={{ width: 'auto', padding: '0.5rem 1rem', background: '#475569' }}
-                            onClick={() => setCustomTheme({ primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' })}
-                          >
-                            <RefreshCw size={14} style={{ display: 'inline', marginRight: '4px' }}/> Reset
-                          </button>
-                        </div>
                       </div>
+                      <button
+                        className="settings-reset-btn"
+                        onClick={() => setCustomTheme({ primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f' })}
+                      >
+                        <RefreshCw size={13} /> Reset to Default
+                      </button>
                     </div>
                   )}
 
                   {activeSettingsTab === 'spotify' && (
                     <div className="settings-section">
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                         <h3 style={{ margin: 0 }}>Credentials</h3>
-                         <button className="settings-help-btn" onClick={() => setShowHelp(!showHelp)} title="How to get these?">
-                           <HelpCircle size={16} />
-                         </button>
+                      <div className="settings-cred-header">
+                        <div className="settings-cred-status">
+                          <span className={`settings-cred-dot ${isConfigured ? 'ok' : 'err'}`} />
+                          <span className="settings-cred-status-label">{isConfigured ? 'Connected' : 'Not configured'}</span>
+                        </div>
+                        <button className="settings-help-btn" onClick={() => setShowHelp(!showHelp)} title="How to get these?">
+                          <HelpCircle size={15} />
+                        </button>
                       </div>
 
                       <AnimatePresence>
                         {showHelp && (
-                          <motion.div 
+                          <motion.div
                             className="settings-help-box"
                             initial={{ height: 0, opacity: 0, marginBottom: 0 }}
                             animate={{ height: 'auto', opacity: 1, marginBottom: 16 }}
@@ -401,23 +436,32 @@ export default function App() {
                           </motion.div>
                         )}
                       </AnimatePresence>
+
                       <div className="settings-field">
                         <label>Spotify Client ID</label>
-                        <input 
-                          type="text" 
-                          value={spotifyClientId} 
-                          onChange={e => setSpotifyClientId(e.target.value)} 
-                          placeholder="Paste Client ID..."
-                        />
+                        <div className="settings-masked-input-wrap">
+                          <input
+                            type="text"
+                            value={spotifyClientId}
+                            onChange={e => setSpotifyClientId(e.target.value)}
+                            placeholder="Paste Client ID..."
+                            className="settings-masked-input"
+                          />
+                          {spotifyClientId && <span className="settings-input-check"><CheckCircle2 size={14} color="#1DB954" /></span>}
+                        </div>
                       </div>
                       <div className="settings-field">
                         <label>Spotify Client Secret</label>
-                        <input 
-                          type="text" 
-                          value={spotifyClientSecret} 
-                          onChange={e => setSpotifyClientSecret(e.target.value)} 
-                          placeholder="Paste Client Secret..."
-                        />
+                        <div className="settings-masked-input-wrap">
+                          <input
+                            type="password"
+                            value={spotifyClientSecret}
+                            onChange={e => setSpotifyClientSecret(e.target.value)}
+                            placeholder="Paste Client Secret..."
+                            className="settings-masked-input"
+                          />
+                          {spotifyClientSecret && <span className="settings-input-check"><CheckCircle2 size={14} color="#1DB954" /></span>}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -425,44 +469,55 @@ export default function App() {
                   {activeSettingsTab === 'system' && (
                     <div className="settings-section">
                       <div className="settings-field">
-                        <label>Download Speed Preset</label>
-                        <select 
-                          value={downloadPreset} 
-                          onChange={e => setDownloadPreset(e.target.value)}
-                          className="settings-select"
-                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid rgba(255, 255, 255, 0.1)', outline: 'none' }}
-                        >
-                          <option value="AUTO" style={{ color: 'black' }}>AUTO (AI Smart Optimizer)</option>
-                          <option value="ULTRA_PERFORMANCE" style={{ color: 'black' }}>Ultra Performance (Fastest, High CPU)</option>
-                          <option value="HIGH_PERFORMANCE" style={{ color: 'black' }}>High Performance</option>
-                          <option value="BALANCED" style={{ color: 'black' }}>Balanced</option>
-                          <option value="ECO" style={{ color: 'black' }}>Eco (Slow, Low CPU)</option>
-                        </select>
+                        <label className="settings-label-row">Download Speed Preset</label>
+                        <div className="settings-preset-cards">
+                          {[
+                            { value: 'ECO', label: 'Eco', sub: 'Low CPU', icon: <Leaf size={18} /> },
+                            { value: 'BALANCED', label: 'Balanced', sub: 'Recommended', icon: <Scale size={18} /> },
+                            { value: 'HIGH_PERFORMANCE', label: 'Fast', sub: 'High CPU', icon: <Zap size={18} /> },
+                            { value: 'ULTRA_PERFORMANCE', label: 'Ultra', sub: 'Max speed', icon: <Rocket size={18} /> },
+                            { value: 'AUTO', label: 'Auto', sub: 'AI decides', icon: <Bot size={18} /> },
+                          ].map(p => (
+                            <button
+                              key={p.value}
+                              className={`settings-preset-card ${downloadPreset === p.value ? 'active' : ''}`}
+                              onClick={() => setDownloadPreset(p.value)}
+                            >
+                              <span className="settings-preset-icon">{p.icon}</span>
+                              <span className="settings-preset-label">{p.label}</span>
+                              <span className="settings-preset-sub">{p.sub}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div className="settings-field">
-                        <label>Hardware Acceleration (FFmpeg)</label>
-                        <select 
-                          value={hardwareAcceleration} 
-                          onChange={e => setHardwareAcceleration(e.target.value)}
-                          className="settings-select"
-                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid rgba(255, 255, 255, 0.1)', outline: 'none' }}
-                        >
-                          <option value="NONE" style={{ color: 'black' }}>CPU Only (Recommended for Audio)</option>
-                          <option value="AUTO" style={{ color: 'black' }}>Auto (Let FFmpeg decide)</option>
-                          <option value="CUDA" style={{ color: 'black' }}>NVIDIA GPU (CUDA / NVENC)</option>
-                          <option value="AMF" style={{ color: 'black' }}>AMD GPU (AMF)</option>
-                          <option value="QSV" style={{ color: 'black' }}>Intel GPU (QSV)</option>
-                        </select>
-                        <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>GPU encoding mostly speeds up Video conversion. MP3 is always CPU.</p>
+                        <label className="settings-label-row">Hardware Acceleration (FFmpeg)</label>
+                        <div className="settings-hw-toggle">
+                          {[
+                            { value: 'NONE', label: 'CPU Only' },
+                            { value: 'AUTO', label: 'Auto' },
+                            { value: 'CUDA', label: 'NVIDIA' },
+                            { value: 'AMF', label: 'AMD' },
+                            { value: 'QSV', label: 'Intel' },
+                          ].map(h => (
+                            <button
+                              key={h.value}
+                              className={`settings-hw-btn ${hardwareAcceleration === h.value ? 'active' : ''}`}
+                              onClick={() => setHardwareAcceleration(h.value)}
+                            >
+                              {h.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="settings-hint">GPU encoding speeds up video conversion. MP3 is always CPU.</p>
                       </div>
                       <div className="settings-field">
-                        <label>Actualizare Engine (yt-dlp)</label>
-                        <button 
-                          className="settings-save-btn" 
-                          style={{ width: '100%', background: '#3b82f6', marginTop: '4px' }}
+                        <label className="settings-label-row">Engine (yt-dlp)</label>
+                        <button
+                          className="settings-update-btn"
                           onClick={handleUpdateEngine}
                         >
-                          <RefreshCw size={16} style={{ display: 'inline', marginRight: '6px' }} /> Verifică pentru Actualizări
+                          <RefreshCw size={15} /> Check for Updates
                         </button>
                       </div>
                     </div>
@@ -470,8 +525,8 @@ export default function App() {
                 </div>
                 
                 <div className="control-panel-footer">
-                  <button className="settings-save-btn" onClick={saveSettings}>
-                    Salvează Setările
+                  <button className="settings-save-btn settings-save-btn--cta" onClick={saveSettings}>
+                    <CheckCircle2 size={16} /> Save Settings
                   </button>
                 </div>
               </div>

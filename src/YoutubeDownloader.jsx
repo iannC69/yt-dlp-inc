@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Film, Loader2, AlertCircle, CheckCircle2,
-  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft, CalendarClock, FolderOpen, ChevronUp, ChevronDown
+  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft, CalendarClock, FolderOpen, ChevronUp, ChevronDown, Sparkles
 } from 'lucide-react';
 import { getAverageColor } from './utils/colorUtils';
 import WaveformBg from './WaveformBg';
@@ -173,6 +173,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
   const [hideSuggestions, setHideSuggestions] = useState(() => {
     return localStorage.getItem('ytdl_hide_suggestions') === 'true';
   });
+  const [showSuggestions, setShowSuggestions] = useState(false); 
 
   const toggleSuggestions = () => {
     const newVal = !hideSuggestions;
@@ -384,9 +385,11 @@ const YoutubeDownloader = ({ activeJobId }) => {
       setMediaType('audio');
       setDownloadFormat('audio');
       setDownloadSourceMode('standard');
+      if (appMode === null) setAppMode('music');
     } else {
       setMediaType('video');
       setDownloadSourceMode('standard');
+      if (appMode === null) setAppMode('youtube');
     }
 
     try {
@@ -697,27 +700,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
           )}
         </AnimatePresence>
 
-        {appMode === null && !downloading && !downloadComplete && !info && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="ytdl-mode-selector"
-          >
-            <div className="ytdl-mode-card youtube-mode" onClick={() => selectAppMode('youtube')}>
-              <MonitorPlay size={48} className="ytdl-mode-icon" />
-              <h2>YouTube Video</h2>
-              <p>Descarcă videoclipuri MP4 la calitatea maximă disponibilă. (Până la 4K)</p>
-            </div>
-
-            <div className="ytdl-mode-card music-mode" onClick={() => selectAppMode('music')}>
-              <Music size={48} className="ytdl-mode-icon" />
-              <h2>YouTube Music</h2>
-              <p>Descarcă melodii Originale în format MP3 la claritate maximă (320kbps).</p>
-            </div>
-          </motion.div>
-        )}
-
-        {appMode !== null && !downloading && !downloadComplete && (
+        {!downloading && !downloadComplete && (
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -725,14 +708,22 @@ const YoutubeDownloader = ({ activeJobId }) => {
             className={`ytdl-url-card ${appMode === 'music' ? 'music-active' : 'youtube-active'}`}
             style={{ position: 'relative', zIndex: 50 }}
           >
-            {!info && (
-              <button
-                className="ytdl-back-btn"
-                onClick={() => setAppMode(null)}
-                title="Înapoi la meniu"
-              >
-                <ArrowLeft size={20} />
-              </button>
+            {/* Inline mode toggle pill */}
+            {!downloading && !downloadComplete && (
+              <div className="ytdl-mode-toggle">
+                <button
+                  className={`ytdl-mode-toggle-btn ${appMode !== 'music' ? 'active' : ''}`}
+                  onClick={() => selectAppMode('youtube')}
+                >
+                  <MonitorPlay size={14} /> Video
+                </button>
+                <button
+                  className={`ytdl-mode-toggle-btn ${appMode === 'music' ? 'active' : ''}`}
+                  onClick={() => selectAppMode('music')}
+                >
+                  <Music size={14} /> Music
+                </button>
+              </div>
             )}
 
             {clipboardToast && (
@@ -814,52 +805,66 @@ const YoutubeDownloader = ({ activeJobId }) => {
           </motion.div>
         )}
 
-        {/* ── Suggestion Chips ───────────────────────────────── */}
-        {appMode !== null && !info && !loadingInfo && !downloading && !downloadComplete && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.15 }}
-            className="ytdl-suggestions-wrap"
-          >
-            <div className="ytdl-suggestions-header" onClick={toggleSuggestions} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', userSelect: 'none', width: 'fit-content' }}>
-              <span className="ytdl-suggestions-label">Try these:</span>
-              {hideSuggestions ? <ChevronDown size={16} color="#94a3b8" /> : <ChevronUp size={16} color="#94a3b8" />}
+        {/* ── Suggestion Chips — dropdown grouped by category ─────── */}
+{!info && !loadingInfo && !downloading && !downloadComplete && (
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.35, delay: 0.1 }}
+    style={{ width: '100%', maxWidth: '700px', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-start' }}
+  >
+    <button
+      className={`ytdl-suggestions-trigger ${showSuggestions ? 'open' : ''}`}
+      onClick={() => setShowSuggestions(v => !v)}
+    >
+      <Sparkles size={13} />
+      Exemple
+      {showSuggestions ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+    </button>
+
+    <AnimatePresence>
+      {showSuggestions && (
+        <motion.div
+          className="ytdl-suggestions-dropdown"
+          initial={{ opacity: 0, y: -8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.98 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+        >
+          {Object.entries(
+            SUGGESTIONS.reduce((acc, s) => {
+              if (!acc[s.tag]) acc[s.tag] = { color: s.color, items: [] };
+              acc[s.tag].items.push(s);
+              return acc;
+            }, {})
+          ).map(([tag, { color, items }]) => (
+            <div key={tag} className="ytdl-sugg-category">
+              <span className="ytdl-sugg-cat-label" style={{ color }}>{tag}</span>
+              <div className="ytdl-sugg-cat-chips">
+                {items.map(s => (
+                  <button
+                    key={s.url}
+                    className="ytdl-sugg-chip"
+                    style={{ '--chip-color': s.color }}
+                    title={s.url}
+                    onClick={() => {
+                      if (appMode === null) selectAppMode(s.tag === 'YT Music' ? 'music' : 'youtube');
+                      setUrl(s.url);
+                      setShowSuggestions(false);
+                      setTimeout(() => fetchInfo(), 100);
+                    }}
+                  >
+                    <span>{s.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            
-            <AnimatePresence>
-              {!hideSuggestions && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  style={{ overflow: 'hidden' }}
-                >
-                  <div className="ytdl-suggestions-chips" style={{ paddingTop: '0.5rem' }}>
-                    {SUGGESTIONS.map((s) => (
-                      <button
-                        key={s.url}
-                        className="ytdl-suggestion-chip"
-                        style={{ '--chip-color': s.color }}
-                        onClick={() => {
-                          setUrl(s.url);
-                          setTimeout(() => fetchInfo(), 100);
-                        }}
-                        title={s.url}
-                      >
-                        <span className="ytdl-chip-tag" style={{ background: s.color + '22', color: s.color, borderColor: s.color + '44' }}>
-                          {s.tag}
-                        </span>
-                        <span className="ytdl-chip-label">{s.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </motion.div>
+)}
 
         <AnimatePresence>
           {error && (
@@ -1146,34 +1151,82 @@ const YoutubeDownloader = ({ activeJobId }) => {
                       exit={{ opacity: 0, y: -10 }}
                       className="ytdl-progress-block"
                     >
-                      <div className="ytdl-step-indicators">
-                        <div className={`ytdl-step ${step >= 1 ? 'active' : ''}`}><span className="ytdl-step-dot"></span> Pregătire</div>
-                        <div className={`ytdl-step ${step >= 2 ? 'active' : ''}`}><span className="ytdl-step-dot"></span> Descărcare</div>
-                        <div className={`ytdl-step ${step >= 3 ? 'active' : ''}`}><span className="ytdl-step-dot"></span> Finalizare</div>
+                      {/* Multi-step timeline */}
+                      <div className="ytdl-step-timeline">
+                        {[
+                          { label: 'Pregătire', idx: 1 },
+                          { label: 'Descărcare', idx: 2 },
+                          { label: 'Finalizare', idx: 3 },
+                        ].map(({ label, idx }, i, arr) => (
+                          <div key={idx} className="ytdl-step-timeline-item">
+                            <div className={`ytdl-step-node ${step >= idx ? 'active' : ''} ${step === idx ? 'current' : ''}`}>
+                              {step > idx ? <CheckCircle2 size={14} /> : <span>{idx}</span>}
+                            </div>
+                            <span className={`ytdl-step-label ${step >= idx ? 'active' : ''}`}>{label}</span>
+                            {i < arr.length - 1 && <div className={`ytdl-step-connector ${step > idx ? 'filled' : ''}`} />}
+                          </div>
+                        ))}
                       </div>
 
-                      <div className="ytdl-progress-header">
-                        <span className="ytdl-progress-label">
-                          {isPaused ? <Pause size={16} /> : <Loader2 className="spin" size={16} />}
-                          {downloadScope === 'playlist' ? 'Descărcare playlist în curs...' : 'Descărcare în curs...'}
-                        </span>
-                        <span>{progress.toFixed(1)}%</span>
+                      {/* Track info spotlight if thumbnail available */}
+                      {info?.thumbnail && (
+                        <div className="sp-prog-spotlight" style={{ paddingTop: '0.5rem' }}>
+                          <div className="sp-prog-vinyl-wrap">
+                            <motion.div
+                              className="sp-prog-vinyl"
+                              animate={isPaused ? {} : { rotate: 360 }}
+                              transition={{ repeat: Infinity, duration: 6, ease: 'linear' }}
+                              style={{ backgroundImage: `url(${info.thumbnail})` }}
+                            >
+                              <div className="sp-prog-vinyl-hole" />
+                            </motion.div>
+                          </div>
+                          <div className="sp-prog-spotlight-meta">
+                            <div className="sp-prog-now-label">{isPaused ? 'PAUSED' : 'DOWNLOADING'}</div>
+                            <div className="sp-prog-track-name">{info?.title || 'YouTube Video'}</div>
+                            <div className="sp-prog-track-artist">{info?.uploader || ''}</div>
+                            {downloadStatus && (
+                              <div className="sp-prog-eq-row">
+                                {isPaused ? <Pause size={13} style={{ color: '#fb923c' }} /> : <Loader2 size={13} className="spin" style={{ color: '#60a5fa' }} />}
+                                <span className="sp-prog-status-text">{downloadStatus}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="sp-prog-counter sp-prog-counter--remain" style={{ fontSize: '1rem', fontWeight: 700, padding: '0.4rem 0.75rem' }}>
+                            {progress.toFixed(0)}%
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Progress bar with glow */}
+                      <div className="sp-prog-bar-section">
+                        {!info?.thumbnail && (
+                          <div className="sp-prog-bar-labels">
+                            <span>{isPaused ? 'Paused' : (downloadScope === 'playlist' ? 'Downloading playlist...' : 'Downloading...')}</span>
+                            <span>{progress.toFixed(1)}%</span>
+                          </div>
+                        )}
+                        <div className="sp-prog-bar-outer">
+                          <motion.div
+                            className={`sp-prog-bar-fill${isPaused ? ' sp-prog-bar-fill--paused' : ''}`}
+                            animate={{ width: `${progress}%` }}
+                            transition={{ ease: 'linear', duration: 0.3 }}
+                          />
+                          {!isPaused && (
+                            <motion.div
+                              className="sp-prog-bar-glow"
+                              animate={{ left: `${Math.min(progress - 2, 97)}%` }}
+                              transition={{ ease: 'linear', duration: 0.3 }}
+                            />
+                          )}
+                        </div>
                       </div>
 
-                      {downloadStatus && (
+                      {!info?.thumbnail && downloadStatus && (
                         <div className={`ytdl-progress-detail ${isPaused ? 'paused-text' : ''}`}>
                           {downloadStatus}
                         </div>
                       )}
-
-                      <div className="ytdl-progress-track">
-                        <motion.div
-                          className={`ytdl-progress-fill ${step === 3 ? 'pulsing' : ''} ${isPaused ? 'paused-fill' : ''}`}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${progress}%` }}
-                          transition={{ ease: 'linear' }}
-                        />
-                      </div>
 
                       <div className="ytdl-job-actions">
                         {isPaused ? (

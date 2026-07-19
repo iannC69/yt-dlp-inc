@@ -170,6 +170,7 @@ async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
 
 // ── Pagination Helper ────────────────────────────────────────────────────────
 async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
+  const expectedTotal = firstPage?.total ?? null
   const allItems = [...(firstPage?.items || [])]
   let nextUrl = firstPage?.next || null
 
@@ -180,7 +181,27 @@ async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
     nextUrl = page?.next || null
   }
 
-  console.log(`[spotify-api] Pagination complete: ${allItems.length} items total`)
+  console.log(`[spotify-api] Pagination complete: ${allItems.length} items total (expected: ${expectedTotal ?? 'unknown'})`)
+
+  // If we got fewer items than declared, retry once with a fresh token
+  if (expectedTotal !== null && allItems.length < expectedTotal) {
+    console.warn(`[spotify-api] Track count mismatch: got ${allItems.length}, expected ${expectedTotal}. Retrying with fresh token...`)
+    tokenCache = null
+    const retryItems = [...(firstPage?.items || [])]
+    let retryNext = firstPage?.next || null
+    while (retryNext) {
+      const retryPath = retryNext.replace('https://api.spotify.com', '')
+      const retryPage = await fetchWithRetry(retryPath, clientId, clientSecret, null)
+      if (retryPage?.items?.length) retryItems.push(...retryPage.items)
+      retryNext = retryPage?.next || null
+    }
+    if (retryItems.length > allItems.length) {
+      console.log(`[spotify-api] Retry recovered ${retryItems.length - allItems.length} extra items (${retryItems.length} total)`)
+      return retryItems
+    }
+    console.warn(`[spotify-api] Retry did not improve count (${retryItems.length}), keeping original ${allItems.length}`)
+  }
+
   return allItems
 }
 
@@ -216,6 +237,9 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
     // Bust cache if we don't have artistThumbnail (added recently)
     if (cachedData && (cachedData.type === 'track' || cachedData.type === 'album') && cachedData.artistThumbnail === undefined) {
       console.log(`[spotify-api] Cache BUST for ${cacheKey} due to missing artistThumbnail`);
+    // Bust cache if playlist trackCount < totalTracks (stale partial fetch)
+    } else if (cachedData && cachedData.type === 'playlist' && cachedData.trackCount < cachedData.totalTracks) {
+      console.log(`[spotify-api] Cache BUST for ${cacheKey}: cached ${cachedData.trackCount} tracks but totalTracks=${cachedData.totalTracks} — partial fetch stored`)
     } else {
       console.log(`[spotify-api] Smart Caching HIT for ${cacheKey}`)
       console.log('[spotify-api] Cached data:', JSON.stringify({

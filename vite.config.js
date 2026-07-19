@@ -930,6 +930,7 @@ function youtubeDownloaderPlugin() {
         const scheduleTime = urlObj.searchParams.get('scheduleTime')
         const title = urlObj.searchParams.get('title') || ''
         const thumbnail = urlObj.searchParams.get('thumbnail') || ''
+        const hwaccel = urlObj.searchParams.get('hwaccel') || 'NONE'
 
         if (!videoUrl || !isYouTubeUrl(videoUrl) || !selectedItems) {
           res.statusCode = 400
@@ -1391,19 +1392,15 @@ function youtubeDownloaderPlugin() {
               const hasIncomplete = !track.coverUrl || !track.album || !track.year || !track.durationMs;
 
               if (hasIncomplete) {
-                const page = Math.floor(actualIdx / 100);
-                const fallbackSource = (page % 2 === 0) ? 'itunes' : 'youtube_music';
-
-                if (fallbackSource === 'itunes') {
-                  const itunesData = await fetchItunesMetadata(track.title, track.artist);
-                  if (itunesData) {
-                    track.title = itunesData.title || track.title;
-                    track.artist = itunesData.artist || track.artist;
-                    track.album = itunesData.album || track.album;
-                    track.year = itunesData.year || track.year;
-                    track.coverUrl = itunesData.coverUrl || track.coverUrl;
-                    source = 'itunes';
-                  }
+                // Per-track strategy: iTunes first, YTM as fallback
+                const itunesData = await fetchItunesMetadata(track.title, track.artist);
+                if (itunesData) {
+                  track.title = itunesData.title || track.title;
+                  track.artist = itunesData.artist || track.artist;
+                  track.album = itunesData.album || track.album;
+                  track.year = itunesData.year || track.year;
+                  track.coverUrl = itunesData.coverUrl || track.coverUrl;
+                  source = 'itunes';
                 } else {
                   const ytmData = await fetchYouTubeMusicMetadata(track.title, track.artist);
                   if (ytmData) {
@@ -1480,11 +1477,10 @@ function youtubeDownloaderPlugin() {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
 
-        const spotUrl = urlObj.searchParams.get('url')
         const downloadId = urlObj.searchParams.get('downloadId')
-        if (!spotUrl || !downloadId) {
+        if (!downloadId) {
           res.statusCode = 400
-          return res.end(JSON.stringify({ error: 'Missing params' }))
+          return res.end(JSON.stringify({ error: 'Missing downloadId param' }))
         }
 
         const formatStr = urlObj.searchParams.get('format') || 'audio:mp3:0'
@@ -1501,23 +1497,56 @@ function youtubeDownloaderPlugin() {
         const dlState = { cancelled: false, proc: null }
         activeMassDownloads.set(downloadId, dlState)
 
-        const runMassDownload = async () => {
-          send({ current: 0, status: 'Fetching complete track list...' })
+        const runMassDownload = async (bodyData) => {
+          let tracks, safeName
 
-          let metadata
-          try {
-            metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
-          } catch (err) {
-            if (/^SPOTIFY_403/.test(err?.message || '') && /spotify\.com\/playlist\//.test(spotUrl)) {
-              console.log('[mass-download] 403 on API → trying public playlist fallback')
-              metadata = await resolvePublicPlaylist(spotUrl)
-            } else {
-              throw err
+          if (bodyData && bodyData.tracks && bodyData.tracks.length > 0) {
+            // ── Pre-enriched tracks from client (POST body) ──
+            tracks = bodyData.tracks
+            safeName = sanitizeFilename(bodyData.playlistName || 'playlist') || 'playlist'
+            send({ current: 0, total: tracks.length, status: `Loaded ${tracks.length} pre-enriched tracks.` })
+          } else {
+            // ── Legacy: re-fetch metadata from Spotify (GET or missing body) ──
+            const spotUrl = urlObj.searchParams.get('url')
+            if (!spotUrl) { send({ done: true, error: 'Missing url or tracks in request body' }); res.end(); return }
+            send({ current: 0, status: 'Fetching complete track list...' })
+            let metadata
+            try {
+              metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
+            } catch (err) {
+              if (/^SPOTIFY_403/.test(err?.message || '') && /spotify\.com\/playlist\//.test(spotUrl)) {
+                console.log('[mass-download] 403 on API → trying public playlist fallback')
+                metadata = await resolvePublicPlaylist(spotUrl)
+              } else {
+                throw err
+              }
+            }
+            tracks = metadata.tracks
+            safeName = sanitizeFilename(metadata.title) || 'playlist'
+            // Enrich incomplete tracks: iTunes first, YTM as fallback (per-track, not batched)
+            const enrichConcurrency = 10
+            for (let ei = 0; ei < tracks.length; ei += enrichConcurrency) {
+              const chunk = tracks.slice(ei, ei + enrichConcurrency)
+              await Promise.all(chunk.map(async (track) => {
+                const hasIncomplete = !track.coverUrl || !track.album || !track.year || !track.durationMs
+                if (!hasIncomplete) { track.metadataSource = track.metadataSource || 'spotify'; return }
+                const itunesData = await fetchItunesMetadata(track.title, track.artist)
+                if (itunesData) {
+                  track.title = itunesData.title || track.title; track.artist = itunesData.artist || track.artist
+                  track.album = itunesData.album || track.album; track.year = itunesData.year || track.year
+                  track.coverUrl = itunesData.coverUrl || track.coverUrl; track.metadataSource = 'itunes'
+                  return
+                }
+                const ytmData = await fetchYouTubeMusicMetadata(track.title, track.artist)
+                if (ytmData) {
+                  track.title = ytmData.title || track.title; track.artist = ytmData.artist || track.artist
+                  track.album = ytmData.album || track.album; track.year = ytmData.year || track.year
+                  track.coverUrl = ytmData.coverUrl || track.coverUrl; track.metadataSource = 'youtube_music'
+                }
+              }))
             }
           }
-          const tracks = metadata.tracks
 
-          const safeName = sanitizeFilename(metadata.title) || 'playlist'
           const tempDir = path.join(ensureDownloadsDir(), `mass-${safeName}-${Date.now()}`)
           fs.mkdirSync(tempDir, { recursive: true })
 
@@ -1525,42 +1554,28 @@ function youtubeDownloaderPlugin() {
           let failedCount = 0
           const startTimes = []
 
-          for (let i = 0; i < tracks.length; i++) {
-            if (dlState.cancelled) break
+          // ── Concurrent download semaphore (3 parallel) ──
+          const MASS_CONCURRENCY = 3
+          const activeProcs = new Set()
 
-            const track = tracks[i]
-            let source = 'spotify'
-            const hasIncomplete = !track.coverUrl || !track.album || !track.year || !track.durationMs
-            if (hasIncomplete) {
-              const fallbackSource = (Math.floor(i / 100) % 2 === 0) ? 'itunes' : 'youtube_music'
-              if (fallbackSource === 'itunes') {
-                const itunesData = await fetchItunesMetadata(track.title, track.artist)
-                if (itunesData) {
-                  track.title = itunesData.title || track.title; track.artist = itunesData.artist || track.artist; track.album = itunesData.album || track.album; track.year = itunesData.year || track.year; track.coverUrl = itunesData.coverUrl || track.coverUrl; source = 'itunes'
-                }
-              } else {
-                const ytmData = await fetchYouTubeMusicMetadata(track.title, track.artist)
-                if (ytmData) {
-                  track.title = ytmData.title || track.title; track.artist = ytmData.artist || track.artist; track.album = ytmData.album || track.album; track.year = ytmData.year || track.year; track.coverUrl = ytmData.coverUrl || track.coverUrl; source = 'youtube_music'
-                }
-              }
-            }
+          const downloadTrack = async (track, i) => {
+            if (dlState.cancelled) return
 
             const trackStartTime = Date.now()
             let estSecs = 0
             if (startTimes.length > 0) {
               const avgMs = startTimes.reduce((a, b) => a + b, 0) / startTimes.length
-              estSecs = Math.round((avgMs * (tracks.length - i)) / 1000)
+              estSecs = Math.round((avgMs * (tracks.length - completedCount - failedCount)) / 1000)
             }
 
             send({
-              current: i + 1,
+              current: completedCount + failedCount + activeProcs.size,
               total: tracks.length,
-              percent: Math.round(((i) / tracks.length) * 100),
+              percent: Math.round(((completedCount + failedCount) / tracks.length) * 100),
               title: track.title,
               artist: track.artist,
               coverUrl: track.coverUrl,
-              metadataSource: source,
+              metadataSource: track.metadataSource || 'spotify',
               failed: failedCount,
               estimatedSecondsRemaining: estSecs
             })
@@ -1594,18 +1609,20 @@ function youtubeDownloaderPlugin() {
                     env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` }
                   })
                   dlState.proc = proc
+                  activeProcs.add(proc)
                   let stderr = ''
                   proc.stderr.on('data', chunk => { stderr += chunk.toString() })
                   proc.on('close', code => {
+                    activeProcs.delete(proc)
                     if (code === 0) resolve(true)
                     else { console.warn(`[mass-dl] yt-dlp failed (${code}) for query "${query}": ${stderr.slice(0, 200)}`); resolve(false) }
                   })
-                  proc.on('error', () => resolve(false))
+                  proc.on('error', () => { activeProcs.delete(proc); resolve(false) })
                 })
                 if (ok) { downloadedOk = true; break }
               }
 
-              if (dlState.cancelled) break
+              if (dlState.cancelled) return
 
               // Find file downloaded during this track's slot
               const AUDIO_EXTS = ['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'aac']
@@ -1659,7 +1676,7 @@ function youtubeDownloaderPlugin() {
                 }
                 completedCount++
                 startTimes.push(Date.now() - trackStartTime)
-                if (startTimes.length > 10) startTimes.shift() // Rolling average of last 10
+                if (startTimes.length > 10) startTimes.shift()
               } else {
                 failedCount++
                 console.warn(`[mass-dl] Track failed after all retries: "${track.artist} - ${track.title}"`)
@@ -1668,7 +1685,20 @@ function youtubeDownloaderPlugin() {
               failedCount++
               console.warn(`[mass-dl] Track exception: ${err.message}`)
             }
+          } // end downloadTrack
+
+          // ── Run tracks with MASS_CONCURRENCY=3 parallel slots ──
+          const queue = tracks.map((t, i) => ({ t, i }))
+          let queueIdx = 0
+          const runConcurrent = async () => {
+            while (true) {
+              if (queueIdx >= queue.length) break
+              const item = queue[queueIdx++]
+              if (dlState.cancelled) break
+              await downloadTrack(item.t, item.i)
+            }
           }
+          await Promise.all(Array.from({ length: MASS_CONCURRENCY }, () => runConcurrent()))
 
           activeMassDownloads.delete(downloadId)
 
@@ -1678,6 +1708,7 @@ function youtubeDownloaderPlugin() {
             return res.end()
           }
 
+          const playlistTitle = bodyData?.playlistName || safeName
           send({ current: tracks.length, total: tracks.length, percent: 99, status: 'Creating ZIP...', estimatedSecondsRemaining: 0 })
 
           const zipFilename = `spotify-playlist-${safeName}.zip`
@@ -1688,11 +1719,11 @@ function youtubeDownloaderPlugin() {
             try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
 
             const historyPath = path.resolve(process.cwd(), 'history.json')
-            let history = []
-            try { history = JSON.parse(fs.readFileSync(historyPath, 'utf8')) } catch { }
-            history.unshift({
-              title: metadata.title,
-              artist: metadata.owner || 'Unknown',
+            let historyData = []
+            try { historyData = JSON.parse(fs.readFileSync(historyPath, 'utf8')) } catch { }
+            historyData.unshift({
+              title: playlistTitle,
+              artist: bodyData?.owner || 'Unknown',
               format: "audio:" + audioFormat,
               filename: zipFilename,
               source: "spotify",
@@ -1702,7 +1733,7 @@ function youtubeDownloaderPlugin() {
               id: Date.now().toString(),
               date: new Date().toISOString()
             })
-            fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8')
+            fs.writeFileSync(historyPath, JSON.stringify(historyData, null, 2), 'utf8')
 
             send({
               done: true,
@@ -1715,7 +1746,7 @@ function youtubeDownloaderPlugin() {
             send({ done: true, error: 'ZIP failed: ' + e.message })
             res.end()
           }
-        }
+        } // end runMassDownload
 
         req.on('close', () => {
           dlState.cancelled = true
@@ -1723,11 +1754,16 @@ function youtubeDownloaderPlugin() {
           activeMassDownloads.delete(downloadId)
         })
 
-        runMassDownload().catch(err => {
-          activeMassDownloads.delete(downloadId)
-          send({ done: true, error: err.message })
-          res.end()
+        // Parse POST body if present, then run
+        const parsedBodyPromise = req.method === 'POST' ? parseJsonBody(req) : Promise.resolve(null)
+        parsedBodyPromise.then(bodyData => {
+          runMassDownload(bodyData).catch(err => {
+            activeMassDownloads.delete(downloadId)
+            send({ done: true, error: err.message })
+            res.end()
+          })
         })
+
       })
 
       // resolvePublicPlaylist is now defined above (before spotify-mass-fetch middleware)

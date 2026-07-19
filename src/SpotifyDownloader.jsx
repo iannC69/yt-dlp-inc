@@ -853,13 +853,20 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     setMassDlState({ active: true, done: false, error: null, current: 0, total: massFetchInfo.totalTracks });
 
     try {
-      const params = new URLSearchParams({ url: bulkMeta, format: formatStr, downloadId: dlId });
+      const params = new URLSearchParams({ format: formatStr, downloadId: dlId });
       const res = await fetch(`/api/spotify-mass-download?${params}`, {
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'x-spotify-client-id': clientId,
           'x-spotify-client-secret': clientSecret,
           'x-spotify-access-token': userAccessToken
-        }
+        },
+        body: JSON.stringify({
+          tracks: massFetchInfo.tracks,
+          playlistName: massFetchInfo.playlistName,
+          playlistCover: massFetchInfo.playlistCover
+        })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1205,39 +1212,57 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                   <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
                     {!massDlState.done ? (
                       <div className="sp-mass-progress">
-                        <div className="sp-mass-vinyl-wrap">
-                          <motion.img
-                            src={massDlState.coverUrl || massFetchInfo?.playlistCover || 'https://via.placeholder.com/150'}
-                            animate={{ rotate: 360 }}
-                            transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
-                            className="sp-mass-vinyl"
-                          />
-                          <div className="sp-mass-vinyl-hole" />
+                        <div className="sp-prog-spotlight">
+                          <div className="sp-prog-vinyl-wrap">
+                            <motion.div
+                              className="sp-prog-vinyl"
+                              animate={{ rotate: 360 }}
+                              transition={{ repeat: Infinity, duration: 6, ease: 'linear' }}
+                              style={{ backgroundImage: (massDlState.coverUrl || massFetchInfo?.playlistCover) ? `url(${massDlState.coverUrl || massFetchInfo?.playlistCover})` : undefined }}
+                            >
+                              <div className="sp-prog-vinyl-hole" />
+                            </motion.div>
+                          </div>
+                          <div className="sp-prog-spotlight-meta">
+                            <div className="sp-prog-now-label">MASS DOWNLOAD</div>
+                            <div className="sp-prog-track-name">{massDlState.title || 'Se pregateste...'}</div>
+                            <div className="sp-prog-track-artist">{massDlState.artist || 'Asteptare...'}</div>
+                            {massDlState.status && <div className="sp-prog-eq-row"><EqualizerBars active={true} /><span className="sp-prog-status-text">{massDlState.status}</span></div>}
+                          </div>
+                          <div className="sp-prog-counters">
+                            <div className="sp-prog-counter sp-prog-counter--done"><CheckCircle2 size={13} /><span>{massDlState.current ? massDlState.current - 1 - (massDlState.failed || 0) : 0}</span></div>
+                            <div className="sp-prog-counter sp-prog-counter--fail"><AlertCircle size={13} /><span>{massDlState.failed || 0}</span></div>
+                            <div className="sp-prog-counter sp-prog-counter--remain"><Clock size={13} /><span>{massDlState.estimatedSecondsRemaining ? `~${Math.ceil(massDlState.estimatedSecondsRemaining / 60)}m` : '...'}</span></div>
+                          </div>
                         </div>
-                        <div className="sp-mass-current-title">{massDlState.title || 'Se pregÄƒteÈ™te...'}</div>
-                        <div className="sp-mass-current-artist">{massDlState.artist || 'AÈ™teptare...'}</div>
-                        {massDlState.status && <div className="sp-mass-current-status">{massDlState.status}</div>}
 
-                        <div className="sp-mass-progress-bars">
-                          <div className="sp-mass-progress-row">
-                            <span>{massDlState.current} / {massDlState.total} piese</span>
+                        <div className="sp-prog-bar-section">
+                          <div className="sp-prog-bar-labels">
+                            <span>{massDlState.current || 0} / {massDlState.total || 0} tracks</span>
                             <span>{massDlState.percent || 0}%</span>
                           </div>
-                          <div className="sp-mass-progress-bar-track">
-                            <motion.div className="sp-mass-progress-bar-fill" animate={{ width: `${massDlState.percent || 0}%` }} transition={{ duration: 0.3 }} />
-                          </div>
-                          <div className="sp-mass-track-bar-track">
-                            <motion.div className="sp-mass-track-bar-fill" animate={{ width: `${massDlState.trackProgress || 0}%` }} transition={{ duration: 0.1 }} />
+                          <div className="sp-prog-bar-outer">
+                            <motion.div className="sp-prog-bar-fill" animate={{ width: `${massDlState.percent || 0}%` }} transition={{ duration: 0.3 }} />
+                            <motion.div className="sp-prog-bar-glow" animate={{ left: `${Math.min((massDlState.percent || 0) - 2, 97)}%` }} transition={{ duration: 0.3 }} />
                           </div>
                         </div>
 
-                        <div className="sp-mass-stats-row">
-                          <div className="sp-mass-stat-item"><CheckCircle2 size={14} color="#1DB954" /><span style={{ color: '#fff' }}>{massDlState.current ? massDlState.current - 1 - (massDlState.failed || 0) : 0}</span> ok</div>
-                          <div className="sp-mass-stat-item"><AlertCircle size={14} color={massDlState.failed ? '#ef4444' : '#6b7280'} /><span style={{ color: massDlState.failed ? '#ef4444' : '#fff' }}>{massDlState.failed || 0}</span> failed</div>
-                          <div className="sp-mass-stat-item"><Clock size={14} color="#60a5fa" /><span style={{ color: '#fff' }}>{massDlState.estimatedSecondsRemaining ? `~${Math.ceil(massDlState.estimatedSecondsRemaining / 60)}m` : '...'}</span></div>
-                        </div>
+                        {massFetchInfo?.tracks && massFetchInfo.tracks.length <= 60 && (
+                          <div className="sp-prog-dots">
+                            {massFetchInfo.tracks.map((_, idx) => {
+                              const pos = idx + 1;
+                              const cur = massDlState.current || 0;
+                              const fail = massDlState.failed || 0;
+                              const doneN = Math.max(0, cur - 1 - fail);
+                              let st = 'pending';
+                              if (pos <= doneN) st = 'done';
+                              else if (pos === cur) st = 'downloading';
+                              return <div key={pos} className={`sp-prog-dot sp-prog-dot--${st}`} title={massFetchInfo.tracks[idx]?.title} />;
+                            })}
+                          </div>
+                        )}
 
-                        <button onClick={cancelMassDownload} className="sp-mass-cancel-btn">AnuleazÄƒ descÄƒrcarea</button>
+                        <button onClick={cancelMassDownload} className="sp-mass-cancel-btn">Anuleaza descarcarea</button>
                       </div>
                     ) : (
                       <motion.div className="sp-mass-done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
@@ -1562,65 +1587,96 @@ export default function SpotifyDownloader({ activeDownloadId }) {
             {downloadState && (
               <motion.div className="sp-progress-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
 
-                {isDownloading && info?.thumbnail && (
-                  <div className="sp-dl-art-row">
-                    <div className="sp-dl-art-wrapper">
-                      <img src={info.thumbnail} alt="" className="sp-dl-art" />
-                      <div className="sp-dl-art-pulse" />
-                    </div>
-                    <div className="sp-dl-meta">
-                      <div className="sp-dl-title">{downloadState.trackTitle || info.title}</div>
-                      <div className="sp-dl-artist">{downloadState.trackArtist || info.artist}</div>
-                      <div className="sp-dl-status-row">
-                        <EqualizerBars active={isDownloading} />
-                        <span className="sp-dl-status-text">{downloadState.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {isDownloading && (() => {
+                  const activeTracks = info?.tracks
+                    ? info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber))
+                    : [];
+                  const doneCount = Object.values(trackStatuses).filter(s => s === 'done').length;
+                  const failCount = Object.values(trackStatuses).filter(s => s === 'error').length;
+                  const totalDl = downloadState.totalTracks || activeTracks.length || 1;
+                  const currentCoverUrl = (info?.tracks?.find(t => t.title === downloadState.trackTitle)?.coverUrl) || info?.coverUrl;
 
-                {isDownloading && (
-                  <>
-                    <div className="sp-progress-label-row">
-                      <span className="sp-progress-label">
-                        {downloadState.totalTracks > 1
-                          ? `Track ${downloadState.currentTrack || 0} of ${downloadState.totalTracks}`
-                          : 'Downloading...'}
-                      </span>
-                      <span className="sp-progress-pct">{Math.round(downloadState.progress || 0)}%</span>
-                    </div>
-                    <div className="sp-progress-bar-track">
-                      <motion.div className="sp-progress-bar-fill" animate={{ width: `${downloadState.progress || 0}%` }} transition={{ duration: 0.4 }} />
-                    </div>
-                    {downloadState.totalTracks > 1 && (
-                      <div className="sp-progress-sub">
-                        <div className="sp-progress-bar-track sp-progress-bar-track--thin">
-                          <motion.div className="sp-progress-bar-fill sp-progress-bar-fill--track" animate={{ width: `${downloadState.trackProgress || 0}%` }} transition={{ duration: 0.3 }} />
+                  return (
+                    <>
+                      <div className="sp-prog-spotlight">
+                        <div className="sp-prog-vinyl-wrap">
+                          <motion.div
+                            className="sp-prog-vinyl"
+                            animate={{ rotate: 360 }}
+                            transition={{ repeat: Infinity, duration: 6, ease: 'linear' }}
+                            style={{ backgroundImage: currentCoverUrl ? `url(${currentCoverUrl})` : undefined }}
+                          >
+                            <div className="sp-prog-vinyl-hole" />
+                          </motion.div>
+                        </div>
+                        <div className="sp-prog-spotlight-meta">
+                          <div className="sp-prog-now-label">NOW DOWNLOADING</div>
+                          <div className="sp-prog-track-name">{downloadState.trackTitle || info?.title || '...'}</div>
+                          <div className="sp-prog-track-artist">{downloadState.trackArtist || info?.artist || ''}</div>
+                          <div className="sp-prog-eq-row">
+                            <EqualizerBars active={true} />
+                            <span className="sp-prog-status-text">{downloadState.status || 'Downloading...'}</span>
+                          </div>
+                        </div>
+                        <div className="sp-prog-counters">
+                          <div className="sp-prog-counter sp-prog-counter--done"><CheckCircle2 size={13} /><span>{doneCount}</span></div>
+                          <div className="sp-prog-counter sp-prog-counter--fail"><AlertCircle size={13} /><span>{failCount}</span></div>
+                          <div className="sp-prog-counter sp-prog-counter--remain"><Clock size={13} /><span>{Math.max(0, totalDl - doneCount - failCount)}</span></div>
                         </div>
                       </div>
-                    )}
-                    <button className="sp-cancel-btn" onClick={handleCancel}><X size={14} /> Cancel</button>
-                  </>
-                )}
 
-                {isDownloading && info?.tracks?.length > 1 && (
-                  <div className="sp-dl-tracklist">
-                    {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).slice(0, 20).map(track => (
-                      <TrackRow
-                        key={track.trackNumber}
-                        track={track}
-                        overrideUrl={trackOverrides[track.trackNumber - 1]}
-                        onOverrideChange={val => setTrackOverrides(prev => ({ ...prev, [track.trackNumber - 1]: val }))}
-                        status={trackStatuses[track.trackNumber - 1] || 'pending'}
-                        progress={track.trackNumber === downloadState.currentTrack ? downloadState.trackProgress : 0}
-                        errorText={trackErrors[track.trackNumber - 1]}
-                      />
-                    ))}
-                    {info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length > 20 && (
-                      <div className="sp-dl-tracklist-more">+{info.tracks.filter(t => selectedTracks.size === 0 || selectedTracks.has(t.trackNumber)).length - 20} more tracks</div>
-                    )}
-                  </div>
-                )}
+                      <div className="sp-prog-bar-section">
+                        <div className="sp-prog-bar-labels">
+                          <span>Track {downloadState.currentTrack || 0} of {totalDl}</span>
+                          <span>{Math.round(downloadState.progress || 0)}%</span>
+                        </div>
+                        <div className="sp-prog-bar-outer">
+                          <motion.div className="sp-prog-bar-fill" animate={{ width: `${downloadState.progress || 0}%` }} transition={{ duration: 0.4 }} />
+                          <motion.div className="sp-prog-bar-glow" animate={{ left: `${Math.min((downloadState.progress || 0) - 2, 97)}%` }} transition={{ duration: 0.4 }} />
+                        </div>
+                        {totalDl > 1 && (
+                          <div className="sp-prog-bar-outer sp-prog-bar-outer--thin" style={{ marginTop: 6 }}>
+                            <motion.div className="sp-prog-bar-fill sp-prog-bar-fill--track" animate={{ width: `${downloadState.trackProgress || 0}%` }} transition={{ duration: 0.2 }} />
+                          </div>
+                        )}
+                      </div>
+
+                      {activeTracks.length > 1 && activeTracks.length <= 60 && (
+                        <div className="sp-prog-dots">
+                          {activeTracks.map((track) => {
+                            const st = trackStatuses[track.trackNumber - 1] || 'pending';
+                            return (
+                              <motion.div
+                                key={track.trackNumber}
+                                className={`sp-prog-dot sp-prog-dot--${st}`}
+                                title={`${track.title} — ${st}`}
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ delay: track.trackNumber * 0.01 }}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {failCount > 0 && (
+                        <details className="sp-prog-failed">
+                          <summary><AlertCircle size={13} /> {failCount} track{failCount > 1 ? 's' : ''} failed</summary>
+                          <div className="sp-prog-failed-list">
+                            {activeTracks.filter(t => trackStatuses[t.trackNumber - 1] === 'error').map(t => (
+                              <div key={t.trackNumber} className="sp-prog-failed-row">
+                                <span className="sp-prog-failed-name">{t.title}</span>
+                                <span className="sp-prog-failed-err">{trackErrors[t.trackNumber - 1] || 'Unknown error'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
+                      <button className="sp-cancel-btn" onClick={handleCancel}><X size={14} /> Cancel</button>
+                    </>
+                  );
+                })()}
 
                 {hasError && (
                   <div className="sp-result sp-result--error">
@@ -1638,17 +1694,17 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
                 {isSuccess && (
                   <div className="sp-result sp-result--success">
-                    <div className="sp-success-icon-wrap">
-                      <CheckCircle2 size={32} className="sp-success-icon" />
+                    <motion.div className="sp-success-icon-wrap" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
+                      <CheckCircle2 size={36} className="sp-success-icon" />
                       <div className="sp-success-ring" />
-                    </div>
+                    </motion.div>
                     <div className="sp-success-info">
                       <strong>Download Complete!</strong>
-                      <p className="sp-success-filename">{downloadState.finalFilename}</p>
+                      <p className="sp-success-filename">{downloadState.finalFilename || downloadState.collectionTitle}</p>
                       {downloadState.completedTracks > 1 && (
                         <p className="sp-success-sub">
                           {downloadState.completedTracks} tracks downloaded
-                          {downloadState.failedTracks > 0 && ` Â· ${downloadState.failedTracks} failed`}
+                          {downloadState.failedTracks > 0 && ` · ${downloadState.failedTracks} failed`}
                         </p>
                       )}
                       <div className="sp-result-actions">
@@ -1711,8 +1767,6 @@ export default function SpotifyDownloader({ activeDownloadId }) {
         )}
 
         {/* ── Spacer ── */}
-        <div style={{ height: '2rem' }} />
-
         {/* ── FOOTER ── */}
         <footer className="sp-footer">
           <div className="sp-footer-inner">
