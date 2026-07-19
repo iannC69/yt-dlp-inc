@@ -184,7 +184,7 @@ let runningJobsCount = 0;
 
 function processQueue() {
   const queuedJobs = Array.from(activeJobs.entries()).filter(([id, j]) => j.queueStatus === 'queued' && !j.isPaused && !j.isCancelled);
-  
+
   while (runningJobsCount < MAX_CONCURRENT_JOBS && queuedJobs.length > 0) {
     const [jobId, jobToRun] = queuedJobs.shift();
     jobToRun.queueStatus = 'running';
@@ -1835,7 +1835,7 @@ function youtubeDownloaderPlugin() {
         const tempFile = path.join(os.tmpdir(), `spotdl_extract_${Date.now()}.spotdl`)
         const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe')
 
-        const proc = spawn(spotdlPath, ['save', spotUrl, '--save-file', tempFile], {
+        const proc = spawn(spotdlPath, ['save', spotUrl, '--save-file', tempFile, '--ffmpeg', path.resolve(__dirname, 'bin', 'ffmpeg.exe')], {
           env: {
             ...process.env,
             PYTHONIOENCODING: 'utf-8',
@@ -1944,12 +1944,12 @@ function youtubeDownloaderPlugin() {
               console.log('Spotify API denied playlist download metadata; reading the public playlist instead.')
               metadata = await resolvePublicPlaylist(spotUrl)
             } else {
-            try {
-              console.log(`resolveSpotifyMetadata failed during download (${e.message}), trying fallback...`);
-              metadata = await resolveSpotifyFallback(spotUrl);
-            } catch (fallbackErr) {
-              throw new Error(`Spotify metadata fetch failed: ${e.message} (Fallback failed: ${fallbackErr.message})`);
-            }
+              try {
+                console.log(`resolveSpotifyMetadata failed during download (${e.message}), trying fallback...`);
+                metadata = await resolveSpotifyFallback(spotUrl);
+              } catch (fallbackErr) {
+                throw new Error(`Spotify metadata fetch failed: ${e.message} (Fallback failed: ${fallbackErr.message})`);
+              }
             }
           }
 
@@ -1993,6 +1993,28 @@ function youtubeDownloaderPlugin() {
           const isNativePlaylist = urlObj.searchParams.get('nativePlaylist') === 'true';
 
           if (isNativePlaylist && isCollection) {
+            // Hoist spotdl args so retry pass can reuse them
+            const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe');
+            const spotdlArgs = [
+              spotUrl,
+              '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
+              '--format', 'mp3',
+              '--threads', String(aiConfig.concurrentTracks || 4),
+              '--preload',
+              '--audio', 'youtube',
+              '--yt-dlp-args', `--js-runtimes=node:${process.execPath}`,
+              '--add-unavailable'
+            ];
+            let spFfmpegArgs = `-threads ${aiConfig.ffmpegThreads}`
+            if (hwaccel !== 'NONE') {
+              if (hwaccel === 'AUTO') spFfmpegArgs = `-hwaccel auto ` + spFfmpegArgs
+              else if (hwaccel === 'CUDA') spFfmpegArgs = `-hwaccel cuda ` + spFfmpegArgs
+              else if (hwaccel === 'AMF') spFfmpegArgs = `-hwaccel d3d11va ` + spFfmpegArgs
+              else if (hwaccel === 'QSV') spFfmpegArgs = `-hwaccel qsv ` + spFfmpegArgs
+              spotdlArgs.push('--ffmpeg-args', spFfmpegArgs)
+            }
+            spotdlArgs.push('--ffmpeg', path.resolve(__dirname, 'bin', 'ffmpeg.exe'));
+
             const result = await new Promise((resolve) => {
               if (dlState.cancelled) return resolve({ skipped: true })
 
@@ -2003,25 +2025,6 @@ function youtubeDownloaderPlugin() {
                 progress: 5
               });
 
-              const spotdlArgs = [
-                spotUrl,
-                '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
-                '--format', 'mp3',
-                '--threads', String(aiConfig.concurrentTracks || 4),
-                '--preload',
-                '--audio', 'soundcloud', 'youtube', 'piped',
-                '--yt-dlp-args', `--js-runtimes=node:${process.execPath}`
-              ];
-              let spFfmpegArgs = `-threads ${aiConfig.ffmpegThreads}`
-              if (hwaccel !== 'NONE') {
-                if (hwaccel === 'AUTO') spFfmpegArgs = `-hwaccel auto ` + spFfmpegArgs
-                else if (hwaccel === 'CUDA') spFfmpegArgs = `-hwaccel cuda ` + spFfmpegArgs
-                else if (hwaccel === 'AMF') spFfmpegArgs = `-hwaccel d3d11va ` + spFfmpegArgs
-                else if (hwaccel === 'QSV') spFfmpegArgs = `-hwaccel qsv ` + spFfmpegArgs
-                spotdlArgs.push('--ffmpeg-args', spFfmpegArgs)
-              }
-
-              const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe');
               const proc = spawn(spotdlPath, spotdlArgs, {
                 windowsHide: true,
                 env: {
@@ -2059,13 +2062,22 @@ function youtubeDownloaderPlugin() {
                 } else {
                   let mDl = text.match(/Downloaded "([^"]+)"/);
                   if (mDl) {
-                    currentTrack++;
+                    // Try to find correct track index by matching the name
+                    const dName = (mDl[1] || '').toLowerCase().replace(/[^\w\s]/g, '');
+                    const matchedIdx = tracks.findIndex(t => {
+                      const tName = (t.title || '').toLowerCase().replace(/[^\w\s]/g, '');
+                      return tName && (dName.includes(tName) || tName.includes(dName));
+                    });
+                    
+                    const resolvedTrack = matchedIdx !== -1 ? matchedIdx + 1 : ++currentTrack;
+                    
                     send({
-                      currentTrack,
+                      currentTrack: resolvedTrack,
+                      trackDone: true,
                       totalTracks: nativeTotalTracks,
                       status: `Downloaded: ${mDl[1]}`,
                       trackProgress: 100,
-                      progress: Math.round(5 + (currentTrack / nativeTotalTracks) * 85)
+                      progress: Math.round(5 + (resolvedTrack / nativeTotalTracks) * 85)
                     });
                   } else {
                     let m2 = text.match(/(\d+)%/);
@@ -2098,25 +2110,158 @@ function youtubeDownloaderPlugin() {
               return;
             } else {
               try {
-                const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'))
-                for (const f of files) completedTracks.push(f)
+                let files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'));
+                const expectedCount = result.nativeTotalTracks || totalTracks;
+
+                // ── Smart rescue: identify EXACTLY which tracks are missing ──
+                const norm = s => (s || '').toLowerCase()
+                  .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+                const downloadedNorms = new Set(files.map(f => norm(f.replace(/\.mp3$/, ''))));
+
+                const isDownloaded = (track) => {
+                  const titleN = norm(track.title || '');
+                  const artistFirstWord = norm((track.artist || '').split(' ')[0]);
+                  for (const dn of downloadedNorms) {
+                    if (dn.includes(titleN) && (artistFirstWord === '' || dn.includes(artistFirstWord))) return true;
+                  }
+                  return false;
+                };
+
+                const missingTracks = tracks.filter(t => !isDownloaded(t));
+
+                if (missingTracks.length > 0) {
+                  console.log(`[spotdl-rescue] ${files.length}/${expectedCount} downloaded. Rescuing ${missingTracks.length} missing tracks via yt-dlp...`);
+                  send({ status: `Rescuing ${missingTracks.length} missing tracks via smart search...`, progress: 88 });
+
+                  const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe');
+                  const ffmpegPath = path.resolve(__dirname, 'bin', 'ffmpeg.exe');
+
+                  for (let mi = 0; mi < missingTracks.length; mi++) {
+                    if (dlState.cancelled) break;
+                    const track = missingTracks[mi];
+                    const safeArtist = (track.artist || '').replace(/[<>:"/\\|?*]+/g, '_');
+                    const safeTitle = (track.title || '').replace(/[<>:"/\\|?*]+/g, '_');
+                    const finalOutputPath = path.join(outputDir, `${safeArtist} - ${safeTitle}.mp3`);
+
+                    if (fs.existsSync(finalOutputPath)) continue;
+
+                    const durationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
+
+                    // 4 search strategies — try each until one succeeds
+                    const searchStrategies = [
+                      `ytsearch5:${track.artist} ${track.title}`,
+                      `ytsearch5:"${track.title}" "${track.artist}"`,
+                      `ytsearch5:${track.title} ${track.artist} official audio`,
+                      `ytsearch8:${track.title} official audio`,
+                    ];
+
+                    let rescued = false;
+                    for (const query of searchStrategies) {
+                      if (dlState.cancelled || rescued) break;
+
+                      send({
+                        status: `Rescuing: ${track.title} — ${track.artist} (${mi + 1}/${missingTracks.length})`,
+                        progress: 88 + Math.round((mi / missingTracks.length) * 7)
+                      });
+
+                      const matchFilter = durationSec > 0
+                        ? `!is_live & duration>${Math.max(30, durationSec - 25)} & duration<${durationSec + 45}`
+                        : '!is_live & duration>30';
+
+                      const rescueArgs = [
+                        query,
+                        '--match-filter', matchFilter,
+                        '--extractor-args', 'youtube:player_client=android,web',
+                        '--js-runtimes', `node:${process.execPath}`,
+                        '-x', '--audio-format', 'mp3',
+                        '--audio-quality', '0',
+                        '--ffmpeg-location', ffmpegPath,
+                        '-o', finalOutputPath,
+                        '--no-playlist',
+                        '--playlist-items', '1',
+                      ];
+
+                      const ok = await new Promise((resolveRescue) => {
+                        const rProc = spawn(ytDlpPath, rescueArgs, {
+                          windowsHide: true,
+                          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` }
+                        });
+                        rProc.stdout.on('data', () => {});
+                        rProc.stderr.on('data', () => {});
+                        rProc.on('close', (code) => resolveRescue(code === 0 && fs.existsSync(finalOutputPath)));
+                        rProc.on('error', () => resolveRescue(false));
+                      });
+
+                      if (ok) {
+                        rescued = true;
+                        downloadedNorms.add(norm(`${safeArtist} - ${safeTitle}`));
+                        console.log(`[spotdl-rescue] ✓ Rescued: ${track.title}`);
+                        
+                        const trackRealIdx = tracks.findIndex(t => t.title === track.title && t.artist === track.artist);
+                        if (trackRealIdx !== -1) {
+                           send({
+                             currentTrack: trackRealIdx + 1,
+                             trackDone: true,
+                             status: `Rescued: ${track.title}`,
+                             trackProgress: 100
+                           });
+                        }
+                        
+                        // Write ID3 tags
+                        try {
+                          const tags = {
+                            title: track.title,
+                            artist: track.allArtists || track.artist,
+                            album: track.album,
+                            year: track.year,
+                            trackNumber: `${track.trackNumber}/${track.totalTracks}`
+                          };
+                          if (track.coverUrl) {
+                            try {
+                              const coverBuf = await new Promise((r2, j2) => {
+                                https.get(track.coverUrl, rImg => {
+                                  if (rImg.statusCode === 200) {
+                                    const ch = []; rImg.on('data', c => ch.push(c)); rImg.on('end', () => r2(Buffer.concat(ch)));
+                                  } else j2(new Error(`${rImg.statusCode}`));
+                                }).on('error', j2);
+                              });
+                              tags.image = { mime: 'image/jpeg', type: { id: 3, name: 'Front Cover' }, description: 'Cover', imageBuffer: coverBuf };
+                            } catch {}
+                          }
+                          NodeID3.update(tags, finalOutputPath);
+                        } catch {}
+                      } else {
+                        console.log(`[spotdl-rescue] ✗ Strategy failed: "${track.title}" | query: ${query.substring(0, 60)}`);
+                        if (!ok) await new Promise(r => setTimeout(r, 800));
+                      }
+                    }
+
+                    if (!rescued) {
+                      console.log(`[spotdl-rescue] Could not rescue: ${track.title} — ${track.artist}`);
+                      failedTracks.push({ title: track.title, artist: track.artist, error: 'No matching video found on YouTube' });
+                    }
+                    if (mi < missingTracks.length - 1) await new Promise(r => setTimeout(r, 600));
+                  }
+
+                  files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'));
+                }
+
+                console.log(`[spotdl] Final: ${files.length}/${expectedCount} tracks downloaded.`);
+                for (const f of files) completedTracks.push(f);
                 if (completedTracks.length === 0) {
                   send({ error: 'No files were downloaded.', done: true });
                   res.end();
                   return;
                 }
-                send({
-                  trackDone: true,
-                  currentTrack: result.nativeTotalTracks,
-                  totalTracks: result.nativeTotalTracks,
-                  progress: 90
-                });
-              } catch (e) { }
+                send({ trackDone: true, currentTrack: files.length, totalTracks: expectedCount, progress: 90 });
+              } catch (e) { console.error('[spotdl] post-run error:', e.message); }
             }
+
           } else {
             // Cap Spotify concurrent downloads (ytsearch) to prevent 429 Too Many Requests
             const safeLimit = Math.min(limit, 3);
-            
+
             for (let i = 0; i < tracks.length; i++) {
               if (dlState.cancelled) {
                 if (collectionDir) try { fs.rmSync(collectionDir, { recursive: true, force: true }) } catch { }
@@ -2128,7 +2273,7 @@ function youtubeDownloaderPlugin() {
               while (activePromises.size >= safeLimit) {
                 await Promise.race(activePromises);
               }
-              
+
               // Stagger spawns to avoid YouTube search rate limits
               if (i > 0) await new Promise(r => setTimeout(r, 1200));
               if (dlState.cancelled) break;
@@ -2155,14 +2300,26 @@ function youtubeDownloaderPlugin() {
                     const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
                     const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
 
+                    // Build a YouTube-focused search query. Prefer ISRC/Spotify track URL
+                    // so we get the original (uncensored) version, not a YouTube Music
+                    // auto-generated or censored upload.
+                    const isrc = track.isrc || '';
+                    const searchQuery = isrc
+                      ? `ytsearch3:${track.artist} ${track.title}` // will rank-match ISRC below
+                      : `ytsearch5:${track.artist} ${track.title}`;
+
                     const ytDlpArgs = [
-                      `ytsearch1:${track.artist} ${track.title} audio`,
-                      '-x', '--audio-format', 'mp3',
-                      '--audio-quality', '0',
+                      searchQuery,
+                      '--match-filter',
+                      // Prefer non-auto-generated YouTube Music channels; pick the first non-music video
+                      '!is_live & duration>60',
                       '--extractor-args', 'youtube:player_client=android,web',
                       '--js-runtimes', `node:${process.execPath}`,
+                      '-x', '--audio-format', 'mp3',
+                      '--audio-quality', '0',
                       '-o', path.join(outputDir, finalOutputName),
-                      '--no-playlist'
+                      '--no-playlist',
+                      '--playlist-items', '1'
                     ];
 
                     const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe');
@@ -2320,10 +2477,10 @@ function youtubeDownloaderPlugin() {
               try {
                 const coverRes = await fetch(metadata.coverUrl)
                 const coverBuffer = Buffer.from(await coverRes.arrayBuffer())
-                
+
                 const metaDir = path.join(collectionDir, '.metadata')
                 if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir)
-                
+
                 const jpgPath = path.join(metaDir, 'folder.jpg')
                 fs.writeFileSync(jpgPath, coverBuffer)
 
@@ -2362,19 +2519,19 @@ function youtubeDownloaderPlugin() {
               }
             } // Close if (metadata.type === 'album' && metadata.coverUrl)
 
-              send({
-                done: true,
-                progress: 100,
-                finalFilename: path.basename(collectionDir),
-                downloadUrl: '',
-                completedTracks: completedTracks.length,
-                failedTracks: failedTracks.length,
-                isArchive: false,
-                collectionTitle: metadata.title,
-                source: 'spotify',
-                spotifyType: metadata.type
-              })
-              res.end()
+            send({
+              done: true,
+              progress: 100,
+              finalFilename: path.basename(collectionDir),
+              downloadUrl: '',
+              completedTracks: completedTracks.length,
+              failedTracks: failedTracks.length,
+              isArchive: false,
+              collectionTitle: metadata.title,
+              source: 'spotify',
+              spotifyType: metadata.type
+            })
+            res.end()
 
           } else {
             // Single track

@@ -1,0 +1,39 @@
+[
+    {
+        "name": "Never Gonna Give You Up",
+        "artists": [
+            "Rick Astley"
+        ],
+        "artist": "Rick Astley",
+        "genres": [
+            "",
+            ""
+        ],
+        "disc_number": 1,
+        "disc_count": 1,
+        "album_name": "Whenever You Need Somebody",
+        "album_artist": "Rick Astley",
+        "duration": 213,
+        "year": 1987,
+        "date": "1987-11-12",
+        "track_number": 1,
+        "tracks_count": 10,
+        "song_id": "4cOdK2wGLETKBW3PvgPWqT",
+        "explicit": false,
+        "publisher": "BMG Rights Management (UK) Ltd",
+        "url": "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT",
+        "isrc": "",
+        "cover_url": "https://i.scdn.co/image/ab67616d0000b273baf89eb11ec7c657805d2da0",
+        "copyright_text": "",
+        "download_url": null,
+        "lyrics": null,
+        "popularity": 10,
+        "album_id": "5Z9iiGl2FcIfa3BMiv6OIw",
+        "list_name": null,
+        "list_url": null,
+        "list_position": null,
+        "list_length": null,
+        "artist_id": "0gxyHStUsqpMadRV0Di1Qt",
+        "album_type": "album"
+    }
+]

@@ -1262,7 +1262,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                           </div>
                         )}
 
-                        <button onClick={cancelMassDownload} className="sp-mass-cancel-btn">Anuleaza descarcarea</button>
+                        <button onClick={cancelMassDownload} className="sp-mass-cancel-btn">Anulează descărcarea</button>
                       </div>
                     ) : (
                       <motion.div className="sp-mass-done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
@@ -1556,7 +1556,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                           })}
                           {info.type === 'playlist' && info.totalTracks > 5 && (
                             <p style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
-                              ... È™i Ã®ncÄƒ {info.totalTracks - 5} melodii
+                              ... și încă {info.totalTracks - 5} melodii
                             </p>
                           )}
                         </div>
@@ -1572,9 +1572,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                   </div>
 
                   <div className="sp-modal-actions">
-                    <button className="sp-modal-cancel" onClick={() => setShowDownloadModal(false)}>AnuleazÄƒ</button>
+                    <button className="sp-modal-cancel" onClick={() => setShowDownloadModal(false)}>Anulează</button>
                     <button className="sp-modal-confirm" onClick={handleDownload} disabled={info.trackCount > 1 && selectedTracks.size === 0}>
-                      ÃŽncepe descÄƒrcarea
+                      Începe descărcarea
                     </button>
                   </div>
                 </motion.div>
