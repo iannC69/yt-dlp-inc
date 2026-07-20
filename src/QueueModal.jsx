@@ -12,11 +12,7 @@ function JobCard({ job, onCancel }) {
 
   const handleOpenFolder = async () => {
     try {
-      await fetch('/api/ytdl/open-folder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: job.filename || job.title })
-      });
+      await fetch(`/api/ytdl/open-folder?target=${encodeURIComponent(job.filename || '')}`);
     } catch (e) { console.error(e); }
   };
 
@@ -93,7 +89,7 @@ export default function QueueModal({ onClose }) {
 
   const handleCancel = async (id) => {
     try {
-      await fetch(`/api/ytdl/cancel?downloadId=${id}`, { method: 'POST' });
+      await fetch(`/api/ytdl/job-action?jobId=${encodeURIComponent(id)}&action=cancel`);
       fetchJobs();
     } catch (e) { console.error(e); }
   };

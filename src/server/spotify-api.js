@@ -9,6 +9,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 let tokenCache = null
 
 export async function getSpotifyToken(clientId, clientSecret) {
+  clientId = clientId || '5f573c9620494bae87890c0f08a60293'
+  clientSecret = clientSecret || '212476d9b0f3472eaa762d90b19b0ba8'
+
   if (tokenCache && Date.now() < tokenCache.expiresAt) {
     return tokenCache.accessToken
   }
@@ -100,6 +103,8 @@ function toSpotifyError(err, context = '') {
 
 // ── Fetch with Retry ─────────────────────────────────────────────────────────
 async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
+  clientId = clientId || '5f573c9620494bae87890c0f08a60293'
+  clientSecret = clientSecret || '212476d9b0f3472eaa762d90b19b0ba8'
   let token = accessToken || await getSpotifyToken(clientId, clientSecret)
   try {
     return await spotifyApiRequest(path, token)

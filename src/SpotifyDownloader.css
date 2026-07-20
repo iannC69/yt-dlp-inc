@@ -2010,9 +2010,12 @@
   background: rgba(14, 20, 14, 0.97);
   border: 1px solid var(--sp-border-accent);
   border-radius: var(--sp-radius);
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 480px;
+  padding: 1.25rem;
+  width: min(480px, 100%);
+  max-height: calc(100svh - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
 }
 
@@ -2020,14 +2023,19 @@
   font-size: 1rem;
   font-weight: 700;
   color: var(--sp-text);
-  margin: 0 0 1.25rem;
+  margin: 0 0 1rem;
+  flex-shrink: 0;
 }
 
 .sp-modal-settings {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: .35rem;
 }
 
 .sp-setting-group,
@@ -2143,8 +2151,9 @@
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--sp-radius-sm);
-  max-height: 240px;
+  max-height: min(240px, 30svh);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sp-track-item {
@@ -2222,9 +2231,12 @@
 
 .sp-modal-actions {
   display: flex;
+  flex-shrink: 0;
   gap: 0.75rem;
   justify-content: flex-end;
-  margin-top: 0.5rem;
+  margin-top: 1rem;
+  padding-top: .9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .sp-modal-cancel {
@@ -2263,6 +2275,12 @@
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.3);
   cursor: not-allowed;
+}
+
+@media (max-height: 700px) {
+  .sp-modal-overlay { align-items: flex-start; overflow-y: auto; }
+  .sp-modal { margin-block: 1rem; }
+  .sp-track-list { max-height: 160px; }
 }
 
 /* ARTIST GALLERY */

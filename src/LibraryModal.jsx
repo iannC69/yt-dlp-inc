@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Film, FolderOpen, Play, Music, LayoutGrid, List, X, ChevronDown } from 'lucide-react';
+import { Film, FolderOpen, Play, Music, LayoutGrid, List, X, ChevronDown, Scissors, Trash2 } from 'lucide-react';
 import './LibraryModal.css';
 
-const FILTERS = ['All', 'YouTube', 'Spotify', 'Audio', 'Video'];
+const FILTERS = ['All', 'YouTube', 'Spotify', 'Cutter', 'Audio', 'Video'];
 const SORTS = ['Date', 'Name', 'Source'];
 
 export default function LibraryModal({ historyData, onClose }) {
@@ -13,11 +13,8 @@ export default function LibraryModal({ historyData, onClose }) {
 
   const handleOpenFolder = async (filename) => {
     try {
-      await fetch('/api/ytdl/open-folder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename })
-      });
+      const response = await fetch(`/api/ytdl/open-folder?target=${encodeURIComponent(filename || '')}`);
+      if (!response.ok) throw new Error('The downloaded item could not be found.');
     } catch (err) {
       console.error('Failed to open folder:', err);
     }
@@ -25,8 +22,9 @@ export default function LibraryModal({ historyData, onClose }) {
 
   const filtered = useMemo(() => {
     let items = [...historyData];
-    if (filter === 'YouTube') items = items.filter(i => i.source !== 'spotify');
+    if (filter === 'YouTube') items = items.filter(i => i.source === 'youtube');
     else if (filter === 'Spotify') items = items.filter(i => i.source === 'spotify');
+    else if (filter === 'Cutter') items = items.filter(i => i.source === 'cutter');
     else if (filter === 'Audio') items = items.filter(i => i.format && /mp3|ogg|wav|flac|m4a/i.test(i.format));
     else if (filter === 'Video') items = items.filter(i => i.format && /mp4|webm|mkv/i.test(i.format));
 
@@ -36,6 +34,18 @@ export default function LibraryModal({ historyData, onClose }) {
 
     return items;
   }, [historyData, filter, sortBy]);
+
+  const clearHistory = () => {
+    localStorage.removeItem('global_history');
+    window.dispatchEvent(new Event('history_updated'));
+    onClose();
+  };
+
+  const sourceDetails = (item) => item.source === 'spotify'
+    ? { label: 'Spotify', icon: <Music size={10} />, className: 'lib-badge--spotify' }
+    : item.source === 'cutter'
+      ? { label: 'Cutter', icon: <Scissors size={10} />, className: 'lib-badge--cutter' }
+      : { label: 'YouTube', icon: <Play size={10} />, className: 'lib-badge--youtube' };
 
   return (
     <motion.div
@@ -57,7 +67,10 @@ export default function LibraryModal({ historyData, onClose }) {
             <h2 className="lib-title">Library</h2>
             <span className="lib-count">{filtered.length} items</span>
           </div>
-          <button className="lib-close-btn" onClick={onClose}><X size={18} /></button>
+          <div className="lib-header-actions">
+            {historyData.length > 0 && <button className="lib-close-btn" onClick={clearHistory} title="Clear history"><Trash2 size={15} /></button>}
+            <button className="lib-close-btn" onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
 
         {/* Toolbar */}
@@ -98,7 +111,7 @@ export default function LibraryModal({ historyData, onClose }) {
               </motion.div>
             ) : (
               filtered.map((item) => {
-                const isSpotify = item.source === 'spotify';
+                const source = sourceDetails(item);
                 return viewMode === 'grid' ? (
                   <motion.div
                     key={item.id}
@@ -116,19 +129,20 @@ export default function LibraryModal({ historyData, onClose }) {
                         onError={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
                       />
                       <div className="lib-thumb-fallback"><Film size={28} /></div>
-                      <span className={`lib-source-badge ${isSpotify ? 'lib-badge--spotify' : 'lib-badge--youtube'}`}>
-                        {isSpotify ? <Music size={10} /> : <Play size={10} />}
-                        {isSpotify ? 'Spotify' : 'YouTube'}
+                      <div className="lib-card-shade" />
+                      <span className={`lib-source-badge ${source.className}`}>
+                        {source.icon}
+                        {source.label}
                       </span>
-                    </div>
-                    <div className="lib-card-body">
-                      <p className="lib-card-title" title={item.title}>{item.title}</p>
-                      <div className="lib-card-meta">
-                        <span>{item.format}</span>
-                        <span>{new Date(item.date).toLocaleDateString()}</span>
+                      <div className="lib-card-body">
+                        <p className="lib-card-title" title={item.title}>{item.title}</p>
+                        <div className="lib-card-meta">
+                          <span>{item.format}</span>
+                          <span>{new Date(item.date).toLocaleDateString()}</span>
+                        </div>
                       </div>
-                      <button className="lib-open-btn" onClick={() => handleOpenFolder(item.filename)}>
-                        <FolderOpen size={13} /> Open folder
+                      <button className="lib-open-btn" onClick={() => handleOpenFolder(item.filename)} title="Open folder">
+                        <FolderOpen size={14} />
                       </button>
                     </div>
                   </motion.div>
@@ -150,9 +164,9 @@ export default function LibraryModal({ historyData, onClose }) {
                     <div className="lib-list-info">
                       <p className="lib-list-title">{item.title}</p>
                       <div className="lib-list-meta">
-                        <span className={`lib-source-badge ${isSpotify ? 'lib-badge--spotify' : 'lib-badge--youtube'}`}>
-                          {isSpotify ? <Music size={9} /> : <Play size={9} />}
-                          {isSpotify ? 'Spotify' : 'YouTube'}
+                        <span className={`lib-source-badge ${source.className}`}>
+                          {source.icon}
+                          {source.label}
                         </span>
                         <span>{item.format}</span>
                         <span>{new Date(item.date).toLocaleDateString()}</span>

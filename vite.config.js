@@ -487,6 +487,24 @@ function youtubeDownloaderPlugin() {
         res.end(JSON.stringify(getScheduled().filter(j => !j.started)))
       })
 
+      // ── Active Jobs (queue manager and reconnect) ──
+      server.middlewares.use('/api/active-jobs', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        const youtube = Array.from(activeJobs.values()).map(job => ({
+          id: job.id,
+          title: job.state?.title || job.state?.status || 'YouTube download',
+          thumbnail: job.state?.thumbnail || null,
+          filename: job.state?.finalFilename || null,
+          format: job.state?.format || (job.type === 'playlist' ? 'Playlist' : 'Video'),
+          percent: Number(job.state?.progress || 0),
+          status: job.state?.done ? (job.state?.error ? 'failed' : 'done') : (job.queueStatus === 'queued' ? 'queued' : 'active'),
+          error: job.state?.error || null,
+        }))
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ youtube, spotify: [] }))
+      })
+
       // ── Job Status Endpoint (for reconnection) ──
       server.middlewares.use('/api/ytdl/job-status', (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
@@ -599,7 +617,7 @@ function youtubeDownloaderPlugin() {
           }
         }, 30000)
 
-        child.on('close', code => {
+        child.on('close', async code => {
           clearTimeout(killTimer)
           if (res.headersSent) return
           if (code !== 0) {
@@ -616,12 +634,39 @@ function youtubeDownloaderPlugin() {
                   availableHeights.add(f.height)
                 }
               })
+            let artistThumbnail = info.channel_thumbnail || info.uploader_thumbnail || info.channel_avatar || info.uploader_avatar || null
+            if (!artistThumbnail && (info.channel_url || info.uploader_url)) {
+              try {
+                const channelResponse = await fetch(info.channel_url || info.uploader_url, {
+                  headers: { 'User-Agent': 'Mozilla/5.0' }
+                })
+                const channelHtml = await channelResponse.text()
+                const avatarMatch = channelHtml.match(/"avatar"\s*:\s*\{\s*"thumbnails"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)"/i)
+                  || channelHtml.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+                  || channelHtml.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+                artistThumbnail = avatarMatch?.[1]?.replace(/\\u0026/g, '&').replace(/&amp;/g, '&') || null
+              } catch { }
+            }
+            const isMusic = /music\.youtube\.com/i.test(videoUrl) || /youtube:music|music/i.test(info.extractor_key || '')
+            const hasCollection = Boolean(info.playlist_count || info.n_entries || info._type === 'playlist' || info.playlist_id)
+            const musicCollection = isMusic && (/\/browse\//i.test(videoUrl) || Boolean(info.album) || hasCollection)
+            const contentType = hasCollection || musicCollection
+              ? (isMusic && (Boolean(info.album) || /\/browse\/MPRE/i.test(videoUrl)) ? 'album' : 'playlist')
+              : (isMusic ? 'track' : 'video')
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify({
               title: info.title,
               thumbnail: info.thumbnail,
               duration: info.duration,
               uploader: info.uploader || info.channel || null,
+              artistThumbnail,
+              contentType,
+              platform: isMusic ? 'youtube_music' : 'youtube',
+              album: info.album || info.playlist_title || null,
+              albumArtist: info.album_artist || info.artist || info.uploader || info.channel || null,
+              trackNumber: Number(info.track_number || info.playlist_index) || null,
+              trackCount: Number(info.playlist_count || info.n_entries) || null,
+              releaseYear: info.release_year || (info.release_date ? String(info.release_date).slice(0, 4) : null),
               viewCount: info.view_count || null,
               uploadDate: info.upload_date || null,
               availableHeights: Array.from(availableHeights).sort((a, b) => b - a),
@@ -1170,6 +1215,87 @@ function youtubeDownloaderPlugin() {
         })
       }
 
+      server.middlewares.use('/api/audio-cutter/select-source', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        const psScript = `
+          Add-Type -AssemblyName System.Windows.Forms
+          $dialog = New-Object System.Windows.Forms.OpenFileDialog
+          $dialog.Title = 'Select audio file to cut'
+          $dialog.Filter = 'Audio files|*.mp3;*.m4a;*.aac;*.wav;*.flac;*.ogg;*.opus;*.webm|All files|*.*'
+          if ($dialog.ShowDialog() -eq 'OK') { Write-Output $dialog.FileName }
+        `
+        const child = spawn('powershell', ['-NoProfile', '-Command', psScript], { windowsHide: true })
+        let stdout = ''
+        child.stdout.on('data', chunk => { stdout += chunk.toString() })
+        child.on('close', () => {
+          const sourcePath = stdout.trim()
+          if (!sourcePath) return res.end(JSON.stringify({ success: false }))
+          if (!fs.existsSync(sourcePath)) {
+            res.statusCode = 404
+            return res.end(JSON.stringify({ error: 'Selected file no longer exists.' }))
+          }
+          const probe = spawn(ffmpegBin, ['-i', sourcePath], { windowsHide: true })
+          let stderr = ''
+          probe.stderr.on('data', chunk => { stderr += chunk.toString() })
+          probe.on('close', () => {
+            const durationMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+            const duration = durationMatch ? Number(durationMatch[1]) * 3600 + Number(durationMatch[2]) * 60 + Number(durationMatch[3]) : 0
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({
+              success: true,
+              path: sourcePath,
+              name: path.basename(sourcePath),
+              extension: path.extname(sourcePath).slice(1),
+              duration
+            }))
+          })
+        })
+      })
+
+      server.middlewares.use('/api/audio-cutter/cut', async (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          return res.end(JSON.stringify({ error: 'Method not allowed.' }))
+        }
+        const body = await parseJsonBody(req)
+        const sourcePath = typeof body.sourcePath === 'string' ? body.sourcePath : ''
+        const start = Number(body.start)
+        const end = Number(body.end)
+        const format = ['mp3', 'm4a', 'wav', 'flac'].includes(body.format) ? body.format : 'mp3'
+        const outputName = sanitizeFilename(String(body.outputName || 'audio-clip')).replace(/\.[^.]+$/, '') || 'audio-clip'
+        const allowedExtensions = new Set(['.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.opus', '.webm'])
+        if (!sourcePath || !allowedExtensions.has(path.extname(sourcePath).toLowerCase()) || !fs.existsSync(sourcePath)) {
+          res.statusCode = 400
+          return res.end(JSON.stringify({ error: 'Choose a valid local audio file.' }))
+        }
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
+          res.statusCode = 400
+          return res.end(JSON.stringify({ error: 'The selected time range is invalid.' }))
+        }
+        const filename = `${outputName}-${Date.now()}.${format}`
+        const outputPath = path.join(ensureDownloadsDir(), filename)
+        const codecArgs = format === 'mp3' ? ['-codec:a', 'libmp3lame', '-q:a', '0'] : format === 'm4a' ? ['-codec:a', 'aac', '-b:a', '256k'] : format === 'flac' ? ['-codec:a', 'flac'] : ['-codec:a', 'pcm_s16le']
+        const args = ['-y', '-ss', String(start), '-to', String(end), '-i', sourcePath, '-map_metadata', '0', '-vn', ...codecArgs, outputPath]
+        const proc = spawn(ffmpegBin, args, { windowsHide: true })
+        let stderr = ''
+        proc.stderr.on('data', chunk => { stderr += chunk.toString() })
+        proc.on('error', error => {
+          res.statusCode = 500
+          res.end(JSON.stringify({ error: `Could not start FFmpeg: ${error.message}` }))
+        })
+        proc.on('close', code => {
+          if (code !== 0 || !fs.existsSync(outputPath)) {
+            res.statusCode = 500
+            return res.end(JSON.stringify({ error: `FFmpeg could not create the clip: ${stderr.slice(-400)}` }))
+          }
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ success: true, filename, title: outputName }))
+        })
+      })
+
       // ── Spotify OAuth Token Exchange ──
       server.middlewares.use('/api/spotify-oauth', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
@@ -1395,26 +1521,23 @@ function youtubeDownloaderPlugin() {
                 // Per-track strategy: iTunes first, YTM as fallback
                 const itunesData = await fetchItunesMetadata(track.title, track.artist);
                 if (itunesData) {
-                  track.title = itunesData.title || track.title;
-                  track.artist = itunesData.artist || track.artist;
-                  track.album = itunesData.album || track.album;
-                  track.year = itunesData.year || track.year;
-                  track.coverUrl = itunesData.coverUrl || track.coverUrl;
+                  track.album = track.album || itunesData.album;
+                  track.year = track.year || itunesData.year;
+                  track.coverUrl = track.coverUrl || itunesData.coverUrl;
                   source = 'itunes';
                 } else {
                   const ytmData = await fetchYouTubeMusicMetadata(track.title, track.artist);
                   if (ytmData) {
-                    track.title = ytmData.title || track.title;
-                    track.artist = ytmData.artist || track.artist;
-                    track.album = ytmData.album || track.album;
-                    track.year = ytmData.year || track.year;
-                    track.coverUrl = ytmData.coverUrl || track.coverUrl;
+                    track.album = track.album || ytmData.album;
+                    track.year = track.year || ytmData.year;
+                    track.coverUrl = track.coverUrl || ytmData.coverUrl;
                     source = 'youtube_music';
                   }
                 }
               }
               track.metadataSource = source;
               track.index = actualIdx + 1;
+              track.searchRoute = actualIdx < 100 ? 'spotify' : 'youtube_music';
             }));
           }
 
@@ -1467,7 +1590,7 @@ function youtubeDownloaderPlugin() {
         if (downloadId && activeMassDownloads.has(downloadId)) {
           const dl = activeMassDownloads.get(downloadId)
           dl.cancelled = true
-          if (dl.proc) { try { dl.proc.kill() } catch { } }
+          for (const proc of dl.procs || []) { try { proc.kill() } catch { } }
         }
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify({ success: true }))
@@ -1494,7 +1617,7 @@ function youtubeDownloaderPlugin() {
         res.setHeader('Connection', 'keep-alive')
         const send = (data) => { try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch { } }
 
-        const dlState = { cancelled: false, proc: null }
+        const dlState = { cancelled: false, proc: null, procs: new Set() }
         activeMassDownloads.set(downloadId, dlState)
 
         const runMassDownload = async (bodyData) => {
@@ -1504,7 +1627,17 @@ function youtubeDownloaderPlugin() {
             // ── Pre-enriched tracks from client (POST body) ──
             tracks = bodyData.tracks
             safeName = sanitizeFilename(bodyData.playlistName || 'playlist') || 'playlist'
-            send({ current: 0, total: tracks.length, status: `Loaded ${tracks.length} pre-enriched tracks.` })
+            tracks = tracks.map((track, index) => ({
+              ...track,
+              index: track.index || index + 1,
+              searchRoute: track.searchRoute || (index < 100 ? 'spotify' : 'youtube_music')
+            }))
+            send({
+              current: 0,
+              total: tracks.length,
+              status: `Loaded ${tracks.length} tracks. Spotify route: ${Math.min(100, tracks.length)}; YouTube Music route: ${Math.max(0, tracks.length - 100)}.`,
+              sourceRouting: { spotify: Math.min(100, tracks.length), youtubeMusic: Math.max(0, tracks.length - 100) }
+            })
           } else {
             // ── Legacy: re-fetch metadata from Spotify (GET or missing body) ──
             const spotUrl = urlObj.searchParams.get('url')
@@ -1584,14 +1717,15 @@ function youtubeDownloaderPlugin() {
               const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
               const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_')
               const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_')
-              const finalOutputName = `${safeArtist} - ${safeTitle}.%(ext)s`
+              const trackDir = path.join(tempDir, `${String(i + 1).padStart(4, '0')}-${safeArtist}-${safeTitle}`)
+              const finalOutputName = `${String(i + 1).padStart(4, '0')} - ${safeArtist} - ${safeTitle}.%(ext)s`
+              const musicSearchUrl = `https://music.youtube.com/search?q=${encodeURIComponent(`${track.artist} ${track.title}`)}`
+              fs.mkdirSync(trackDir, { recursive: true })
 
               // Try multiple search queries — fall back if the first fails
-              const searchQueries = [
-                `ytsearch1:${track.artist} - ${track.title} audio`,
-                `ytsearch1:${track.artist} ${track.title}`,
-                `ytsearch1:${track.title} ${track.artist} official audio`,
-              ]
+              const searchQueries = track.searchRoute === 'youtube_music'
+                ? [musicSearchUrl, `ytsearch1:${track.artist} ${track.title} official audio`, `ytsearch1:${track.title} ${track.artist}`]
+                : [`ytsearch1:${track.artist} - ${track.title} official audio`, `ytsearch1:${track.artist} ${track.title}`, `ytsearch1:${track.title} ${track.artist} official audio`]
 
               let downloadedOk = false
               for (const query of searchQueries) {
@@ -1601,7 +1735,7 @@ function youtubeDownloaderPlugin() {
                     query,
                     '-x', '--audio-format', audioFormat,
                     '--audio-quality', '0',
-                    '-o', path.join(tempDir, finalOutputName),
+                    '-o', path.join(trackDir, finalOutputName),
                     '--no-playlist',
                     '--ffmpeg-location', ffmpegDir,
                   ]
@@ -1609,15 +1743,17 @@ function youtubeDownloaderPlugin() {
                     env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` }
                   })
                   dlState.proc = proc
+                  dlState.procs.add(proc)
                   activeProcs.add(proc)
                   let stderr = ''
                   proc.stderr.on('data', chunk => { stderr += chunk.toString() })
                   proc.on('close', code => {
+                    dlState.procs.delete(proc)
                     activeProcs.delete(proc)
                     if (code === 0) resolve(true)
                     else { console.warn(`[mass-dl] yt-dlp failed (${code}) for query "${query}": ${stderr.slice(0, 200)}`); resolve(false) }
                   })
-                  proc.on('error', () => { activeProcs.delete(proc); resolve(false) })
+                  proc.on('error', () => { dlState.procs.delete(proc); activeProcs.delete(proc); resolve(false) })
                 })
                 if (ok) { downloadedOk = true; break }
               }
@@ -1628,22 +1764,15 @@ function youtubeDownloaderPlugin() {
               const AUDIO_EXTS = ['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'aac']
               let finalFilename = ''
               try {
-                const files = fs.readdirSync(tempDir).filter(f => {
+                const files = fs.readdirSync(trackDir).filter(f => {
                   const ext = f.split('.').pop().toLowerCase()
                   return AUDIO_EXTS.includes(ext)
                 })
-                let newestTime = 0
-                for (const f of files) {
-                  const stat = fs.statSync(path.join(tempDir, f))
-                  if (stat.mtimeMs > newestTime && stat.mtimeMs >= trackStartTime) {
-                    newestTime = stat.mtimeMs
-                    finalFilename = f
-                  }
-                }
+                finalFilename = files[0] || ''
               } catch (e) { }
 
               if (downloadedOk && finalFilename) {
-                const filePath = path.join(tempDir, finalFilename)
+                const filePath = path.join(trackDir, finalFilename)
                 let coverBuffer = null
                 if (track.coverUrl && audioFormat === 'mp3') {
                   try {
@@ -1674,10 +1803,13 @@ function youtubeDownloaderPlugin() {
                   }
                   try { NodeID3.update(tags, filePath) } catch (e) { }
                 }
+                fs.renameSync(filePath, path.join(tempDir, finalFilename))
+                try { fs.rmSync(trackDir, { recursive: true, force: true }) } catch { }
                 completedCount++
                 startTimes.push(Date.now() - trackStartTime)
                 if (startTimes.length > 10) startTimes.shift()
               } else {
+                try { fs.rmSync(trackDir, { recursive: true, force: true }) } catch { }
                 failedCount++
                 console.warn(`[mass-dl] Track failed after all retries: "${track.artist} - ${track.title}"`)
               }
@@ -1748,9 +1880,9 @@ function youtubeDownloaderPlugin() {
           }
         } // end runMassDownload
 
-        req.on('close', () => {
+        req.on('aborted', () => {
           dlState.cancelled = true
-          if (dlState.proc) { try { dlState.proc.kill() } catch { } }
+          for (const proc of dlState.procs) { try { proc.kill() } catch { } }
           activeMassDownloads.delete(downloadId)
         })
 

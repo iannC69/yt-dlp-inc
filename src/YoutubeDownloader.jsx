@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Film, Loader2, AlertCircle, CheckCircle2,
-  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, XCircle, HardDrive, Activity, Cpu, ArrowLeft, CalendarClock, FolderOpen, ChevronUp, ChevronDown, Sparkles
+  Zap, Clock, MonitorPlay, Headphones, Link2, RefreshCw, Save, ListVideo, Music, Pause, Play, X, XCircle, HardDrive, Activity, Cpu, ArrowLeft, CalendarClock, FolderOpen
 } from 'lucide-react';
 import { getAverageColor } from './utils/colorUtils';
 import WaveformBg from './WaveformBg';
@@ -73,13 +73,6 @@ function formatDuration(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function formatViews(n) {
-  if (!n) return null;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M vizionări`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K vizionări`;
-  return `${n} vizionări`;
-}
-
 function isPlaylistUrl(value) {
   try {
     const parsed = new URL(value);
@@ -120,15 +113,36 @@ const YoutubeDownloader = ({ activeJobId }) => {
     } catch { }
   }, []);
 
-  const saveToHistory = (newUrl, title, thumbnail) => {
+  const saveToHistory = (newUrl, title, thumbnail, uploader = '', artistThumbnail = '', isCollection = false) => {
     if (!newUrl) return;
     setHistory(prev => {
       const filtered = prev.filter(item => item.url !== newUrl);
-      const updated = [{ url: newUrl, title: title || newUrl, thumbnail, date: Date.now() }, ...filtered].slice(0, 10);
+      const updated = [{ url: newUrl, title: title || newUrl, thumbnail, uploader, artistThumbnail, isCollection, date: Date.now() }, ...filtered].slice(0, 10);
       localStorage.setItem('ytdl_history', JSON.stringify(updated));
       return updated;
     });
   };
+  const removeHistoryItem = (targetUrl) => {
+    setHistory(prev => {
+      const updated = prev.filter(item => item.url !== targetUrl);
+      localStorage.setItem('ytdl_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const removeChannelHistory = (uploader) => {
+    setHistory(prev => {
+      const updated = prev.filter(item => item.uploader !== uploader);
+      localStorage.setItem('ytdl_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const recentChannels = useMemo(() => {
+    const seen = new Set();
+    return history.filter(item => item.uploader && !item.isCollection && !isPlaylistUrl(item.url) && !seen.has(item.uploader) && seen.add(item.uploader)).slice(0, 6);
+  }, [history]);
+
   const [info, setInfo] = useState(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [error, setError] = useState(null);
@@ -169,17 +183,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
   const [appMode, setAppMode] = useState(null);
   const [scheduleTime, setScheduleTime] = useState('');
-  const [ambientColor, setAmbientColor] = useState('rgba(239, 68, 68, 0.12)'); // default red glow
-  const [hideSuggestions, setHideSuggestions] = useState(() => {
-    return localStorage.getItem('ytdl_hide_suggestions') === 'true';
-  });
-  const [showSuggestions, setShowSuggestions] = useState(false); 
-
-  const toggleSuggestions = () => {
-    const newVal = !hideSuggestions;
-    setHideSuggestions(newVal);
-    localStorage.setItem('ytdl_hide_suggestions', String(newVal));
-  };
+  const [ambientColor, setAmbientColor] = useState('rgba(239, 68, 68, 0.12)');
 
   useEffect(() => {
     fetch('/api/ytdl/get-config').then(r => r.json()).then(data => {
@@ -372,8 +376,10 @@ const YoutubeDownloader = ({ activeJobId }) => {
     };
   };
 
-  const fetchInfo = async () => {
-    if (!url) return;
+  const fetchInfo = async (inputUrl = url) => {
+    const targetUrl = typeof inputUrl === 'string' ? inputUrl.trim() : url.trim();
+    if (!targetUrl) return;
+    setUrl(targetUrl);
     setLoadingInfo(true);
     setError(null);
     setInfo(null);
@@ -381,7 +387,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
     setProgress(0);
     setStep(0);
 
-    if (isMusicUrl(url)) {
+    if (isMusicUrl(targetUrl)) {
       setMediaType('audio');
       setDownloadFormat('audio');
       setDownloadSourceMode('standard');
@@ -393,18 +399,24 @@ const YoutubeDownloader = ({ activeJobId }) => {
     }
 
     try {
-      const res = await fetch(`/api/ytdl/info?url=${encodeURIComponent(url)}`);
+      const res = await fetch(`/api/ytdl/info?url=${encodeURIComponent(targetUrl)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch info');
 
       let playlist = null;
-      if (isPlaylistUrl(url)) {
-        const playlistRes = await fetch('/api/ytdl/collection-info?url=' + encodeURIComponent(url));
+      if (data.contentType === 'album' || data.contentType === 'playlist' || isPlaylistUrl(targetUrl)) {
+        const playlistRes = await fetch('/api/ytdl/collection-info?url=' + encodeURIComponent(targetUrl));
         if (playlistRes.ok) {
           playlist = await playlistRes.json();
           const allIndices = new Set(playlist.entries.map(e => e.index));
           setSelectedTracks(allIndices);
         }
+      }
+      if (data.platform === 'youtube_music') {
+        setAppMode('music');
+        setMediaType('audio');
+      } else {
+        setAppMode('youtube');
       }
       setInfo({ ...data, playlist });
       
@@ -417,8 +429,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
         setAmbientColor('rgba(239, 68, 68, 0.12)');
       }
 
-      saveToHistory(url, playlist ? playlist.title : data.title, data.thumbnail);
-      localStorage.setItem('ytdl_url', url);
+      saveToHistory(targetUrl, playlist ? playlist.title : data.title, data.thumbnail, data.uploader || playlist?.uploader || '', data.artistThumbnail || '', Boolean(playlist));
+      localStorage.setItem('ytdl_url', targetUrl);
       localStorage.setItem('ytdl_info', JSON.stringify({ ...data, playlist }));
       const safeName = (data.title || 'video').replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 60);
       setOutputName(safeName);
@@ -632,9 +644,6 @@ const YoutubeDownloader = ({ activeJobId }) => {
           className="ytdl-header"
         >
           {/* Left spacer — balances the right actions column */}
-          <div />
-
-          {/* Center: badge + title + subtitle */}
           <div className="ytdl-header-center">
             <div className="ytdl-platform-badge">
               <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
@@ -642,8 +651,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
               </svg>
               YouTube
             </div>
-            <h1 className="ytdl-title">YouTube Downloader</h1>
-            <p className="ytdl-subtitle">Descarcă orice videoclip sau playlist ca MP4 sau MP3</p>
+            <h1 className="ytdl-title">YouTube video & music</h1>
+            <p className="ytdl-subtitle">A focused workspace for video, audio, playlists and YouTube Music.</p>
           </div>
 
           {/* Right: action buttons */}
@@ -708,7 +717,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
             className={`ytdl-url-card ${appMode === 'music' ? 'music-active' : 'youtube-active'}`}
             style={{ position: 'relative', zIndex: 50 }}
           >
-            {/* Inline mode toggle pill */}
+            <div className="ytdl-input-section-label"><span>New download</span><small>Paste a YouTube video, playlist, or Music link</small></div>
             {!downloading && !downloadComplete && (
               <div className="ytdl-mode-toggle">
                 <button
@@ -749,11 +758,11 @@ const YoutubeDownloader = ({ activeJobId }) => {
                 onKeyDown={(e) => e.key === 'Enter' && fetchInfo()}
                 disabled={loadingInfo}
                 className="ytdl-url-input"
-                style={{ width: '100%', paddingRight: url ? '30px' : '0' }}
+                style={{ width: '100%', paddingRight: url ? '3rem' : '0' }}
               />
               {url && (
-                <button className="ytdl-input-clear" style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', zIndex: 5, padding: 0, display: 'flex' }} onClick={() => { setUrl(''); setInfo(null); setDownloadComplete(false); }}>
-                  <XCircle size={16} />
+                <button className="ytdl-input-clear" type="button" aria-label="Clear URL" title="Clear URL" onClick={() => { setUrl(''); setInfo(null); setDownloadComplete(false); }}>
+                  <X size={16} strokeWidth={2.5} />
                 </button>
               )}
             </div>
@@ -794,7 +803,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
             </AnimatePresence>
             <button
               className="ytdl-fetch-btn"
-              onClick={fetchInfo}
+              onClick={() => fetchInfo()}
               disabled={!url || loadingInfo}
             >
               {loadingInfo
@@ -802,69 +811,14 @@ const YoutubeDownloader = ({ activeJobId }) => {
                 : <><Zap size={20} fill="currentColor" /> Procesează</>
               }
             </button>
+            <div className="ytdl-capability-row">
+              <span><MonitorPlay size={14} /> MP4 up to 4K</span>
+              <span><Headphones size={14} /> High-quality audio</span>
+              <span><ListVideo size={14} /> Playlist selection</span>
+              <span><Zap size={14} /> Local processing</span>
+            </div>
           </motion.div>
         )}
-
-        {/* ── Suggestion Chips — dropdown grouped by category ─────── */}
-{!info && !loadingInfo && !downloading && !downloadComplete && (
-  <motion.div
-    initial={{ opacity: 0, y: 8 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.35, delay: 0.1 }}
-    style={{ width: '100%', maxWidth: '700px', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-start' }}
-  >
-    <button
-      className={`ytdl-suggestions-trigger ${showSuggestions ? 'open' : ''}`}
-      onClick={() => setShowSuggestions(v => !v)}
-    >
-      <Sparkles size={13} />
-      Exemple
-      {showSuggestions ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-    </button>
-
-    <AnimatePresence>
-      {showSuggestions && (
-        <motion.div
-          className="ytdl-suggestions-dropdown"
-          initial={{ opacity: 0, y: -8, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -8, scale: 0.98 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-        >
-          {Object.entries(
-            SUGGESTIONS.reduce((acc, s) => {
-              if (!acc[s.tag]) acc[s.tag] = { color: s.color, items: [] };
-              acc[s.tag].items.push(s);
-              return acc;
-            }, {})
-          ).map(([tag, { color, items }]) => (
-            <div key={tag} className="ytdl-sugg-category">
-              <span className="ytdl-sugg-cat-label" style={{ color }}>{tag}</span>
-              <div className="ytdl-sugg-cat-chips">
-                {items.map(s => (
-                  <button
-                    key={s.url}
-                    className="ytdl-sugg-chip"
-                    style={{ '--chip-color': s.color }}
-                    title={s.url}
-                    onClick={() => {
-                      if (appMode === null) selectAppMode(s.tag === 'YT Music' ? 'music' : 'youtube');
-                      setUrl(s.url);
-                      setShowSuggestions(false);
-                      setTimeout(() => fetchInfo(), 100);
-                    }}
-                  >
-                    <span>{s.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </motion.div>
-      )}
-    </AnimatePresence>
-  </motion.div>
-)}
 
         <AnimatePresence>
           {error && (
@@ -928,16 +882,21 @@ const YoutubeDownloader = ({ activeJobId }) => {
                     <div className="ytdl-video-meta">
                       <h2 className="ytdl-video-title">{info.title}</h2>
                       <div className="ytdl-video-channel">
-                        <span style={{ fontWeight: 700, color: '#f1f5f9' }}>{info.uploader}</span> • YouTube
+                        <span style={{ fontWeight: 700, color: '#f1f5f9' }}>{info.uploader}</span> • {info.platform === 'youtube_music' ? 'YouTube Music' : 'YouTube'}
                       </div>
+                      {info.album && <p className="ytdl-video-album">{info.album}{info.albumArtist && info.albumArtist !== info.uploader ? ` · ${info.albumArtist}` : ''}</p>}
                       <div className="ytdl-video-stats">
-                        <span className="ytdl-stat-chip">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                          {formatViews(info.viewCount) || 'Multe'}
-                        </span>
                         <span className="ytdl-stat-chip">
                           <Clock size={14} /> {formatDuration(info.duration)}
                         </span>
+                        {info.trackNumber && info.trackCount && <span className="ytdl-stat-chip">Track {info.trackNumber} / {info.trackCount}</span>}
+                        {info.releaseYear && <span className="ytdl-stat-chip">{info.releaseYear}</span>}
+                        <div className="ytdl-content-tags">
+                          <span className={`ytdl-content-badge ytdl-content-badge--${info.contentType || 'video'}`}>
+                            {info.contentType === 'album' ? 'Album' : info.contentType === 'playlist' ? 'Playlist' : info.contentType === 'track' ? 'Track' : 'Video'}
+                          </span>
+                          {info.album && info.contentType === 'track' && <span className="ytdl-content-badge ytdl-content-badge--album">Album track</span>}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -949,12 +908,12 @@ const YoutubeDownloader = ({ activeJobId }) => {
                           <ListVideo size={20} />
                         </div>
                         <div>
-                          <span className="ytdl-eyebrow">PLAYLIST GĂSIT</span>
+                          <span className="ytdl-eyebrow">{info.contentType === 'album' ? 'ALBUM GĂSIT' : appMode === 'music' ? 'PLAYLIST GĂSIT' : 'PLAYLIST GĂSIT'}</span>
                           <strong>{info.playlist.title}</strong>
                         </div>
                         <div className="ytdl-playlist-count">
                           {info.playlist.downloadableCount}
-                          <small>VIDEO{info.playlist.downloadableCount !== 1 && 'S'}</small>
+                          <small>{appMode === 'music' ? `PIES${info.playlist.downloadableCount !== 1 ? 'E' : 'Ă'}` : `VIDEO${info.playlist.downloadableCount !== 1 ? 'S' : ''}`}</small>
                         </div>
                       </div>
 
@@ -997,7 +956,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
                         Setări descărcare {pendingScope === 'playlist' && 'Playlist'}
                       </h3>
 
-                      <div className="ytdl-settings">
+                      <div className="ytdl-modal-body ytdl-settings">
                         <div className="ytdl-setting-group">
                           <span className="ytdl-setting-label">Sursă:</span>
                           <div className="ytdl-type-tabs">
@@ -1127,17 +1086,21 @@ const YoutubeDownloader = ({ activeJobId }) => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className={info.playlist ? 'ytdl-dl-actions' : ''}
+                      className={`ytdl-download-actions ${info.playlist ? 'ytdl-dl-actions' : ''}`}
                     >
+                      <div className="ytdl-download-action-copy">
+                        <span>{info.contentType === 'album' ? 'Album ready' : info.playlist ? 'Collection ready' : 'Ready to download'}</span>
+                        <small>{info.playlist ? `${info.playlist.downloadableCount} ${appMode === 'music' ? 'tracks' : 'videos'} available` : `${mediaType === 'audio' ? 'Audio' : 'Video'} · Choose your preferred quality`}</small>
+                      </div>
                       <button
                         className={`ytdl-dl-btn ${info.playlist ? 'ytdl-single-dl-btn' : ''}`}
                         onClick={() => openDownloadModal('single')}
                       >
-                        <Download size={22} /> {info.playlist ? 'Descarcă doar acest clip' : 'Descarcă acum'}
+                        <Download size={22} /> {info.playlist ? (appMode === 'music' ? 'Descarcă doar această piesă' : 'Descarcă doar acest clip') : 'Descarcă acum'}
                       </button>
                       {info.playlist && (
                         <button className="ytdl-dl-btn ytdl-playlist-dl-btn" onClick={() => openDownloadModal('playlist')}>
-                          <ListVideo size={22} /> Descarcă playlistul
+                          <ListVideo size={22} /> {appMode === 'music' ? 'Descarcă albumul / playlistul' : 'Descarcă playlistul'}
                         </button>
                       )}
                     </motion.div>
@@ -1266,8 +1229,9 @@ const YoutubeDownloader = ({ activeJobId }) => {
                           </div>
                         ) : (
                           <div className="ytdl-name-input-row" style={{ justifyContent: 'center', margin: '1rem 0', flexDirection: 'column', alignItems: 'center' }}>
-                            <p className="ytdl-ready-filename">{finalFilename}</p>
-                            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', marginTop: '0.5rem' }}>Fișierul a fost salvat local.</p>
+                            <p className="ytdl-complete-media-title">{info?.title || finalFilename}</p>
+                            {info?.uploader && <p className="ytdl-complete-media-sub">{info.uploader} · {downloadFormat === 'audio' ? 'Audio' : 'Video'} saved locally</p>}
+                            <p className="ytdl-ready-filename" title={finalFilename}>{finalFilename}</p>
                           </div>
                         )}
 
@@ -1288,7 +1252,53 @@ const YoutubeDownloader = ({ activeJobId }) => {
           )}
         </AnimatePresence>
 
+        {history.length > 0 && (
+          <>
+            <section className="ytdl-artist-gallery">
+              <div className="ytdl-history-panel-title"><Music size={14} /> Recently played channels</div>
+              <div className="ytdl-artist-bubbles">
+                {recentChannels.map((item, index) => (
+                  <button key={item.url} className="ytdl-artist-bubble" style={{ '--bubble-index': index }} onClick={() => { setUrl(item.url); fetchInfo(item.url); }} title={item.uploader || item.title}>
+                    {item.artistThumbnail ? <img src={item.artistThumbnail} alt="" /> : <span>{(item.uploader || item.title).slice(0, 1).toUpperCase()}</span>}
+                    <strong>{item.uploader || item.title}</strong>
+                    <span className="ytdl-history-remove" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); removeChannelHistory(item.uploader); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); removeChannelHistory(item.uploader); } }} title="Remove channel from history" aria-label={`Remove ${item.uploader} from history`}><X size={12} strokeWidth={2.5} /></span>
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="ytdl-history-panels">
+            <div className="ytdl-history-panel">
+              <div className="ytdl-history-panel-title"><Music size={14} /> Recent channels</div>
+              <div className="ytdl-channel-chips">
+                {recentChannels.map(item => (
+                  <button key={item.uploader} className="ytdl-channel-chip" onClick={() => { setUrl(item.url); fetchInfo(item.url); }} title={`Open ${item.uploader}`}>
+                    {item.artistThumbnail ? <img src={item.artistThumbnail} alt="" className="ytdl-channel-avatar" /> : <span className="ytdl-channel-avatar">{item.uploader.slice(0, 1).toUpperCase()}</span>}
+                    <span className="ytdl-channel-name">{item.uploader}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="ytdl-history-panel">
+              <div className="ytdl-history-panel-title"><Clock size={14} /> Recent downloads</div>
+              <div className="ytdl-recent-list">
+                {history.slice(0, 4).map(item => (
+                  <button key={item.url} className="ytdl-recent-item" onClick={() => { setUrl(item.url); fetchInfo(item.url); }}>
+                    {item.thumbnail ? <img src={item.thumbnail} alt="" className="ytdl-recent-thumb" /> : <span className="ytdl-recent-thumb" />}
+                    <span className="ytdl-recent-name">{item.title}</span>
+                    <span className="ytdl-recent-date">{new Date(item.date).toLocaleDateString()}</span>
+                    <span className="ytdl-recent-remove" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); removeHistoryItem(item.url); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); removeHistoryItem(item.url); } }} title="Remove from history" aria-label={`Remove ${item.title} from history`}><X size={13} strokeWidth={2.5} /></span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            </section>
+          </>
+        )}
 
+        <footer className="ytdl-footer">
+          <div className="ytdl-footer-brand"><span className="ytdl-footer-dot" /> MediaDL YouTube</div>
+          <div className="ytdl-footer-details"><span>Video & audio</span><span>Playlist-aware</span><span>Powered by yt-dlp + FFmpeg</span></div>
+        </footer>
       </div>
     </div>
   );

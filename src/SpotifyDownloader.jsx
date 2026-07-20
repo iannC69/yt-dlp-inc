@@ -356,9 +356,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   useEffect(() => {
     const isActive = downloadState?.active && !downloadState?.done;
     if (isActive) {
-      const completed = downloadState.current ?? 0;
-      const total = downloadState.total ?? 1;
-      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+      const completed = Object.values(trackStatuses).filter(s => s === 'done').length;
+      const total = downloadState.totalTracks ?? 1;
+      const pct = downloadState.progress ?? 0;
       window.dispatchEvent(new CustomEvent('download_update', {
         detail: {
           source: 'spotify',
@@ -374,7 +374,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     } else if (downloadState?.done && downloadState?.error) {
       window.dispatchEvent(new CustomEvent('download_update', { detail: { source: 'spotify', error: true } }));
     }
-  }, [downloadState]);
+  }, [downloadState, trackStatuses, info]);
 
   // Auto-paste removed to prevent interference with manual pasting
 

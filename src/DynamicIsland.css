@@ -1,5 +1,5 @@
 /* ============================================================
-   DYNAMIC ISLAND — Global Download Progress Indicator
+   DYNAMIC ISLAND â€” Global Download Progress Indicator
    ============================================================ */
 
 .dynamic-island-container {
@@ -21,7 +21,7 @@
   transition: border-color 0.3s ease;
 }
 
-/* IDLE — 3 breathing dots */
+/* IDLE â€” 3 breathing dots */
 .di-capsule--idle {
   padding: 8px 12px;
   gap: 4px;
@@ -43,7 +43,7 @@
   50% { opacity: 0.7; transform: scale(1.15); }
 }
 
-/* ACTIVE — expanded with progress */
+/* ACTIVE â€” expanded with progress */
 .di-capsule--active {
   padding: 6px 10px 6px 6px;
   gap: 8px;

@@ -879,33 +879,25 @@
   box-shadow: 0 6px 24px rgba(59,130,246,0.5) !important;
 }
 
-/* Platform bar tooltip labels */
-.settings-button {
-  position: relative;
-}
+/* Navbar utility actions */
+.settings-button { position: relative; }
+.navbar-action-label { font-size: .75rem; font-weight: 700; white-space: nowrap; }
 
-.settings-button::after {
-  content: attr(title);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15,15,25,0.95);
-  border: 1px solid rgba(255,255,255,0.1);
-  color: #e2e8f0;
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
-  padding: 0.25rem 0.6rem;
-  border-radius: 6px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.settings-button:hover::after {
-  opacity: 1;
-}
+/* Navbar layout and labels */
+.platform-bar-inner { min-height: 68px; display: grid; grid-template-columns: minmax(160px, .8fr) minmax(0, 1.5fr) auto; gap: 1.25rem; padding: .7rem clamp(1rem, 3vw, 2.5rem); }
+.platform-brand { min-width: 0; gap: .7rem; }
+.platform-brand-logo { width: 36px; height: 36px; border-radius: 10px; }
+.platform-brand-name { font-size: 1rem; white-space: nowrap; }
+.platform-brand-sub { font-size: .6rem; color: #94a3b8; white-space: nowrap; }
+.platform-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; padding: .25rem; overflow: visible; }
+.platform-tab { min-width: 0; min-height: 38px; justify-content: center; padding: .5rem .8rem; font-size: .84rem; white-space: nowrap; }
+.platform-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.global-top-actions { display: flex; align-items: center; gap: .4rem; margin-left: 0; padding-left: 1rem; border-left: 1px solid rgba(255,255,255,.08); flex-shrink: 0; }
+.global-top-actions .settings-button { display: inline-flex; gap: .42rem; width: auto; height: 38px; padding: 0 .65rem; border-radius: 9px; color: #cbd5e1; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06) !important; }
+.global-top-actions .settings-button:hover { color: #fff; background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.15) !important; }
+@media (max-width: 1050px) { .navbar-action-label { display: none; } .global-top-actions .settings-button { width: 36px; padding: 0; justify-content: center; } }
+@media (max-width: 850px) { .platform-bar-inner { grid-template-columns: auto minmax(0, 1fr) auto; gap: .7rem; } .platform-brand-sub { display: none; } .platform-tab { padding-inline: .5rem; } }
+@media (max-width: 620px) { .platform-bar-inner { min-height: 56px; grid-template-columns: auto minmax(0, 1fr) auto; gap: .4rem; padding-inline: .7rem; } .platform-brand-text { display: none; } .platform-tab-label { display: none; } .platform-tab { padding: .45rem; } .platform-tabs { grid-template-columns: repeat(3, 1fr); } .global-top-actions { gap: 0; padding-left: .35rem; } .global-top-actions .settings-button { width: 31px; height: 31px; } .global-top-actions .settings-button:nth-child(2) { display: none; } }
 
 /* ── Phase 3.6 — App Shell Polish ───────────────────────────────── */
 
