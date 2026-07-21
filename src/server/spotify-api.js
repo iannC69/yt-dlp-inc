@@ -127,6 +127,9 @@ async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
     if (err.status === 429) {
       const retryAfter = parseInt(err.headers?.['retry-after'] || '3', 10)
       console.warn(`[spotify-api] Rate limited. Waiting ${retryAfter}s...`)
+      if (retryAfter > 15) {
+        throw new Error(`SPOTIFY_429: Rate limited by Spotify. Please try again in ${retryAfter} seconds.`)
+      }
       await new Promise(r => setTimeout(r, retryAfter * 1000))
       try {
         return await spotifyApiRequest(path, token)
@@ -256,8 +259,27 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
     }
   }
 
-  const data = await _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret, accessToken)
-  console.log('[spotify-api] Fresh API data:', JSON.stringify({
+  let data
+  try {
+    data = await _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret, accessToken)
+  } catch (apiErr) {
+    console.warn(`[spotify-api] API call failed (${apiErr.message}). Attempting Embed Parser fallback...`)
+    try {
+      data = await parseSpotifyEmbed(spotifyUrlString, clientId, clientSecret)
+      console.log(`[spotify-api] Embed Parser succeeded for ${spotifyUrlString} (${data.tracks?.length || 1} tracks)`)
+    } catch (embedErr) {
+      console.warn(`[spotify-api] Embed Parser fallback failed (${embedErr.message}). Attempting Puppeteer fallback...`)
+      try {
+        data = await resolveSpotifyFallback(spotifyUrlString)
+        console.log(`[spotify-api] Puppeteer fallback succeeded for ${spotifyUrlString} (${data.tracks?.length || 1} tracks)`)
+      } catch (puppeteerErr) {
+        console.error(`[spotify-api] All fallbacks failed. Original error: ${apiErr.message}`)
+        throw apiErr
+      }
+    }
+  }
+
+  console.log('[spotify-api] Fresh data:', JSON.stringify({
     type: data?.type,
     title: data?.title,
     trackCount: data?.trackCount,
@@ -419,6 +441,123 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
   }
 
   throw new Error(`Unsupported Spotify URL type: ${type}`)
+}
+
+// ── Embed Parser Fallback (No API Keys Required) ──────────────────────────────────
+export async function parseSpotifyEmbed(urlStr, clientId = null, clientSecret = null) {
+  const match = (urlStr || '').split('?')[0].match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/)
+  if (!match) throw new Error('Invalid Spotify URL for embed fallback.')
+  const type = match[1]
+  const id = match[2]
+  const embedUrl = `https://open.spotify.com/embed/${type}/${id}`
+
+  const res = await fetch(embedUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+  })
+
+  if (!res.ok) throw new Error(`Spotify embed HTTP ${res.status}`)
+  const html = await res.text()
+  const scriptMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s)
+  if (!scriptMatch) throw new Error('No __NEXT_DATA__ found on Spotify embed page')
+
+  const json = JSON.parse(scriptMatch[1])
+  const entity = json.props.pageProps.state?.data?.entity || json.props.pageProps.entity
+  if (!entity) throw new Error('No entity data found in Spotify embed page')
+
+  const title = entity.title || entity.name || 'Spotify Resource'
+  const coverUrl = entity.coverArt?.sources?.[0]?.url || entity.visualIdentity?.image?.[0]?.url || null
+
+  if (type === 'track') {
+    const artist = entity.subtitle || entity.authors?.[0]?.name || 'Unknown Artist'
+    const spotifyId = entity.id || id
+    return {
+      type: 'track',
+      title,
+      artist,
+      allArtists: artist,
+      album: '',
+      year: '',
+      trackNumber: 1,
+      totalTracks: 1,
+      coverUrl,
+      spotifyId,
+      spotifyUrl: `https://open.spotify.com/track/${spotifyId}`,
+      durationMs: entity.duration || 0,
+      artistThumbnail: null
+    }
+  } else {
+    const rawTracks = entity.trackList || []
+    const tracks = rawTracks.map((t, idx) => {
+      const trackId = t.uri ? t.uri.split(':').pop() : `${id}_${idx + 1}`
+      const tTitle = t.title || 'Track ' + (idx + 1)
+      const tArtist = t.subtitle || 'Unknown Artist'
+      return {
+        trackNumber: idx + 1,
+        title: tTitle,
+        artist: tArtist,
+        allArtists: tArtist,
+        album: title,
+        year: '',
+        coverUrl: coverUrl,
+        spotifyId: trackId,
+        spotifyUrl: `https://open.spotify.com/track/${trackId}`,
+        durationMs: t.duration || 0,
+        totalTracks: rawTracks.length,
+        audioPreview: t.audioPreview?.url || null
+      }
+    })
+
+    // If embed returned 100 tracks, attempt to fetch tracks 101..N via Spotify API if token is available
+    if (tracks.length === 100) {
+      try {
+        const token = await getSpotifyToken(clientId, clientSecret)
+        let offset = 100
+        let hasMore = true
+        while (hasMore && offset < 5000) {
+          const pageRes = await spotifyApiRequest(`/v1/${type}s/${id}/tracks?offset=${offset}&limit=100`, token)
+          if (pageRes?.items?.length) {
+            const extra = pageRes.items.filter(item => item?.track && item.track.type === 'track').map((item, idx) => {
+              const track = item.track
+              const tArtist = track.artists?.[0]?.name || 'Unknown Artist'
+              return {
+                trackNumber: offset + idx + 1,
+                title: track.name,
+                artist: tArtist,
+                allArtists: track.artists?.map(a => a.name).join(', ') || tArtist,
+                album: title,
+                year: track.album?.release_date?.substring(0, 4) || '',
+                coverUrl: track.album?.images?.[0]?.url || coverUrl,
+                spotifyId: track.id,
+                spotifyUrl: `https://open.spotify.com/track/${track.id}`,
+                durationMs: track.duration_ms,
+                totalTracks: tracks.length + pageRes.items.length
+              }
+            })
+            tracks.push(...extra)
+            offset += pageRes.items.length
+            if (!pageRes.next || pageRes.items.length < 100) hasMore = false
+          } else {
+            hasMore = false
+          }
+        }
+      } catch (pagErr) {
+        console.warn('[parseSpotifyEmbed] Additional page fetch skipped:', pagErr.message || pagErr)
+      }
+    }
+
+    return {
+      type,
+      title,
+      owner: entity.subtitle || 'Spotify',
+      coverUrl,
+      trackCount: tracks.length,
+      totalTracks: tracks.length,
+      spotifyId: id,
+      tracks
+    }
+  }
 }
 
 // ── Fallback Puppeteer ────────────────────────────────────────────────────────

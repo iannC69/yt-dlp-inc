@@ -10,7 +10,7 @@ const SORTS = ['Date', 'Name', 'Source'];
 const spring = { type: 'spring', stiffness: 340, damping: 28 };
 const springFast = { type: 'spring', stiffness: 420, damping: 32 };
 
-export default function LibraryModal({ historyData, onClose }) {
+export default function LibraryModal({ historyData, onClose, onSendToCutter }) {
   const [filter, setFilter] = useState('All');
   const [sortBy, setSortBy] = useState('Date');
   const [viewMode, setViewMode] = useState('grid');
@@ -49,6 +49,21 @@ export default function LibraryModal({ historyData, onClose }) {
     localStorage.removeItem('global_history');
     window.dispatchEvent(new Event('history_updated'));
     onClose();
+  };
+
+  const deleteSingleItem = (itemToDelete, e) => {
+    e?.stopPropagation();
+    try {
+      const history = JSON.parse(localStorage.getItem('global_history') || '[]');
+      const updated = history.filter(i => {
+        if (itemToDelete.id && i.id) return i.id !== itemToDelete.id;
+        return !(i.filename === itemToDelete.filename && i.date === itemToDelete.date);
+      });
+      localStorage.setItem('global_history', JSON.stringify(updated));
+      window.dispatchEvent(new Event('history_updated'));
+    } catch (err) {
+      console.error('Failed to delete item from history:', err);
+    }
   };
 
   const sourceDetails = (item) => item.source === 'spotify'
@@ -161,7 +176,7 @@ export default function LibraryModal({ historyData, onClose }) {
                 const source = sourceDetails(item);
                 return viewMode === 'grid' ? (
                   <motion.div
-                    key={item.id}
+                    key={item.id || `${item.filename}_${item.date}`}
                     initial={{ opacity: 0, scale: 0.88, y: 12 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.88, y: -8 }}
@@ -181,9 +196,23 @@ export default function LibraryModal({ historyData, onClose }) {
                         {source.icon}
                         {source.label}
                       </span>
-                      <button className="lib-open-btn" onClick={() => handleOpenFolder(item.filename)} title="Open folder">
-                        <FolderOpen size={14} />
-                      </button>
+                      <div className="lib-card-actions">
+                        {item.format && /mp3|ogg|wav|flac|m4a|mp4|webm|mkv/i.test(item.format) && (
+                          <button 
+                            className="lib-action-btn" 
+                            onClick={(e) => { e.stopPropagation(); onSendToCutter && onSendToCutter(item); }} 
+                            title="Send to Cutter"
+                          >
+                            <Scissors size={14} />
+                          </button>
+                        )}
+                        <button className="lib-action-btn lib-action-btn--sm" onClick={() => handleOpenFolder(item.filename)} title="Open folder">
+                          <FolderOpen size={14} />
+                        </button>
+                        <button className="lib-action-btn lib-action-btn--delete" onClick={(e) => deleteSingleItem(item, e)} title="Remove item">
+                          <X size={14} />
+                        </button>
+                      </div>
                     </div>
                     <div className="lib-card-body">
                       <p className="lib-card-title" title={item.title}>{item.title}</p>
@@ -195,7 +224,7 @@ export default function LibraryModal({ historyData, onClose }) {
                   </motion.div>
                 ) : (
                   <motion.div
-                    key={item.id}
+                    key={item.id || `${item.filename}_${item.date}`}
                     initial={{ opacity: 0, x: -16 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 16, scale: 0.96 }}
@@ -219,9 +248,23 @@ export default function LibraryModal({ historyData, onClose }) {
                         <span>{new Date(item.date).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <button className="lib-open-btn lib-open-btn--sm" onClick={() => handleOpenFolder(item.filename)}>
-                      <FolderOpen size={13} />
-                    </button>
+                    <div className="lib-list-actions">
+                      {item.format && /mp3|ogg|wav|flac|m4a|mp4|webm|mkv/i.test(item.format) && (
+                        <button 
+                          className="lib-open-btn lib-open-btn--sm" 
+                          onClick={(e) => { e.stopPropagation(); onSendToCutter && onSendToCutter(item); }} 
+                          title="Send to Cutter"
+                        >
+                          <Scissors size={13} />
+                        </button>
+                      )}
+                      <button className="lib-open-btn lib-open-btn--sm" onClick={() => handleOpenFolder(item.filename)} title="Open folder">
+                        <FolderOpen size={13} />
+                      </button>
+                      <button className="lib-open-btn lib-open-btn--danger" onClick={(e) => deleteSingleItem(item, e)} title="Remove item">
+                        <X size={13} />
+                      </button>
+                    </div>
                   </motion.div>
                 );
               })

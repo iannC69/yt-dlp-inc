@@ -219,7 +219,7 @@ function Slider({ min, max, step, value, onChange, className = '' }) {
 // ── Main component ───────────────────────────────────────────────────────────
 const TABS = ['Effects', 'Metadata'];
 
-export default function AudioCutter() {
+export default function AudioCutter({ initialPayload }) {
   const [source, setSource] = useState(null);
   const [peaks, setPeaks] = useState(null);
   const [loadingWave, setLoadingWave] = useState(false);
@@ -468,6 +468,18 @@ export default function AudioCutter() {
     } finally { setLoadingWave(false); }
   }, [stopPlay]);
 
+  useEffect(() => {
+    if (initialPayload && initialPayload.filename) {
+      loadFile({
+        path: initialPayload.filename,
+        name: initialPayload.title || initialPayload.filename.split(/[/\\]/).pop(),
+        thumbnail: initialPayload.thumbnail,
+        original_source: initialPayload.source,
+        ...initialPayload
+      });
+    }
+  }, [initialPayload, loadFile]);
+
   const selectSource = async () => {
     setStatus({ type: 'idle', msg: '' });
     try {
@@ -539,7 +551,16 @@ export default function AudioCutter() {
       if (!r.ok) throw new Error(data.error || 'Export failed.');
       setStatus({ type: 'done', msg: data.filename });
       const hist = JSON.parse(localStorage.getItem('global_history') || '[]');
-      hist.unshift({ id: `cutter_${Date.now()}`, title: outputName || meta.title || 'Audio clip', format: `audio:${format}`, filename: data.filename, source: 'cutter', date: Date.now() });
+      hist.unshift({ 
+        id: `cutter_${Date.now()}`, 
+        title: outputName || meta.title || 'Audio clip', 
+        format: `audio:${format}`, 
+        filename: data.filename, 
+        source: 'cutter',
+        thumbnail: source.thumbnail || null,
+        original_source: source.original_source || null,
+        date: Date.now() 
+      });
       localStorage.setItem('global_history', JSON.stringify(hist.slice(0, 500)));
       window.dispatchEvent(new Event('history_updated'));
     } catch (err) { setStatus({ type: 'error', msg: err.message }); }

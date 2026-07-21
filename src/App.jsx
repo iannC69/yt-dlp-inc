@@ -7,6 +7,7 @@ import AudioCutter from './AudioCutter';
 import MassDownloader from './MassDownloader';
 import LibraryModal from './LibraryModal';
 import QueueModal from './QueueModal';
+import LogsTab from './LogsTab';
 import './App.css';
 
 const PLATFORMS = [
@@ -59,6 +60,9 @@ export default function App() {
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [historyData, setHistoryData] = useState([]);
   
+  // Cross-module payload for Cutter
+  const [cutterPayload, setCutterPayload] = useState(null);
+  
   const [spotifyClientId, setSpotifyClientId] = useState('');
   const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
   const [downloadPreset, setDownloadPreset] = useState('AUTO');
@@ -68,6 +72,24 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
   const [activeSpotifyJob, setActiveSpotifyJob] = useState(null);
+
+  // New Backend Config State
+  const [audioFormat, setAudioFormat] = useState('mp3');
+  const [audioQuality, setAudioQuality] = useState('320k');
+  const [spotifyThreshold, setSpotifyThreshold] = useState(100);
+  const [ytDlpFallbackEnabled, setYtDlpFallbackEnabled] = useState(true);
+
+  const saveConfigToBackend = async (updates) => {
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+    } catch (e) {
+      console.error('Failed to save config:', e);
+    }
+  };
 
   const fetchHistory = () => {
     try {
@@ -112,6 +134,13 @@ export default function App() {
 
     fetch('/api/ytdl/get-config').then(r => r.json()).then(data => {
       if (data.customPath) setCustomPath(data.customPath);
+    }).catch(() => { });
+
+    fetch('/api/config').then(r => r.json()).then(data => {
+      if (data.audioFormat) setAudioFormat(data.audioFormat);
+      if (data.audioQuality) setAudioQuality(data.audioQuality);
+      if (data.spotifyThreshold !== undefined) setSpotifyThreshold(data.spotifyThreshold);
+      if (data.ytDlpFallbackEnabled !== undefined) setYtDlpFallbackEnabled(data.ytDlpFallbackEnabled);
     }).catch(() => { });
 
     const savedTheme = localStorage.getItem('global_theme');
@@ -159,6 +188,12 @@ export default function App() {
   };
 
   const isConfigured = spotifyClientId.trim() !== '' && spotifyClientSecret.trim() !== '';
+
+  const handleSendToCutter = (item) => {
+    setCutterPayload(item);
+    setActiveIdx(2);
+    setShowLibrary(false);
+  };
 
   const switchTo = (idx) => {
     if (idx === activeIdx) return;
@@ -256,7 +291,7 @@ export default function App() {
           >
             {activeIdx === 0 && <YoutubeDownloader activeJobId={activeYoutubeJob} />}
             {activeIdx === 1 && <SpotifyDownloader activeDownloadId={activeSpotifyJob} />}
-            {activeIdx === 2 && <AudioCutter />}
+            {activeIdx === 2 && <AudioCutter initialPayload={cutterPayload} />}
             {activeIdx === 3 && <MassDownloader />}
           </motion.div>
         </AnimatePresence>
@@ -264,7 +299,11 @@ export default function App() {
 
       <AnimatePresence>
         {showLibrary && (
-          <LibraryModal historyData={historyData} onClose={() => setShowLibrary(false)} />
+          <LibraryModal 
+            historyData={historyData} 
+            onClose={() => setShowLibrary(false)} 
+            onSendToCutter={handleSendToCutter}
+          />
         )}
       </AnimatePresence>
 
@@ -292,18 +331,22 @@ export default function App() {
               <div className="control-panel-sidebar">
                 <h2>Setări</h2>
                 <button className={`cp-tab ${activeSettingsTab === 'general' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('general')}>General</button>
+                <button className={`cp-tab ${activeSettingsTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('rules')}>Download Rules</button>
                 <button className={`cp-tab ${activeSettingsTab === 'theme' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('theme')}>Temă & Aspect</button>
                 <button className={`cp-tab ${activeSettingsTab === 'spotify' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('spotify')}>Spotify API</button>
                 <button className={`cp-tab ${activeSettingsTab === 'system' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('system')}>Sistem & Motor</button>
+                <button className={`cp-tab ${activeSettingsTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('logs')}>Logs</button>
               </div>
 
               <div className="control-panel-body">
                 <div className="control-panel-header">
                   <h3 className="cp-title">
                     {activeSettingsTab === 'general' && 'General'}
+                    {activeSettingsTab === 'rules' && 'Download Rules'}
                     {activeSettingsTab === 'theme' && 'Personalizare Temă'}
                     {activeSettingsTab === 'spotify' && 'Conexiune Spotify'}
                     {activeSettingsTab === 'system' && 'Sistem & Motor'}
+                    {activeSettingsTab === 'logs' && 'Server Logs'}
                   </h3>
                   <button className="settings-modal-close" onClick={() => setShowSettingsModal(false)}>
                     <X size={18} />
@@ -326,6 +369,86 @@ export default function App() {
                           <FolderOpen size={16} style={{ display: 'inline', marginRight: '4px' }} /> Folder
                         </button>
                       </div>
+
+                      <div className="settings-field" style={{ marginTop: '20px' }}>
+                        <label>Audio Format</label>
+                        <select 
+                          className="settings-input" 
+                          value={audioFormat} 
+                          onChange={e => {
+                            setAudioFormat(e.target.value);
+                            saveConfigToBackend({ audioFormat: e.target.value });
+                          }}
+                        >
+                          <option value="mp3">MP3</option>
+                          <option value="m4a">M4A</option>
+                          <option value="flac">FLAC</option>
+                          <option value="wav">WAV</option>
+                          <option value="opus">OPUS</option>
+                        </select>
+                      </div>
+                      
+                      <div className="settings-field">
+                        <label>Audio Quality (Bitrate)</label>
+                        <select 
+                          className="settings-input" 
+                          value={audioQuality} 
+                          onChange={e => {
+                            setAudioQuality(e.target.value);
+                            saveConfigToBackend({ audioQuality: e.target.value });
+                          }}
+                        >
+                          <option value="320k">320 kbps (High)</option>
+                          <option value="256k">256 kbps</option>
+                          <option value="192k">192 kbps (Standard)</option>
+                          <option value="128k">128 kbps (Low)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSettingsTab === 'rules' && (
+                    <div className="settings-section">
+                      <div className="settings-field">
+                        <label>Spotify Threshold (spotdl)</label>
+                        <p className="settings-hint" style={{ marginBottom: '8px' }}>
+                          If a Spotify playlist has fewer tracks than this number, we'll try to download the tracks directly from Spotify via spotdl instead of searching on YouTube.
+                        </p>
+                        <input
+                          type="number"
+                          className="settings-input"
+                          value={spotifyThreshold}
+                          onChange={e => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val)) {
+                              setSpotifyThreshold(val);
+                              saveConfigToBackend({ spotifyThreshold: val });
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="settings-field" style={{ marginTop: '20px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={ytDlpFallbackEnabled}
+                            onChange={e => {
+                              setYtDlpFallbackEnabled(e.target.checked);
+                              saveConfigToBackend({ ytDlpFallbackEnabled: e.target.checked });
+                            }}
+                          />
+                          Enable yt-dlp fallback
+                        </label>
+                        <p className="settings-hint">
+                          If spotdl fails to download a track, fallback to finding it on YouTube with yt-dlp.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSettingsTab === 'logs' && (
+                    <div className="settings-section" style={{ height: '400px', padding: 0 }}>
+                      <LogsTab />
                     </div>
                   )}
 
