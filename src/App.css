@@ -889,7 +889,7 @@
 .platform-brand-logo { width: 36px; height: 36px; border-radius: 10px; }
 .platform-brand-name { font-size: 1rem; white-space: nowrap; }
 .platform-brand-sub { font-size: .6rem; color: #94a3b8; white-space: nowrap; }
-.platform-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; padding: .25rem; overflow: visible; }
+.platform-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; padding: .25rem; overflow: visible; }
 .platform-tab { min-width: 0; min-height: 38px; justify-content: center; padding: .5rem .8rem; font-size: .84rem; white-space: nowrap; }
 .platform-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .global-top-actions { display: flex; align-items: center; gap: .4rem; margin-left: 0; padding-left: 1rem; border-left: 1px solid rgba(255,255,255,.08); flex-shrink: 0; }
@@ -897,7 +897,7 @@
 .global-top-actions .settings-button:hover { color: #fff; background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.15) !important; }
 @media (max-width: 1050px) { .navbar-action-label { display: none; } .global-top-actions .settings-button { width: 36px; padding: 0; justify-content: center; } }
 @media (max-width: 850px) { .platform-bar-inner { grid-template-columns: auto minmax(0, 1fr) auto; gap: .7rem; } .platform-brand-sub { display: none; } .platform-tab { padding-inline: .5rem; } }
-@media (max-width: 620px) { .platform-bar-inner { min-height: 56px; grid-template-columns: auto minmax(0, 1fr) auto; gap: .4rem; padding-inline: .7rem; } .platform-brand-text { display: none; } .platform-tab-label { display: none; } .platform-tab { padding: .45rem; } .platform-tabs { grid-template-columns: repeat(3, 1fr); } .global-top-actions { gap: 0; padding-left: .35rem; } .global-top-actions .settings-button { width: 31px; height: 31px; } .global-top-actions .settings-button:nth-child(2) { display: none; } }
+@media (max-width: 620px) { .platform-bar-inner { min-height: 56px; grid-template-columns: auto minmax(0, 1fr) auto; gap: .4rem; padding-inline: .7rem; } .platform-brand-text { display: none; } .platform-tab-label { display: none; } .platform-tab { padding: .45rem; } .platform-tabs { grid-template-columns: repeat(4, 1fr); } .global-top-actions { gap: 0; padding-left: .35rem; } .global-top-actions .settings-button { width: 31px; height: 31px; } .global-top-actions .settings-button:nth-child(2) { display: none; } }
 
 /* ── Phase 3.6 — App Shell Polish ───────────────────────────────── */
 

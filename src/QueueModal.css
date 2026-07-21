@@ -27,23 +27,34 @@
   50% { box-shadow: 0 0 0 4px rgba(59,130,246,0); }
 }
 
-/* Job card */
+/* Job card — glass surface */
 .queue-job-card {
   display: flex;
   align-items: center;
   gap: 0.85rem;
   padding: 0.75rem 0.85rem;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 10px;
-  transition: background 0.15s;
+  background: linear-gradient(135deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top-color: rgba(255,255,255,0.15);
+  border-radius: 12px;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
   margin-bottom: 0.5rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
 
-.queue-job-card:hover { background: rgba(255,255,255,0.055); }
+.queue-job-card:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%);
+  box-shadow: 0 6px 20px rgba(0,0,0,.3);
+}
 
-.queue-job--done { border-color: rgba(29,185,84,0.15); }
-.queue-job--failed { border-color: rgba(239,68,68,0.15); }
+.queue-job--done {
+  border-color: rgba(29,185,84,0.2);
+  box-shadow: 0 0 0 1px rgba(29,185,84,0.05) inset;
+}
+.queue-job--failed {
+  border-color: rgba(239,68,68,0.2);
+  box-shadow: 0 0 0 1px rgba(239,68,68,0.05) inset;
+}
 
 /* Thumbnail */
 .queue-job-thumb {

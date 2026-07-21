@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot, Scissors } from 'lucide-react';
+import { Play, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot, Scissors, Layers } from 'lucide-react';
 import YoutubeDownloader from './YoutubeDownloader';
 import SpotifyDownloader from './SpotifyDownloader';
 import AudioCutter from './AudioCutter';
+import MassDownloader from './MassDownloader';
 import LibraryModal from './LibraryModal';
 import QueueModal from './QueueModal';
 import './App.css';
@@ -34,6 +35,12 @@ const PLATFORMS = [
     label: 'Audio Cutter',
     color: '#22d3ee',
     icon: <Scissors size={18} />,
+  },
+  {
+    id: 'mass',
+    label: 'Mass DL',
+    color: '#a855f7',
+    icon: <Layers size={18} />,
   },
 ];
 
@@ -250,6 +257,7 @@ export default function App() {
             {activeIdx === 0 && <YoutubeDownloader activeJobId={activeYoutubeJob} />}
             {activeIdx === 1 && <SpotifyDownloader activeDownloadId={activeSpotifyJob} />}
             {activeIdx === 2 && <AudioCutter />}
+            {activeIdx === 3 && <MassDownloader />}
           </motion.div>
         </AnimatePresence>
       </div>

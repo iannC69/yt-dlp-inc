@@ -1,8 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ListVideo, Play, Music, Loader2, CheckCircle2, XCircle, FolderOpen, RefreshCw } from 'lucide-react';
+import { X, ListVideo, Play, Music, Loader2, CheckCircle2, XCircle, FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
 import './LibraryModal.css';
 import './QueueModal.css';
+
+// Shared spring config — iOS-like elastic feel
+const spring = { type: 'spring', stiffness: 340, damping: 28 };
+const springFast = { type: 'spring', stiffness: 420, damping: 32 };
 
 function JobCard({ job, onCancel }) {
   const isSpotify = job.source === 'spotify';
@@ -41,7 +45,11 @@ function JobCard({ job, onCancel }) {
 
         {(isActive || job.percent > 0) && !isDone && !isFailed && (
           <div className="queue-job-bar-track">
-            <div className="queue-job-bar-fill" style={{ width: `${job.percent || 0}%` }} />
+            <motion.div
+              className="queue-job-bar-fill"
+              animate={{ width: `${job.percent || 0}%` }}
+              transition={{ type: 'spring', stiffness: 60, damping: 18 }}
+            />
           </div>
         )}
       </div>
@@ -100,6 +108,15 @@ export default function QueueModal({ onClose }) {
   ];
 
   const activeCount = allJobs.filter(j => j.status === 'active' || j.status === 'downloading').length;
+  const completedCount = allJobs.filter(j => j.status === 'done' || j.status === 'failed' || j.status === 'error').length;
+
+  const clearCompleted = () => {
+    // Optimistically remove done/failed from local state — server jobs will expire on their own
+    setJobs(prev => ({
+      youtube: prev.youtube.filter(j => j.status !== 'done' && j.status !== 'failed' && j.status !== 'error'),
+      spotify: prev.spotify.filter(j => j.status !== 'done' && j.status !== 'failed' && j.status !== 'error'),
+    }));
+  };
 
   return (
     <motion.div
@@ -107,13 +124,15 @@ export default function QueueModal({ onClose }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
         className="lib-modal queue-modal"
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 40 }}
+        initial={{ opacity: 0, y: 56, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 40, scale: 0.95 }}
+        transition={spring}
       >
         {/* Header */}
         <div className="lib-header">
@@ -121,10 +140,31 @@ export default function QueueModal({ onClose }) {
             <ListVideo size={20} style={{ color: '#3b82f6' }} />
             <h2 className="lib-title">Queue</h2>
             {activeCount > 0 && (
-              <span className="queue-active-badge">{activeCount} active</span>
+              <motion.span
+                className="queue-active-badge"
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={springFast}
+              >
+                {activeCount} active
+              </motion.span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            {completedCount > 0 && (
+              <motion.button
+                className="queue-clear-btn"
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                transition={springFast}
+                onClick={clearCompleted}
+                title="Clear completed & failed jobs"
+              >
+                <Trash2 size={13} />
+                Clear ({completedCount})
+              </motion.button>
+            )}
             <button className="lib-close-btn" onClick={fetchJobs} title="Refresh">
               <RefreshCw size={15} />
             </button>
@@ -142,18 +182,27 @@ export default function QueueModal({ onClose }) {
               <p className="lib-empty-sub">Loading jobs…</p>
             </div>
           ) : allJobs.length === 0 ? (
-            <div className="lib-empty">
+            <motion.div
+              className="lib-empty"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={spring}
+            >
               <div className="lib-empty-icon"><ListVideo size={36} strokeWidth={1} /></div>
               <p className="lib-empty-title">No active downloads</p>
               <p className="lib-empty-sub">Start a download from the YouTube or Spotify tab.</p>
-            </div>
+            </motion.div>
           ) : (
-            <AnimatePresence>
+            <AnimatePresence mode="popLayout">
               {allJobs.map(job => (
-                <motion.div key={job.id || job.url}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
+                <motion.div
+                  key={job.id || job.url}
+                  layout
+                  initial={{ opacity: 0, x: -20, scale: 0.97 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: 24, scale: 0.95, height: 0, marginBottom: 0 }}
+                  transition={spring}
+                  style={{ overflow: 'hidden' }}
                 >
                   <JobCard job={job} onCancel={handleCancel} />
                 </motion.div>
@@ -162,7 +211,7 @@ export default function QueueModal({ onClose }) {
           )}
         </div>
 
-        {/* Footer info */}
+        {/* Footer */}
         <div className="queue-footer">
           <span>Max 3 concurrent downloads</span>
           <span style={{ color: '#3b82f6', fontWeight: 700 }}>{activeCount} / 3 running</span>

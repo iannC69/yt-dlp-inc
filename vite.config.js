@@ -727,6 +727,10 @@ function youtubeDownloaderPlugin() {
               args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir]
             }
 
+            if (format === 'audio') {
+              args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\,ih):min(iw\,ih)')
+            }
+
             args.push(
               '-a', batchFile,
               '--newline',
@@ -827,6 +831,10 @@ function youtubeDownloaderPlugin() {
           args = ['-f', formatStr, '--merge-output-format', 'mp4', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
         } else {
           args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
+        }
+
+        if (format.startsWith('audio:')) {
+          args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\,ih):min(iw\,ih)')
         }
 
         args.push(
@@ -1014,6 +1022,10 @@ function youtubeDownloaderPlugin() {
           args = ['-f', videoFormat, '--merge-output-format', 'mp4', '-o', outputTemplate, '--ffmpeg-location', ffmpegDir]
         }
 
+        if (format.startsWith('audio:')) {
+          args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\,ih):min(iw\,ih)')
+        }
+
         args.push(
           '-i',
           '--yes-playlist',
@@ -1075,8 +1087,9 @@ function youtubeDownloaderPlugin() {
 
         const filePath = path.join(ensureDownloadsDir(), file)
         if (!fs.existsSync(filePath)) {
-          res.statusCode = 404
-          return res.end('File not found')
+          res.setHeader('Content-Type', 'image/gif');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
         }
 
         if (fs.statSync(filePath).isDirectory()) {
@@ -1086,8 +1099,9 @@ function youtubeDownloaderPlugin() {
             res.setHeader('Cache-Control', 'public, max-age=86400');
             return fs.createReadStream(jpgPath).pipe(res);
           }
-          res.statusCode = 404;
-          return res.end('No thumbnail found in folder');
+          res.setHeader('Content-Type', 'image/gif');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
         }
 
         const args = ['-i', filePath, '-map', '0:v', '-c:v', 'copy', '-f', 'image2pipe', '-']
@@ -1105,8 +1119,9 @@ function youtubeDownloaderPlugin() {
 
         proc.on('close', (code) => {
           if (!hasOutput) {
-            res.statusCode = 404
-            res.end('No thumbnail found')
+            res.setHeader('Content-Type', 'image/gif');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            res.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
           } else {
             res.end()
           }
@@ -1296,6 +1311,103 @@ function youtubeDownloaderPlugin() {
         })
       })
 
+      // ── Audio Cutter: Stream local file to browser (for Web Audio API waveform) ──
+      server.middlewares.use('/api/audio-cutter/stream', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+
+        const filePath = urlObj.searchParams.get('path')
+        if (!filePath) { res.statusCode = 400; return res.end('Missing path') }
+
+        const allowedExts = new Set(['.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.opus', '.webm', '.wma'])
+        const ext = path.extname(filePath).toLowerCase()
+        if (!allowedExts.has(ext) || !fs.existsSync(filePath)) {
+          res.statusCode = 403; return res.end('Forbidden or not found')
+        }
+
+        const mimeMap = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg', '.opus': 'audio/opus', '.webm': 'audio/webm', '.wma': 'audio/x-ms-wma' }
+        const stat = fs.statSync(filePath)
+        res.setHeader('Content-Type', mimeMap[ext] || 'audio/mpeg')
+        res.setHeader('Content-Length', stat.size)
+        res.setHeader('Accept-Ranges', 'bytes')
+        res.setHeader('Cache-Control', 'no-cache')
+        fs.createReadStream(filePath).pipe(res)
+      })
+
+      // ── Audio Cutter: Export with full FFmpeg filtergraph ──
+      server.middlewares.use('/api/audio-cutter/export', async (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'Method not allowed.' })) }
+
+        const body = await parseJsonBody(req)
+        const sourcePath = typeof body.sourcePath === 'string' ? body.sourcePath : ''
+        const start = Number(body.start) || 0
+        const end = Number(body.end)
+        const format = ['mp3', 'm4a', 'wav', 'flac'].includes(body.format) ? body.format : 'mp3'
+        const outputName = sanitizeFilename(String(body.outputName || 'audio-clip')).replace(/\.[^.]+$/, '') || 'audio-clip'
+        const fadeIn = Math.max(0, Number(body.fadeIn) || 0)
+        const fadeOut = Math.max(0, Number(body.fadeOut) || 0)
+        const volume = Number(body.volume) || 0   // dB
+        const speed = Math.min(2.0, Math.max(0.5, Number(body.speed) || 1.0))
+        const normalize = Boolean(body.normalize)
+        const meta = body.metadata || {}
+
+        const allowedExts = new Set(['.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.opus', '.webm'])
+        if (!sourcePath || !allowedExts.has(path.extname(sourcePath).toLowerCase()) || !fs.existsSync(sourcePath)) {
+          res.statusCode = 400; return res.end(JSON.stringify({ error: 'Choose a valid local audio file.' }))
+        }
+        if (!Number.isFinite(end) || end <= start) {
+          res.statusCode = 400; return res.end(JSON.stringify({ error: 'Invalid trim range.' }))
+        }
+
+        const duration = end - start
+
+        // Build audio filter chain
+        const filters = []
+        if (fadeIn > 0) filters.push(`afade=t=in:st=0:d=${fadeIn.toFixed(3)}`)
+        if (fadeOut > 0) {
+          const foStart = Math.max(0, duration - fadeOut)
+          filters.push(`afade=t=out:st=${foStart.toFixed(3)}:d=${fadeOut.toFixed(3)}`)
+        }
+        if (volume !== 0) filters.push(`volume=${volume}dB`)
+        if (speed !== 1.0) filters.push(`atempo=${speed.toFixed(4)}`)
+        if (normalize) filters.push('loudnorm=I=-16:TP=-1.5:LRA=11')
+
+        // Codec args
+        const codecArgs = format === 'mp3'
+          ? ['-codec:a', 'libmp3lame', '-q:a', '0']
+          : format === 'm4a' ? ['-codec:a', 'aac', '-b:a', '256k']
+          : format === 'flac' ? ['-codec:a', 'flac']
+          : ['-codec:a', 'pcm_s16le']
+
+        const filename = `${outputName}-${Date.now()}.${format}`
+        const outputPath = path.join(ensureDownloadsDir(), filename)
+
+        const args = ['-y', '-ss', String(start), '-i', sourcePath, '-t', String(duration), '-map_metadata', '0', '-vn']
+        if (filters.length > 0) args.push('-af', filters.join(','))
+        args.push(...codecArgs)
+        // Metadata tags
+        if (meta.title) args.push('-metadata', `title=${meta.title}`)
+        if (meta.artist) args.push('-metadata', `artist=${meta.artist}`)
+        if (meta.album) args.push('-metadata', `album=${meta.album}`)
+        if (meta.track) args.push('-metadata', `track=${meta.track}`)
+        args.push('-id3v2_version', '3', outputPath)
+
+        const proc = spawn(ffmpegBin, args, { windowsHide: true })
+        let stderr = ''
+        proc.stderr.on('data', chunk => { stderr += chunk.toString() })
+        proc.on('error', err => { if (!res.headersSent) { res.statusCode = 500; res.end(JSON.stringify({ error: `FFmpeg failed: ${err.message}` })) } })
+        proc.on('close', code => {
+          if (code !== 0 || !fs.existsSync(outputPath)) {
+            res.statusCode = 500; return res.end(JSON.stringify({ error: `FFmpeg error (code ${code}): ${stderr.slice(-500)}` }))
+          }
+          scheduleDownloadCleanup(outputPath, 60 * 60 * 1000)
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ success: true, filename, title: outputName }))
+        })
+      })
+
       // ── Spotify OAuth Token Exchange ──
       server.middlewares.use('/api/spotify-oauth', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
@@ -1472,9 +1584,7 @@ function youtubeDownloaderPlugin() {
 
       // ── Public playlist fallback (used by both spotify-info and mass-fetch) ──
       const resolvePublicPlaylist = async (spotUrl) => {
-        const [{ default: createSpotifyUrlInfo }, { default: fetch }] = await Promise.all([
-          import('spotify-url-info'), import('node-fetch')
-        ])
+        const { default: createSpotifyUrlInfo } = await import('spotify-url-info')
         const { getDetails } = createSpotifyUrlInfo(fetch)
         const { preview, tracks } = await getDetails(spotUrl)
         if (!tracks?.length) throw new Error('Pagina publică Spotify nu conține melodii pentru acest playlist.')
@@ -1899,6 +2009,363 @@ function youtubeDownloaderPlugin() {
       })
 
       // resolvePublicPlaylist is now defined above (before spotify-mass-fetch middleware)
+
+      // ════════════════════════════════════════════════════════════════════════
+      // ── MASS DOWNLOADER: New standalone panel endpoints ──────────────────
+      // ════════════════════════════════════════════════════════════════════════
+
+      // In-memory URL metadata cache (LRU-style, max 500 entries, 24h TTL)
+      const urlMetaCache = new Map() // key: url → { data, timestamp }
+      const URL_CACHE_TTL = 24 * 60 * 60 * 1000
+      const URL_CACHE_MAX = 500
+      function cacheGet(url) {
+        const entry = urlMetaCache.get(url)
+        if (!entry) return null
+        if (Date.now() - entry.timestamp > URL_CACHE_TTL) { urlMetaCache.delete(url); return null }
+        return entry.data
+      }
+      function cacheSet(url, data) {
+        if (urlMetaCache.size >= URL_CACHE_MAX) {
+          const firstKey = urlMetaCache.keys().next().value
+          urlMetaCache.delete(firstKey)
+        }
+        urlMetaCache.set(url, { data, timestamp: Date.now() })
+      }
+
+      // ── /api/mass/ytdl-playlist-info — YouTube playlist → flat track list ──
+      server.middlewares.use('/api/mass/ytdl-playlist-info', async (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+
+        const playlistUrl = urlObj.searchParams.get('url')
+        if (!playlistUrl) {
+          res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing url param' }))
+        }
+
+        const cached = cacheGet(playlistUrl)
+        if (cached) {
+          res.setHeader('Content-Type', 'application/json')
+          return res.end(JSON.stringify({ ...cached, _cached: true }))
+        }
+
+        try {
+          const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
+          const args = [
+            '--flat-playlist',
+            '--dump-json',
+            '--no-warnings',
+            '--playlist-end', '2000',
+            playlistUrl
+          ]
+          const proc = spawn(ytDlpPath, args, {
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` },
+            windowsHide: true
+          })
+
+          let stdout = ''
+          let stderr = ''
+          proc.stdout.on('data', c => { stdout += c.toString() })
+          proc.stderr.on('data', c => { stderr += c.toString() })
+          proc.on('close', code => {
+            if (code !== 0 && !stdout.trim()) {
+              res.statusCode = 500
+              return res.end(JSON.stringify({ error: `yt-dlp failed (${code}): ${stderr.slice(0, 300)}` }))
+            }
+            const items = []
+            let playlistTitle = ''
+            for (const line of stdout.split('\n')) {
+              if (!line.trim()) continue
+              try {
+                const j = JSON.parse(line)
+                if (!playlistTitle && j.playlist_title) playlistTitle = j.playlist_title
+                items.push({
+                  id: j.id,
+                  url: j.url || `https://www.youtube.com/watch?v=${j.id}`,
+                  title: j.title || j.id,
+                  channel: j.channel || j.uploader || '',
+                  duration: j.duration || 0,
+                  thumbnail: j.thumbnails?.[0]?.url || j.thumbnail || null,
+                  durationMs: (j.duration || 0) * 1000
+                })
+              } catch { }
+            }
+            const result = { title: playlistTitle || 'YouTube Playlist', totalItems: items.length, items }
+            cacheSet(playlistUrl, result)
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify(result))
+          })
+          proc.on('error', err => {
+            res.statusCode = 500; res.end(JSON.stringify({ error: err.message }))
+          })
+        } catch (err) {
+          res.statusCode = 500; res.end(JSON.stringify({ error: err.message }))
+        }
+      })
+
+      // ── /api/mass/url-list — Resolve arbitrary URLs with in-memory cache ──
+      server.middlewares.use('/api/mass/url-list', async (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'POST only' })) }
+
+        const body = await parseJsonBody(req)
+        const urls = Array.isArray(body.urls) ? body.urls.slice(0, 100) : []
+        if (urls.length === 0) {
+          res.setHeader('Content-Type', 'application/json')
+          return res.end(JSON.stringify({ items: [] }))
+        }
+
+        const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
+        const resolveOne = (inputUrl) => new Promise((resolve) => {
+          const cached = cacheGet(inputUrl)
+          if (cached) return resolve({ ...cached, _cached: true })
+
+          if (/spotify\.com\/playlist\//.test(inputUrl)) {
+            return resolve({ url: inputUrl, error: 'Please use the "Spotify" tab to download playlists.', title: inputUrl })
+          }
+
+          const proc = spawn(ytDlpPath, [
+            '--dump-json', '--no-playlist', '--no-warnings',
+            '--skip-download', inputUrl
+          ], {
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` },
+            windowsHide: true
+          })
+          let stdout = ''
+          let stderr = ''
+          proc.stdout.on('data', c => { stdout += c.toString() })
+          proc.stderr.on('data', c => { stderr += c.toString() })
+          proc.on('close', code => {
+            if (code !== 0) return resolve({ url: inputUrl, error: 'Could not resolve', title: inputUrl })
+            try {
+              const j = JSON.parse(stdout.trim())
+              const data = {
+                url: inputUrl,
+                id: j.id,
+                title: j.title || inputUrl,
+                channel: j.channel || j.uploader || '',
+                duration: j.duration || 0,
+                durationMs: (j.duration || 0) * 1000,
+                thumbnail: j.thumbnail || null,
+                type: j.extractor_key || 'Unknown'
+              }
+              cacheSet(inputUrl, data)
+              resolve(data)
+            } catch { resolve({ url: inputUrl, error: 'Parse error', title: inputUrl }) }
+          })
+          proc.on('error', () => resolve({ url: inputUrl, error: 'spawn error', title: inputUrl }))
+        })
+
+        // Process in batches of 5 for parallelism without overwhelming the system
+        const results = []
+        const BATCH = 5
+        for (let i = 0; i < urls.length; i += BATCH) {
+          const batch = urls.slice(i, i + BATCH)
+          const batchResults = await Promise.all(batch.map(resolveOne))
+          results.push(...batchResults)
+        }
+
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ items: results }))
+      })
+
+      // ── /api/mass/start-ytdl — SSE: Download a list of resolved YT items ──
+      // Reuses the same infrastructure as spotify-mass-download but accepts plain yt-dlp items
+      server.middlewares.use('/api/mass/start-ytdl', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+
+        const downloadId = urlObj.searchParams.get('downloadId')
+        if (!downloadId) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing downloadId' })) }
+
+        const formatStr = urlObj.searchParams.get('format') || 'mp3'
+        const concurrency = Math.min(5, Math.max(1, parseInt(urlObj.searchParams.get('concurrency') || '3', 10)))
+        const splitEvery = parseInt(urlObj.searchParams.get('splitEvery') || '0', 10)
+        const outputZip = urlObj.searchParams.get('outputZip') !== 'false'
+        const namingTpl = urlObj.searchParams.get('naming') || '{track_number} - {artist} - {title}'
+
+        res.setHeader('Content-Type', 'text/event-stream')
+        res.setHeader('Cache-Control', 'no-cache')
+        res.setHeader('Connection', 'keep-alive')
+        const send = (data) => { try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch { } }
+
+        const dlState = { cancelled: false, paused: false, procs: new Set() }
+
+        const runDownload = async (bodyData) => {
+          const items = (bodyData?.items || []).map((item, i) => ({ ...item, index: item.index || i + 1 }))
+          if (items.length === 0) { send({ done: true, error: 'No items provided' }); return res.end() }
+
+          const playlistName = sanitizeFilename(bodyData?.playlistName || 'mass-download') || 'mass-download'
+          const downloadsDir = ensureDownloadsDir()
+          const tempDir = path.join(downloadsDir, `mass-ytdl-${playlistName}-${downloadId}`)
+          fs.mkdirSync(tempDir, { recursive: true })
+
+          send({ current: 0, total: items.length, status: `Starting download of ${items.length} tracks…` })
+
+          let completedCount = 0
+          let failedCount = 0
+          const startTimes = []
+          const completedFiles = [] // [{index, filePath}]
+
+          const downloadItem = async (item, i) => {
+            if (dlState.cancelled) return
+            // Pause loop
+            while (dlState.paused && !dlState.cancelled) {
+              await new Promise(r => setTimeout(r, 500))
+            }
+            if (dlState.cancelled) return
+
+            const safeArtist = (item.artist || item.channel || 'Unknown').replace(/[<>:"/\\|?*]+/g, '_')
+            const safeTitle = (item.title || 'Unknown').replace(/[<>:"/\\|?*]+/g, '_')
+            const paddedIdx = String(i + 1).padStart(4, '0')
+
+            // Build filename from naming template
+            const tplName = namingTpl
+              .replace('{track_number}', paddedIdx)
+              .replace('{artist}', safeArtist)
+              .replace('{title}', safeTitle)
+              .replace('{year}', item.year || '')
+              .replace('{album}', item.album || '')
+              .replace(/[<>:"/\\|?*]+/g, '_')
+              .replace(/\.+$/, '')
+
+            const outputTemplate = path.join(tempDir, `${tplName}.%(ext)s`)
+            const trackStartTime = Date.now()
+
+            send({
+              current: completedCount + failedCount + 1,
+              total: items.length,
+              percent: Math.round(((completedCount + failedCount) / items.length) * 100),
+              title: item.title,
+              artist: item.artist || item.channel || '',
+              coverUrl: item.thumbnail || null
+            })
+
+            const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
+            const ok = await new Promise((resolve) => {
+              const args = [
+                item.url,
+                '-x', '--audio-format', formatStr,
+                '--audio-quality', '0',
+                '-o', outputTemplate,
+                '--no-playlist',
+                '--ffmpeg-location', ffmpegDir,
+                '--no-warnings'
+              ]
+              const proc = spawn(ytDlpPath, args, {
+                env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` },
+                windowsHide: true
+              })
+              dlState.procs.add(proc)
+              let stderr = ''
+              proc.stderr.on('data', chunk => {
+                const line = chunk.toString()
+                stderr += line
+                // Stream log lines to frontend
+                for (const l of line.split('\n')) {
+                  if (l.trim()) send({ logLine: l.trim() })
+                }
+              })
+              proc.on('close', code => { dlState.procs.delete(proc); resolve(code === 0) })
+              proc.on('error', () => { dlState.procs.delete(proc); resolve(false) })
+            })
+
+            if (ok) {
+              // Find the downloaded file
+              const AUDIO_EXTS = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'aac'])
+              const files = fs.readdirSync(tempDir).filter(f => AUDIO_EXTS.has(f.split('.').pop().toLowerCase()))
+              const justAdded = files.find(f => f.startsWith(tplName.slice(0, 40)))
+              if (justAdded) completedFiles.push({ index: i, filePath: path.join(tempDir, justAdded) })
+              completedCount++
+              startTimes.push(Date.now() - trackStartTime)
+              if (startTimes.length > 10) startTimes.shift()
+            } else {
+              failedCount++
+            }
+          }
+
+          // Concurrent slots
+          const queue = items.map((t, i) => ({ t, i }))
+          let qi = 0
+          const runSlot = async () => {
+            while (true) {
+              if (qi >= queue.length) break
+              const { t, i } = queue[qi++]
+              if (dlState.cancelled) break
+              await downloadItem(t, i)
+            }
+          }
+          await Promise.all(Array.from({ length: concurrency }, () => runSlot()))
+
+          if (dlState.cancelled) {
+            try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
+            send({ done: true, cancelled: true })
+            return res.end()
+          }
+
+          // ZIP output
+          if (outputZip) {
+            if (splitEvery > 0 && items.length > splitEvery) {
+              // Split ZIP into parts
+              const allFiles = fs.readdirSync(tempDir).map(f => ({ name: f, full: path.join(tempDir, f) }))
+              const parts = []
+              for (let p = 0; p * splitEvery < allFiles.length; p++) {
+                const chunk = allFiles.slice(p * splitEvery, (p + 1) * splitEvery)
+                const partName = `${playlistName}-Part${p + 1}.zip`
+                const partPath = path.join(downloadsDir, partName)
+                // Build a temp dir for this chunk
+                const chunkDir = path.join(downloadsDir, `chunk-${p}-${downloadId}`)
+                fs.mkdirSync(chunkDir, { recursive: true })
+                for (const f of chunk) {
+                  try { fs.copyFileSync(f.full, path.join(chunkDir, f.name)) } catch { }
+                }
+                await createZipFromDirectory(chunkDir, partPath)
+                try { fs.rmSync(chunkDir, { recursive: true, force: true }) } catch { }
+                parts.push(partName)
+              }
+              try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
+              send({ done: true, completedCount, failedCount, zipParts: parts })
+            } else {
+              const zipFilename = `${playlistName}-${downloadId}.zip`
+              const zipPath = path.join(downloadsDir, zipFilename)
+              send({ status: 'Creating ZIP…' })
+              await createZipFromDirectory(tempDir, zipPath)
+              try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
+              send({ done: true, completedCount, failedCount, zipPath: zipFilename })
+            }
+          } else {
+            send({ done: true, completedCount, failedCount, outputDir: tempDir })
+          }
+          res.end()
+        }
+
+        req.on('aborted', () => {
+          dlState.cancelled = true
+          for (const proc of dlState.procs) { try { proc.kill() } catch { } }
+        })
+
+        const parsedBody = req.method === 'POST' ? parseJsonBody(req) : Promise.resolve(null)
+        parsedBody.then(body => {
+          runDownload(body).catch(err => {
+            send({ done: true, error: err.message }); res.end()
+          })
+        })
+      })
+
+      // ── /api/mass/cancel — Cancel a ytdl mass download ──
+      const activeMassYtdlDownloads = new Map()
+      server.middlewares.use('/api/mass/cancel', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+        const downloadId = urlObj.searchParams.get('downloadId')
+        if (downloadId && activeMassYtdlDownloads.has(downloadId)) {
+          const dl = activeMassYtdlDownloads.get(downloadId)
+          dl.cancelled = true
+          for (const proc of dl.procs || []) { try { proc.kill() } catch { } }
+        }
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ success: true }))
+      })
 
       server.middlewares.use('/api/spotify-info', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
