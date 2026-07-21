@@ -2121,7 +2121,50 @@ function youtubeDownloaderPlugin() {
           if (cached) return resolve({ ...cached, _cached: true })
 
           if (/spotify\.com\/playlist\//.test(inputUrl)) {
-            return resolve({ url: inputUrl, error: 'Please use the "Spotify" tab to download playlists.', title: inputUrl })
+            return new Promise(async (res) => {
+              try {
+                const metadata = await resolvePublicPlaylist(inputUrl)
+                const mapped = metadata.tracks.map(t => ({
+                  url: `ytsearch1:${t.artist} - ${t.title}`,
+                  id: String(t.trackNumber),
+                  title: t.title,
+                  channel: t.artist,
+                  duration: t.durationMs ? Math.floor(t.durationMs / 1000) : 0,
+                  durationMs: t.durationMs || 0,
+                  thumbnail: t.coverUrl || metadata.coverUrl || null,
+                  type: 'spotify'
+                }))
+                res(mapped)
+              } catch (e) {
+                res({ url: inputUrl, error: e.message || 'Failed to fetch Spotify playlist', title: inputUrl })
+              }
+            })
+          }
+
+          if (/spotify\.com\/track\//.test(inputUrl)) {
+            return new Promise(async (res) => {
+              try {
+                const { default: createSpotifyUrlInfo } = await import('spotify-url-info')
+                const { getDetails } = createSpotifyUrlInfo(fetch)
+                const { preview } = await getDetails(inputUrl)
+                if (preview) {
+                  res({
+                    url: `ytsearch1:${preview.artist} - ${preview.title}`,
+                    id: 'spotify-track',
+                    title: preview.title,
+                    channel: preview.artist,
+                    duration: 0,
+                    durationMs: 0,
+                    thumbnail: preview.image || null,
+                    type: 'spotify'
+                  })
+                } else {
+                  throw new Error('No preview found')
+                }
+              } catch (e) {
+                res({ url: inputUrl, error: 'Could not resolve Spotify track', title: inputUrl })
+              }
+            })
           }
 
           const proc = spawn(ytDlpPath, [
@@ -2162,7 +2205,7 @@ function youtubeDownloaderPlugin() {
         for (let i = 0; i < urls.length; i += BATCH) {
           const batch = urls.slice(i, i + BATCH)
           const batchResults = await Promise.all(batch.map(resolveOne))
-          results.push(...batchResults)
+          results.push(...batchResults.flat())
         }
 
         res.setHeader('Content-Type', 'application/json')

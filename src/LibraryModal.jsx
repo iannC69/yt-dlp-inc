@@ -181,16 +181,16 @@ export default function LibraryModal({ historyData, onClose }) {
                         {source.icon}
                         {source.label}
                       </span>
-                      <div className="lib-card-body">
-                        <p className="lib-card-title" title={item.title}>{item.title}</p>
-                        <div className="lib-card-meta">
-                          <span>{item.format}</span>
-                          <span>{new Date(item.date).toLocaleDateString()}</span>
-                        </div>
-                      </div>
                       <button className="lib-open-btn" onClick={() => handleOpenFolder(item.filename)} title="Open folder">
                         <FolderOpen size={14} />
                       </button>
+                    </div>
+                    <div className="lib-card-body">
+                      <p className="lib-card-title" title={item.title}>{item.title}</p>
+                      <div className="lib-card-meta">
+                        <span>{item.format}</span>
+                        <span>{new Date(item.date).toLocaleDateString()}</span>
+                      </div>
                     </div>
                   </motion.div>
                 ) : (
