@@ -651,9 +651,11 @@ function youtubeDownloaderPlugin() {
             }
             const isMusic = /music\.youtube\.com/i.test(videoUrl) || /youtube:music|music/i.test(info.extractor_key || '')
             const hasCollection = Boolean(info.playlist_count || info.n_entries || info._type === 'playlist' || info.playlist_id)
-            const musicCollection = isMusic && (/\/browse\//i.test(videoUrl) || Boolean(info.album) || hasCollection)
+            const isBrowseUrl = /\/browse\//i.test(videoUrl);
+            const isPlaylistUrl = /[?&]list=/i.test(videoUrl);
+            const musicCollection = isMusic && (isBrowseUrl || hasCollection || isPlaylistUrl);
             const contentType = hasCollection || musicCollection
-              ? (isMusic && (Boolean(info.album) || /\/browse\/MPRE/i.test(videoUrl)) ? 'album' : 'playlist')
+              ? (isMusic ? 'album' : 'playlist')
               : (isMusic ? 'track' : 'video')
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify({
@@ -730,7 +732,7 @@ function youtubeDownloaderPlugin() {
             }
 
             if (format === 'audio') {
-              args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\,ih):min(iw\,ih)')
+              args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)')
             }
 
             args.push(
@@ -836,7 +838,7 @@ function youtubeDownloaderPlugin() {
         }
 
         if (format.startsWith('audio:')) {
-          args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\,ih):min(iw\,ih)')
+          args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)')
         }
 
         args.push(
@@ -1025,7 +1027,7 @@ function youtubeDownloaderPlugin() {
         }
 
         if (format.startsWith('audio:')) {
-          args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\,ih):min(iw\,ih)')
+          args.push('--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)')
         }
 
         args.push(
