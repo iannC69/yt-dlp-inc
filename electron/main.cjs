@@ -36,10 +36,7 @@ app.whenReady().then(async () => {
   const fs   = require('fs');
   const os   = require('os');
 
-  // One-time migration: wipe the OLD default AppData location so stale
-  // settings/localStorage from previous builds don't bleed across installs.
-  const oldDefault = path.join(app.getPath('appData'), 'youtube-downloader-standalone');
-  try { if (fs.existsSync(oldDefault)) fs.rmSync(oldDefault, { recursive: true, force: true }); } catch {}
+  // Removed destructive migration that wiped userData
 
   const logPath = path.join(app.getPath('userData'), 'startup.log');
   const log  = (...args) => {
