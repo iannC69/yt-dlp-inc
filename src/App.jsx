@@ -742,6 +742,7 @@ export default function App() {
                           <span className={`settings-cred-dot ok`} />
                           <span className="settings-cred-status-label">Pre-configured integration</span>
                         </div>
+                      </div>
                       <p className="settings-hint" style={{ color: '#1DB954', fontWeight: 500, margin: '16px 0' }}>
                         <CheckCircle2 size={14} style={{ display: 'inline-block', verticalAlign: 'text-bottom', marginRight: 4 }} />
                         Spotify integration is fully configured! Head over to the Spotify tab and click "Login" to sync your playlists and albums.

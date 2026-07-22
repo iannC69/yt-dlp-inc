@@ -1407,7 +1407,13 @@ function youtubeDownloaderPlugin() {
         let stderr = ''
         proc.stderr.on('data', chunk => { stderr += chunk.toString() })
         proc.on('error', err => { if (!res.headersSent) { res.statusCode = 500; res.end(JSON.stringify({ error: `FFmpeg failed: ${err.message}` })) } })
-res.end(JSON.stringify({ success: true, filename, title: outputName }))
+        proc.on('close', code => {
+          if (code !== 0 || !fs.existsSync(outputPath)) {
+            res.statusCode = 500; return res.end(JSON.stringify({ error: `FFmpeg error (code ${code}): ${stderr.slice(-500)}` }))
+          }
+          scheduleDownloadCleanup(outputPath, 60 * 60 * 1000)
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ success: true, filename, title: outputName }))
         })
       })
 
