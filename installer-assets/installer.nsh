@@ -13,6 +13,5 @@
   RMDir /r "$INSTDIR\downloads"
   Delete "$INSTDIR\config.json"
   Delete "$INSTDIR\scheduled.json"
-  ; Also clean up the old default AppData location from pre-1.0 builds
-  RMDir /r "$APPDATA\youtube-downloader-standalone"
+  ; We no longer wipe AppData on uninstall to preserve user settings across updates
 !macroend
