@@ -1,3 +1,7 @@
 {
-  "customPath": "C:\\Users\\iannc\\Downloads"
+  "customPath": "C:\\Users\\iannc\\Desktop",
+  "audioFormat": "mp3",
+  "audioQuality": "320k",
+  "SPOTIFY_CLIENT_ID": "71eaf6d9db064a05a8600b17c310d31a",
+  "SPOTIFY_CLIENT_SECRET": "3d8380457ea54ec3b98e4d8ffa08e5e7"
 }

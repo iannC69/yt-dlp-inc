@@ -229,7 +229,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
   const handleOpenFolder = async (target = '') => {
     try {
-      const res = await fetch(`/api/ytdl/open-folder?target=${encodeURIComponent(target)}`);
+      const cp = localStorage.getItem('customPath') || '';
+      const res = await fetch(`/api/ytdl/open-folder?target=${encodeURIComponent(target)}&customPath=${encodeURIComponent(cp)}`);
       if (!res.ok) {
         alert("Eroare: Fișierul nu a fost găsit. A fost mutat sau șters?");
       }
@@ -519,7 +520,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
           thumbnail: info.thumbnail || '',
           jobId: Date.now().toString(),
           preset: localStorage.getItem('download_preset') || 'AUTO',
-          hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE'
+          hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE',
+          customPath: localStorage.getItem('customPath') || ''
         });
         if (scope === 'playlist') {
           queryParams.append('selectedItems', Array.from(selectedTracks).sort((a, b) => a - b).join(','));
@@ -1236,7 +1238,11 @@ const YoutubeDownloader = ({ activeJobId }) => {
                         )}
 
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center', width: '100%' }}>
-                          <button className="ytdl-new-dl-btn" onClick={() => fetch(`/api/ytdl/open-folder${finalFilename ? '?target=' + encodeURIComponent(finalFilename) : ''}`)} style={{ marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem', background: 'rgba(255,255,255,0.1)' }}>
+                          <button className="ytdl-new-dl-btn" onClick={() => {
+                            const cp = localStorage.getItem('customPath') || '';
+                            const q = finalFilename ? `?target=${encodeURIComponent(finalFilename)}&customPath=${encodeURIComponent(cp)}` : `?customPath=${encodeURIComponent(cp)}`;
+                            fetch(`/api/ytdl/open-folder${q}`);
+                          }} style={{ marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem', background: 'rgba(255,255,255,0.1)' }}>
                             <FolderOpen size={18} /> Deschide Folder
                           </button>
                           <button className="ytdl-new-dl-btn" onClick={handleReset} style={{ marginTop: 0, width: 'auto', padding: '0.8rem 1.5rem' }}>

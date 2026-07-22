@@ -27,3 +27,10 @@ dist-ssr
 bin/
 downloads/
 cookies.txt
+
+# Generated and build files
+app-data/
+release-build/
+dist-fe/
+setup_complete
+release/

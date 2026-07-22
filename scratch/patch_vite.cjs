@@ -1,0 +1,1 @@
+const fs = require('fs'); let c = fs.readFileSync('vite.config.js', 'utf8'); c = c.replace(/ensureDownloadsDir\(\)/g, \ensureDownloadsDir((typeof urlObj !== 'undefined' && urlObj && urlObj.searchParams) ? urlObj.searchParams.get('customPath') : '')\); fs.writeFileSync('vite.config.js', c);

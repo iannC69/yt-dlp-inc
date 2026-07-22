@@ -482,8 +482,10 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     // OAuth token first so private/collaborative playlists are read as the
     // signed-in user instead of falling back to the public client flow.
     const userAccessToken = await getValidAccessToken(clientId, clientSecret);
-    if (userAccessToken && userAccessToken !== accessToken) {
-      localStorage.setItem('spotify_access_token', userAccessToken);
+    if (userAccessToken !== accessToken) {
+      if (userAccessToken) {
+        localStorage.setItem('spotify_access_token', userAccessToken);
+      }
       setAccessToken(userAccessToken);
     }
 
@@ -884,12 +886,51 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
               <div className="sp-header-actions">
                 {!accessToken ? (
-                  <button className="sp-login-btn" onClick={() => {
-                    const clientId = localStorage.getItem('spotify_client_id');
-                    if (!clientId) return alert('Please set your Client ID in Settings first!');
+                  <button className="sp-login-btn" onClick={async () => {
+                    const clientId     = localStorage.getItem('spotify_client_id')     || '';
+                    const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+                    if (!clientId)     return alert('Please set your Spotify Client ID in Settings first!');
+                    if (!clientSecret) return alert('Please set your Spotify Client Secret in Settings first!');
+
                     const redirectUri = window.location.origin + '/';
-                    const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
-                    window.location.href = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true&_cb=${Date.now()}`;
+                    const scope   = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+                    const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true`;
+
+                    if (window.electronAPI?.spotifyAuth) {
+                      // ── Electron: popup window approach ──────────────────────────────
+                      // Main process opens a BrowserWindow for the Spotify auth page,
+                      // intercepts the ?code= redirect before it loads, and resolves
+                      // this promise with the code — all inside Electron's storage context.
+                      try {
+                        const { code, redirectUri: cbUri } = await window.electronAPI.spotifyAuth(authUrl);
+                        const res = await fetch('/api/spotify-oauth', {
+                          method: 'POST',
+                          headers: {
+                            'x-spotify-client-id':     clientId,
+                            'x-spotify-client-secret': clientSecret,
+                            'Content-Type':            'application/json',
+                          },
+                          body: JSON.stringify({ code, redirectUri: cbUri }),
+                        });
+                        const data = await res.json();
+                        if (data.access_token) {
+                          localStorage.setItem('spotify_access_token',  data.access_token);
+                          localStorage.setItem('spotify_expires_at',    String(Date.now() + data.expires_in * 1000));
+                          if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+                          setAccessToken(data.access_token);
+                        } else {
+                          alert('Spotify login failed: ' + (data.error_description || data.error || 'Unknown error'));
+                        }
+                      } catch (err) {
+                        // User closed the popup — treat as a silent cancel
+                        if (!err.message.includes('closed')) {
+                          alert('Spotify login failed: ' + err.message);
+                        }
+                      }
+                    } else {
+                      // ── Browser / dev mode: standard redirect ─────────────────────────
+                      window.location.href = authUrl;
+                    }
                   }}>
                     <User size={16} /> Login to Spotify
                   </button>

@@ -9,15 +9,16 @@ import os from 'os'
 import ffmpegStatic from 'ffmpeg-static'
 import NodeID3 from 'node-id3'
 import https from 'https'
-import { resolveSpotifyMetadata, resolveSpotifyFallback, parseSpotifyEmbed } from './src/server/spotify-api.js'
+import { resolveSpotifyMetadata, resolveSpotifyFallback, parseSpotifyEmbed, getAnonymousSpotifyToken } from './src/server/spotify-api.js'
 import { configureNewBackend } from './src/server/index.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const binPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
-// Use ffmpeg-static for bundled ffmpeg binary; fall back to local bin/ if present
-const ffmpegBin = ffmpegStatic || path.resolve(__dirname, 'bin', 'ffmpeg.exe')
+const bundledBinDir = process.env.MEDIADL_BIN_DIR || path.resolve(__dirname, 'bin')
+const binPath = path.join(bundledBinDir, 'yt-dlp.exe')
+const ffmpegBin = process.env.MEDIADL_BIN_DIR ? path.join(bundledBinDir, 'ffmpeg.exe') : (ffmpegStatic || path.join(bundledBinDir, 'ffmpeg.exe'))
 const ffmpegDir = path.dirname(ffmpegBin)
 
 import { getOptimalDownloadConfig } from './src/server/smart-optimizer.js'
+import { createBatchEngine, getBatchPerformanceProfile } from './src/server/batch-engine.js'
 const aiConfig = getOptimalDownloadConfig()
 
 
@@ -68,9 +69,9 @@ function saveConfig(cfg) {
   fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
-function ensureDownloadsDir() {
+function ensureDownloadsDir(reqCustomPath) {
   const cfg = getConfig();
-  let dir = cfg.customPath;
+  let dir = reqCustomPath || cfg.customPath;
   if (!dir) {
     dir = path.join(__dirname, 'downloads');
   }
@@ -103,7 +104,7 @@ function addScheduledJob(jobData) {
 }
 
 // Background Cron for Scheduled Jobs
-setInterval(() => {
+const scheduledJobTimer = setInterval(() => {
   const jobs = getScheduled();
   const now = new Date();
   let changed = false;
@@ -116,7 +117,8 @@ setInterval(() => {
       // Simulate internal API call to start job
       try {
         const jobId = job.id;
-        const targetDir = ensureDownloadsDir();
+        const customPath = urlObj.searchParams.get('customPath')
+        const targetDir = ensureDownloadsDir(customPath);
         if (job.type === 'single') {
           // single download logic
           const batchFile = path.join(targetDir, `batch-${jobId}.txt`);
@@ -148,6 +150,7 @@ setInterval(() => {
   });
   if (changed) saveScheduled(jobs);
 }, 60000);
+scheduledJobTimer.unref?.();
 
 function createZipFromDirectory(dirPath, zipPath) {
   return new Promise((resolve, reject) => {
@@ -458,7 +461,7 @@ function youtubeDownloaderPlugin() {
 
         const target = urlObj.searchParams.get('target')
         if (target) {
-          const dlDir = ensureDownloadsDir();
+          const dlDir = ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null);
           let targetPath = path.join(dlDir, target)
           if (!fs.existsSync(targetPath)) {
             const cleanTarget = target.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
@@ -474,7 +477,8 @@ function youtubeDownloaderPlugin() {
           }
           spawn('explorer.exe', ['/select,', targetPath])
         } else {
-          spawn('explorer.exe', [ensureDownloadsDir()])
+          const customPath = urlObj.searchParams.get('customPath')
+          spawn('explorer.exe', [ensureDownloadsDir(customPath)])
         }
         res.end(JSON.stringify({ success: true }))
       })
@@ -715,7 +719,7 @@ function youtubeDownloaderPlugin() {
             }
 
             const jobId = Date.now().toString()
-            const downloadsDir = ensureDownloadsDir()
+            const downloadsDir = ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null)
             const collectionDir = path.join(downloadsDir, `youtube-playlist-${jobId}`)
             const targetDir = scope === 'playlist' ? collectionDir : downloadsDir
 
@@ -816,7 +820,8 @@ function youtubeDownloaderPlugin() {
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
-        const downloadsDir = ensureDownloadsDir()
+        const customPath = urlObj.searchParams.get('customPath')
+        const downloadsDir = ensureDownloadsDir(customPath)
         let args
 
         if (format.startsWith('audio:')) {
@@ -1009,7 +1014,7 @@ function youtubeDownloaderPlugin() {
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
-        const downloadsDir = ensureDownloadsDir()
+        const downloadsDir = ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null)
         const collectionDir = path.join(downloadsDir, 'youtube-playlist-' + jobId)
         fs.mkdirSync(collectionDir, { recursive: true })
         const outputTemplate = path.join(collectionDir, '%(playlist_index)03d - %(title)s.%(ext)s')
@@ -1089,7 +1094,7 @@ function youtubeDownloaderPlugin() {
           return res.end('Invalid filename')
         }
 
-        const filePath = path.join(ensureDownloadsDir(), file)
+        const filePath = path.join(ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null), file)
         if (!fs.existsSync(filePath)) {
           res.setHeader('Content-Type', 'image/gif');
           res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -1150,7 +1155,7 @@ function youtubeDownloaderPlugin() {
           return res.end('Invalid filename')
         }
 
-        const dlDir = ensureDownloadsDir();
+        const dlDir = ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null);
         let targetPath = path.join(dlDir, file);
         if (!fs.existsSync(targetPath)) {
           const cleanTarget = file.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -1199,7 +1204,7 @@ function youtubeDownloaderPlugin() {
         if (urlObj.pathname !== '/') return next()
 
         try {
-          const downloadsDir = ensureDownloadsDir()
+          const downloadsDir = ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null)
           const stat = fs.statfsSync(downloadsDir)
           const freeSpaceBytes = stat.bfree * stat.bsize
 
@@ -1295,7 +1300,7 @@ function youtubeDownloaderPlugin() {
           return res.end(JSON.stringify({ error: 'The selected time range is invalid.' }))
         }
         const filename = `${outputName}-${Date.now()}.${format}`
-        const outputPath = path.join(ensureDownloadsDir(), filename)
+        const outputPath = path.join(ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null), filename)
         const codecArgs = format === 'mp3' ? ['-codec:a', 'libmp3lame', '-q:a', '0'] : format === 'm4a' ? ['-codec:a', 'aac', '-b:a', '256k'] : format === 'flac' ? ['-codec:a', 'flac'] : ['-codec:a', 'pcm_s16le']
         const args = ['-y', '-ss', String(start), '-to', String(end), '-i', sourcePath, '-map_metadata', '0', '-vn', ...codecArgs, outputPath]
         const proc = spawn(ffmpegBin, args, { windowsHide: true })
@@ -1386,7 +1391,7 @@ function youtubeDownloaderPlugin() {
           : ['-codec:a', 'pcm_s16le']
 
         const filename = `${outputName}-${Date.now()}.${format}`
-        const outputPath = path.join(ensureDownloadsDir(), filename)
+        const outputPath = path.join(ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null), filename)
 
         const args = ['-y', '-ss', String(start), '-i', sourcePath, '-t', String(duration), '-map_metadata', '0', '-vn']
         if (filters.length > 0) args.push('-af', filters.join(','))
@@ -1586,28 +1591,10 @@ function youtubeDownloaderPlugin() {
         })
       }
 
-      const resolvePublicPlaylist = async (spotUrl) => {
-        try {
-          return await parseSpotifyEmbed(spotUrl)
-        } catch (embedErr) {
-          console.warn('[resolvePublicPlaylist] parseSpotifyEmbed failed, trying spotify-url-info:', embedErr.message)
-          const { default: createSpotifyUrlInfo } = await import('spotify-url-info')
-          const { getDetails } = createSpotifyUrlInfo(fetch)
-          const { preview, tracks } = await getDetails(spotUrl)
-          if (!tracks?.length) throw new Error('Pagina publică Spotify nu conține melodii pentru acest playlist.')
-          return {
-            type: 'playlist', title: preview?.title || 'Spotify Playlist', trackCount: tracks.length, totalTracks: tracks.length,
-            coverUrl: preview?.image || null,
-            totalDurationMs: tracks.reduce((total, track) => total + (track.duration || 0), 0),
-            tracks: tracks.map((track, index) => ({
-              trackNumber: index + 1, title: track.name, artist: track.artist,
-              allArtists: track.artist, durationMs: track.duration || 0,
-              spotifyUrl: track.uri ? `https://open.spotify.com/track/${track.uri.split(':').pop()}` : null,
-              coverUrl: preview?.image || null
-            }))
-          }
-        }
-      }
+      // The resolvePublicPlaylist function and fallback were removed because 
+      // the Spotify anonymous token endpoint now returns 403 Forbidden for all requests, 
+      // and the embed scraper is broken. All metadata fetching now goes through 
+      // resolveSpotifyMetadata (OAuth or Client Credentials).
 
       server.middlewares.use('/api/spotify-mass-fetch', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
@@ -1803,7 +1790,9 @@ function youtubeDownloaderPlugin() {
         if (!downloadId) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing downloadId' })) }
 
         const formatStr = urlObj.searchParams.get('format') || 'mp3'
-        const concurrency = Math.min(5, Math.max(1, parseInt(urlObj.searchParams.get('concurrency') || '3', 10)))
+        const requestedConcurrency = Math.min(24, Math.max(1, parseInt(urlObj.searchParams.get('concurrency') || '3', 10)))
+        const speedMode = urlObj.searchParams.get('speedMode') === 'MAXIMUM' ? 'MAXIMUM' : 'BALANCED'
+        const profile = getBatchPerformanceProfile(requestedConcurrency, speedMode)
         const splitEvery = parseInt(urlObj.searchParams.get('splitEvery') || '0', 10)
         const outputZip = urlObj.searchParams.get('outputZip') !== 'false'
         const namingTpl = urlObj.searchParams.get('naming') || '{track_number} - {artist} - {title}'
@@ -1814,25 +1803,26 @@ function youtubeDownloaderPlugin() {
         const send = (data) => { try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch { } }
 
         const dlState = { cancelled: false, paused: false, procs: new Set() }
+        let batchControls = null
 
         const runDownload = async (bodyData) => {
           const items = (bodyData?.items || []).map((item, i) => ({ ...item, index: item.index || i + 1 }))
           if (items.length === 0) { send({ done: true, error: 'No items provided' }); return res.end() }
 
           const playlistName = sanitizeFilename(bodyData?.playlistName || 'mass-download') || 'mass-download'
-          const downloadsDir = ensureDownloadsDir()
+          const downloadsDir = ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null)
           const tempDir = path.join(downloadsDir, `mass-ytdl-${playlistName}-${downloadId}`)
           fs.mkdirSync(tempDir, { recursive: true })
 
-          send({ current: 0, total: items.length, status: `Starting download of ${items.length} tracks…` })
+          send({ current: 0, total: items.length, status: `Starting ${items.length} tracks with ${profile.concurrency} workers, ${profile.fragments} fragments, and ${profile.ffmpegThreads} FFmpeg threads per worker…`, performanceProfile: profile })
 
           let completedCount = 0
           let failedCount = 0
           const startTimes = []
           const completedFiles = [] // [{index, filePath}]
 
-          const downloadItem = async (item, i) => {
-            if (dlState.cancelled) return
+          const downloadItem = async (item, i, context) => {
+            if (dlState.cancelled) return { ok: false, error: 'Download cancelled' }
             // Pause loop
             while (dlState.paused && !dlState.cancelled) {
               await new Promise(r => setTimeout(r, 500))
@@ -1866,6 +1856,7 @@ function youtubeDownloaderPlugin() {
             })
 
             const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe')
+            let failureDetails = ''
             const ok = await new Promise((resolve) => {
               const args = [
                 item.url,
@@ -1874,6 +1865,8 @@ function youtubeDownloaderPlugin() {
                 '-o', outputTemplate,
                 '--no-playlist',
                 '--ffmpeg-location', ffmpegDir,
+                '-N', String(profile.fragments),
+                '--postprocessor-args', `ffmpeg:-threads ${profile.ffmpegThreads}`,
                 '--no-warnings'
               ]
               const proc = spawn(ytDlpPath, args, {
@@ -1881,6 +1874,7 @@ function youtubeDownloaderPlugin() {
                 windowsHide: true
               })
               dlState.procs.add(proc)
+              context?.registerProcess(proc)
               let stderr = ''
               proc.stderr.on('data', chunk => {
                 const line = chunk.toString()
@@ -1890,8 +1884,18 @@ function youtubeDownloaderPlugin() {
                   if (l.trim()) send({ logLine: l.trim() })
                 }
               })
-              proc.on('close', code => { dlState.procs.delete(proc); resolve(code === 0) })
-              proc.on('error', () => { dlState.procs.delete(proc); resolve(false) })
+              proc.on('close', code => {
+                dlState.procs.delete(proc)
+                context?.unregisterProcess(proc)
+                failureDetails = stderr
+                resolve(code === 0)
+              })
+              proc.on('error', error => {
+                dlState.procs.delete(proc)
+                context?.unregisterProcess(proc)
+                failureDetails = error.message
+                resolve(false)
+              })
             })
 
             if (ok) {
@@ -1903,23 +1907,27 @@ function youtubeDownloaderPlugin() {
               completedCount++
               startTimes.push(Date.now() - trackStartTime)
               if (startTimes.length > 10) startTimes.shift()
-            } else {
-              failedCount++
+              return { ok: true, output: justAdded || null }
             }
+            failedCount++
+            return { ok: false, error: failureDetails || `yt-dlp exited with an error for ${item.title || 'item'}` }
           }
 
-          // Concurrent slots
-          const queue = items.map((t, i) => ({ t, i }))
-          let qi = 0
-          const runSlot = async () => {
-            while (true) {
-              if (qi >= queue.length) break
-              const { t, i } = queue[qi++]
-              if (dlState.cancelled) break
-              await downloadItem(t, i)
-            }
-          }
-          await Promise.all(Array.from({ length: concurrency }, () => runSlot()))
+          const jobsDirectory = path.join(downloadsDir, '.mediadl-jobs')
+          const batch = createBatchEngine({
+            jobsDirectory,
+            jobId: downloadId,
+            items,
+            profile,
+            onEvent: event => send({ ...event, percent: Math.round(((event.completedCount + event.failedCount) / items.length) * 100) })
+          })
+          batchControls = batch.controls
+          activeMassYtdlDownloads.set(downloadId, batchControls)
+          await batch.run((entry, context) => downloadItem(entry.item, entry.index, context))
+          activeMassYtdlDownloads.delete(downloadId)
+          dlState.cancelled = batchControls.state().cancelled
+          completedCount = batchControls.state().completedCount
+          failedCount = batchControls.state().failedCount
 
           if (dlState.cancelled) {
             try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { }
@@ -1965,7 +1973,8 @@ function youtubeDownloaderPlugin() {
 
         req.on('aborted', () => {
           dlState.cancelled = true
-          for (const proc of dlState.procs) { try { proc.kill() } catch { } }
+          if (batchControls) batchControls.cancel()
+          else for (const proc of dlState.procs) { try { proc.kill() } catch { } }
         })
 
         const parsedBody = req.method === 'POST' ? parseJsonBody(req) : Promise.resolve(null)
@@ -1983,9 +1992,7 @@ function youtubeDownloaderPlugin() {
         if (urlObj.pathname !== '/') return next()
         const downloadId = urlObj.searchParams.get('downloadId')
         if (downloadId && activeMassYtdlDownloads.has(downloadId)) {
-          const dl = activeMassYtdlDownloads.get(downloadId)
-          dl.cancelled = true
-          for (const proc of dl.procs || []) { try { proc.kill() } catch { } }
+          activeMassYtdlDownloads.get(downloadId).cancel()
         }
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify({ success: true }))
@@ -2010,11 +2017,6 @@ function youtubeDownloaderPlugin() {
           try {
             metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken)
           } catch (err) {
-            if (/^SPOTIFY_403/.test(err.message || '') && /spotify\.com\/playlist\//.test(spotUrl)) {
-              console.log('Spotify API denied playlist access; reading public playlist metadata instead.')
-              metadata = await resolvePublicPlaylist(spotUrl)
-              return res.end(JSON.stringify(metadata))
-            }
             // The browser fallback can only see Spotify's generic logged-out
             // page for an inaccessible playlist. Returning that page as if it
             // were the requested playlist produced bogus results such as
@@ -2155,7 +2157,7 @@ function youtubeDownloaderPlugin() {
 
         const runDownload = async () => {
           const aiConfig = getOptimalDownloadConfig(preset);
-          const downloadsDir = ensureDownloadsDir()
+          const downloadsDir = ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null)
 
           send({ status: 'Fetching track info from Spotify API...', progress: 2 })
 
@@ -2805,6 +2807,18 @@ function youtubeDownloaderPlugin() {
 
 
 export default defineConfig({
-  server: { host: '127.0.0.1', port: 5174 },
+  server: {
+    host: '127.0.0.1',
+    port: 5174,
+    watch: {
+      ignored: [
+        '**/release-build/**',
+        '**/*.exe',
+        '**/*.dll',
+        '**/win-unpacked/**',
+      ],
+    },
+  },
+  build: { outDir: 'dist-fe' },
   plugins: [react(), youtubeDownloaderPlugin()],
 })

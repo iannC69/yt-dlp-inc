@@ -1,0 +1,207 @@
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const path = require('path');
+
+// Store ALL Electron data (localStorage, session, cache) next to the .exe
+// so it's removed when the user uninstalls the app.
+{
+  const exeDir = app.isPackaged
+    ? path.dirname(app.getPath('exe'))
+    : app.getAppPath();
+  app.setPath('userData', path.join(exeDir, 'app-data'));
+}
+
+const PORT = 5174;
+let mainWindow;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1440,
+    height: 920,
+    minWidth: 1024,
+    minHeight: 720,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false, // must be false so the preload script can use require()
+      preload: path.join(__dirname, 'preload.cjs'),
+    }
+  });
+  mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Guard the main window: block any navigation away from the local server.
+  // This still allows http://127.0.0.1:5174/* (e.g. route changes, hot reload).
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!navigationUrl.startsWith(`http://127.0.0.1:${PORT}`)) {
+      event.preventDefault();
+    }
+  });
+}
+
+app.whenReady().then(async () => {
+  const fs   = require('fs');
+  const os   = require('os');
+
+  // One-time migration: wipe the OLD default AppData location so stale
+  // settings/localStorage from previous builds don't bleed across installs.
+  const oldDefault = path.join(app.getPath('appData'), 'youtube-downloader-standalone');
+  try { if (fs.existsSync(oldDefault)) fs.rmSync(oldDefault, { recursive: true, force: true }); } catch {}
+
+  const logPath = path.join(app.getPath('userData'), 'startup.log');
+  const log  = (...args) => {
+    const line = `[${new Date().toISOString()}] ${args.join(' ')}\n`;
+    process.stdout.write(line);
+    try { fs.appendFileSync(logPath, line); } catch {}
+  };
+
+  log('App starting, packaged:', app.isPackaged);
+
+  const isPackaged = app.isPackaged;
+  const appDir = isPackaged
+    ? path.dirname(app.getPath('exe'))
+    : app.getAppPath();
+  const binDir = isPackaged
+    ? path.join(process.resourcesPath, 'bin')
+    : path.join(app.getAppPath(), 'bin');
+  const frontendDir = isPackaged
+    ? path.join(app.getAppPath(), 'dist-fe')
+    : path.join(app.getAppPath(), 'dist-fe');
+
+  log('appDir:', appDir);
+  log('binDir:', binDir);
+  log('frontendDir:', frontendDir);
+
+  // Set env vars BEFORE the dynamic import so all modules see them.
+  process.env.MEDIADL_APP_DIR  = appDir;
+  process.env.MEDIADL_BIN_DIR  = binDir;
+  process.env.MEDIADL_DESKTOP  = '1';
+
+  let serverOk = false;
+  let serverError = null;
+  try {
+    log('Importing production server…');
+    const { startProductionServer } = await import('../src/server/production.js');
+    log('Starting HTTP server on port', PORT);
+    await startProductionServer({ port: PORT, appDir, binDir, frontendDir });
+    serverOk = true;
+    log('Server started OK');
+  } catch (err) {
+    serverError = err;
+    log('ERROR starting server:', err.message);
+    log(err.stack || '');
+  }
+
+  createWindow();
+  if (!serverOk) {
+    const { dialog } = require('electron');
+    const isPortBusy = (serverError && (serverError.code === 'EADDRINUSE' || String(serverError.message).includes('EADDRINUSE')));
+    dialog.showErrorBox(
+      'MediaDL — Server failed to start',
+      isPortBusy
+        ? `Port ${PORT} is already in use.\n\nClose any other MediaDL window and try again.`
+        : `The backend server could not start.\n\nError log: ${logPath}\n\nPlease send this file for support.`
+    );
+  }
+});
+
+app.on('window-all-closed', () => app.quit());
+
+// ── IPC: Spotify OAuth popup ─────────────────────────────────────────────────
+// Creates a dedicated BrowserWindow for the Spotify login page.
+// Intercepts the redirect back to http://127.0.0.1:PORT/?code=...
+// before it loads, extracts the auth code, closes the popup, and
+// returns { code, redirectUri } to the renderer via the Promise.
+// This keeps everything inside Electron's own localStorage (not the system browser).
+ipcMain.handle('spotify-auth', (_event, authUrl) => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      try { if (!authWindow.isDestroyed()) authWindow.close(); } catch {}
+      if (result.code) {
+        resolve({ code: result.code, redirectUri: result.redirectUri });
+      } else {
+        reject(new Error(result.error || 'Spotify auth cancelled'));
+      }
+    };
+
+    const authWindow = new BrowserWindow({
+      width: 820,
+      height: 700,
+      title: 'Login with Spotify',
+      parent: mainWindow,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    const callbackBase = `http://127.0.0.1:${PORT}/`;
+
+    // Intercept any navigation/redirect heading to our callback URI.
+    const interceptUrl = (event, url) => {
+      if (typeof url === 'string' && url.startsWith(callbackBase)) {
+        // Stop the popup from loading the callback page — we handle it ourselves.
+        if (event && typeof event.preventDefault === 'function') event.preventDefault();
+        const parsed = new URL(url);
+        const code  = parsed.searchParams.get('code');
+        const error = parsed.searchParams.get('error');
+        settle(code
+          ? { code, redirectUri: callbackBase }
+          : { error: error || 'OAuth error or access denied' });
+      }
+    };
+
+    // will-navigate  → client-side navigation (JS redirect)
+    // will-redirect  → server-side HTTP redirect (most common for OAuth)
+    // did-redirect-navigation → fired after HTTP redirects (backup)
+    authWindow.webContents.on('will-navigate',          (ev, url) => interceptUrl(ev, url));
+    authWindow.webContents.on('will-redirect',          (ev, url) => interceptUrl(ev, url));
+    authWindow.webContents.on('did-redirect-navigation', (_ev, url) => interceptUrl(null, url));
+
+    authWindow.on('closed', () => {
+      if (!settled) reject(new Error('Spotify login window was closed'));
+    });
+
+    authWindow.loadURL(authUrl);
+  });
+});
+
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('context-menu', event => event.preventDefault());
+});
+
+// ── IPC: Auto Updater ────────────────────────────────────────────────────────
+const { autoUpdater } = require('electron-updater');
+
+autoUpdater.autoDownload = false;
+
+function sendUpdateEvent(name, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater-event', { name, data });
+  }
+}
+
+autoUpdater.on('checking-for-update', () => sendUpdateEvent('checking-for-update'));
+autoUpdater.on('update-available', (info) => sendUpdateEvent('update-available', info));
+autoUpdater.on('update-not-available', (info) => sendUpdateEvent('update-not-available', info));
+autoUpdater.on('error', (err) => sendUpdateEvent('error', err.message));
+autoUpdater.on('download-progress', (progressObj) => sendUpdateEvent('download-progress', progressObj));
+autoUpdater.on('update-downloaded', (info) => sendUpdateEvent('update-downloaded', info));
+
+ipcMain.handle('check-for-updates', () => {
+  if (!app.isPackaged) {
+    sendUpdateEvent('error', 'Auto-update is disabled in development mode.');
+    return null;
+  }
+  return autoUpdater.checkForUpdates();
+});
+ipcMain.handle('download-update', () => autoUpdater.downloadUpdate());
+ipcMain.handle('install-update', () => autoUpdater.quitAndInstall());
+ipcMain.handle('get-app-version', () => app.getVersion());

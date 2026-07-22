@@ -9,9 +9,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 let tokenCache = null
 
 export async function getSpotifyToken(clientId, clientSecret) {
-  clientId = clientId || '5f573c9620494bae87890c0f08a60293'
-  clientSecret = clientSecret || '212476d9b0f3472eaa762d90b19b0ba8'
-
   if (tokenCache && Date.now() < tokenCache.expiresAt) {
     return tokenCache.accessToken
   }
@@ -56,6 +53,30 @@ export async function getSpotifyToken(clientId, clientSecret) {
     req.write(data)
     req.end()
   })
+}
+
+// ── Anonymous Web Player Token ────────────────────────────────────────────────
+// Fetches a real Spotify access token from Spotify's own web player endpoint.
+// Works for any PUBLIC content without needing user credentials.
+// This replaces the broken spotify-url-info scraping library.
+export async function getAnonymousSpotifyToken() {
+  const res = await fetch(
+    'https://open.spotify.com/get_access_token?reason=transport&productType=web_player',
+    {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'en',
+        'Referer': 'https://open.spotify.com/',
+        'Origin': 'https://open.spotify.com',
+      }
+    }
+  )
+  if (!res.ok) throw new Error(`Spotify anonymous token endpoint returned ${res.status}`)
+  const data = await res.json()
+  if (!data.accessToken) throw new Error('No accessToken in Spotify anonymous token response')
+  console.log('[spotify-api] Got anonymous Spotify token (expires in ~1h)')
+  return data.accessToken
 }
 
 // ── Raw API Request ──────────────────────────────────────────────────────────
@@ -103,8 +124,6 @@ function toSpotifyError(err, context = '') {
 
 // ── Fetch with Retry ─────────────────────────────────────────────────────────
 async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
-  clientId = clientId || '5f573c9620494bae87890c0f08a60293'
-  clientSecret = clientSecret || '212476d9b0f3472eaa762d90b19b0ba8'
   let token = accessToken || await getSpotifyToken(clientId, clientSecret)
   try {
     return await spotifyApiRequest(path, token)
@@ -157,9 +176,10 @@ async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
         if (retryErr?.status === 403) {
           // Client credentials tot dau 403 — conținut privat sigur
           throw new Error(
-            'SPOTIFY_403: Conținut privat (ex. "Your Library", playlist privat). ' +
-            'Client credentials nu pot accesa acest resource. ' +
-            'Autentifică-te prin "My Profile" cu un token OAuth care are scope-ul playlist-read-private.'
+            'SPOTIFY_403: Acces respins. Acest playlist este privat.\n\n' +
+            'Dacă ești deja logat ("My Profile"), înseamnă că playlistul aparține altui cont Spotify, ' +
+            'iar tu nu ai permisiunea să îl vezi. Dacă e al tău, asigură-te că ești logat cu contul corect. ' +
+            'Dacă nu ești logat, autentifică-te pentru a accesa playlisturile tale private.'
           )
         }
         throw toSpotifyError(retryErr, '403-fallback')
@@ -197,17 +217,21 @@ async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
     tokenCache = null
     const retryItems = [...(firstPage?.items || [])]
     let retryNext = firstPage?.next || null
-    while (retryNext) {
-      const retryPath = retryNext.replace('https://api.spotify.com', '')
-      const retryPage = await fetchWithRetry(retryPath, clientId, clientSecret, null)
-      if (retryPage?.items?.length) retryItems.push(...retryPage.items)
-      retryNext = retryPage?.next || null
+    try {
+      while (retryNext) {
+        const retryPath = retryNext.replace('https://api.spotify.com', '')
+        const retryPage = await fetchWithRetry(retryPath, clientId, clientSecret, null)
+        if (retryPage?.items?.length) retryItems.push(...retryPage.items)
+        retryNext = retryPage?.next || null
+      }
+      if (retryItems.length > allItems.length) {
+        console.log(`[spotify-api] Retry recovered ${retryItems.length - allItems.length} extra items (${retryItems.length} total)`)
+        return retryItems
+      }
+      console.warn(`[spotify-api] Retry did not improve count (${retryItems.length}), keeping original ${allItems.length}`)
+    } catch (retryErr) {
+      console.warn(`[spotify-api] Retry failed (${retryErr.message}), keeping original ${allItems.length}`)
     }
-    if (retryItems.length > allItems.length) {
-      console.log(`[spotify-api] Retry recovered ${retryItems.length - allItems.length} extra items (${retryItems.length} total)`)
-      return retryItems
-    }
-    console.warn(`[spotify-api] Retry did not improve count (${retryItems.length}), keeping original ${allItems.length}`)
   }
 
   return allItems

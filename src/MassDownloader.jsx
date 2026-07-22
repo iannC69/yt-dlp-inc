@@ -76,6 +76,12 @@ async function getValidAccessToken(clientId, clientSecret) {
       }
     } catch {}
   }
+  if (expiresAt && Date.now() >= expiresAt - 60000) {
+    localStorage.removeItem('spotify_access_token');
+    localStorage.removeItem('spotify_refresh_token');
+    localStorage.removeItem('spotify_expires_at');
+    return '';
+  }
   return accessToken;
 }
 
@@ -112,6 +118,7 @@ export default function MassDownloader() {
   // Export settings
   const [format, setFormat] = useState('mp3');
   const [concurrency, setConcurrency] = useState(3);
+  const [speedMode, setSpeedMode] = useState('BALANCED');
   const [outputMode, setOutputMode] = useState('zip'); // zip | folder
   const [namingTpl, setNamingTpl] = useState('{track_number} - {artist} - {title}');
   const [splitEvery, setSplitEvery] = useState(100);
@@ -215,8 +222,7 @@ export default function MassDownloader() {
     try {
       const clientId = localStorage.getItem('spotify_client_id') || '';
       const clientSecret = localStorage.getItem('spotify_client_secret') || '';
-      if (!clientId || !clientSecret) throw new Error('Spotify credentials not configured. Add them in Settings.');
-      const token = await getValidAccessToken(clientId, clientSecret);
+      const token = clientId && clientSecret ? await getValidAccessToken(clientId, clientSecret) : ''; 
       const res = await fetch(`/api/spotify-mass-fetch?url=${encodeURIComponent(spotUrl)}`, {
         headers: { 'x-spotify-client-id': clientId, 'x-spotify-client-secret': clientSecret, 'x-spotify-access-token': token }
       });
@@ -296,7 +302,8 @@ export default function MassDownloader() {
     const items = allItems.filter((_, i) => selectedItems.has(i));
     if (items.length === 0) return;
 
-    setDlState({ active: true, done: false, error: null, cancelled: false, current: 0, total: items.length, percent: 0, completedCount: 0, failedCount: 0 });
+    const dlId = Date.now().toString();
+    setDlState({ active: true, done: false, error: null, cancelled: false, current: 0, total: items.length, percent: 0, completedCount: 0, failedCount: 0, jobId: dlId });
     setTrackStatuses({});
     setLogLines([]);
     setFailedItems([]);
@@ -304,15 +311,22 @@ export default function MassDownloader() {
 
     const clientId = localStorage.getItem('spotify_client_id') || '';
     const clientSecret = localStorage.getItem('spotify_client_secret') || '';
-    const token = await getValidAccessToken(clientId, clientSecret);
+    const token = clientId && clientSecret ? await getValidAccessToken(clientId, clientSecret) : ''; 
 
-    const dlId = Date.now().toString();
     const fmtKey = format.replace('_192', '');
 
     // For Spotify: use spotify-mass-download. For YT / URL list: use mass/start-ytdl
     let endpoint, bodyPayload, params;
     if (sourceTab === 'spotify' && spotResult) {
-      params = new URLSearchParams({ format: `audio:${fmtKey}:0`, downloadId: dlId });
+      params = new URLSearchParams({ 
+        format: `audio:${fmtKey}:0`, 
+        downloadId: dlId,
+        concurrency: String(concurrency),
+        speedMode,
+        customPath: localStorage.getItem('customPath') || '',
+        audioFormat: localStorage.getItem('audioFormat') || 'mp3',
+        audioQuality: localStorage.getItem('audioQuality') || '320k'
+      });
       endpoint = `/api/spotify-mass-download?${params}`;
       bodyPayload = {
         tracks: items,
@@ -325,9 +339,13 @@ export default function MassDownloader() {
         format: fmtKey,
         downloadId: dlId,
         concurrency: String(concurrency),
+        speedMode,
         outputZip: outputMode === 'zip' ? 'true' : 'false',
         naming: namingTpl,
-        splitEvery: splitEnabled ? String(splitEvery) : '0'
+        splitEvery: splitEnabled ? String(splitEvery) : '0',
+        customPath: localStorage.getItem('customPath') || '',
+        audioFormat: localStorage.getItem('audioFormat') || 'mp3',
+        audioQuality: localStorage.getItem('audioQuality') || '320k'
       });
       endpoint = `/api/mass/start-ytdl?${params}`;
       bodyPayload = {
@@ -386,6 +404,10 @@ export default function MassDownloader() {
   };
 
   const cancelDownload = async () => {
+    const downloadId = dlState?.jobId;
+    if (downloadId) {
+      try { await fetch(`/api/mass/cancel?downloadId=${encodeURIComponent(downloadId)}`); } catch {}
+    }
     if (dlReaderRef.current) { try { dlReaderRef.current.cancel(); } catch {} }
     setDlState(prev => ({ ...prev, active: false, done: true, cancelled: true }));
   };
@@ -416,7 +438,10 @@ export default function MassDownloader() {
     setFilter('');
   };
 
-  const openFolder = () => fetch('/api/ytdl/open-folder');
+  const openFolder = () => {
+    const cp = localStorage.getItem('customPath') || '';
+    fetch(`/api/ytdl/open-folder?customPath=${encodeURIComponent(cp)}`);
+  };
 
   // ── Computed derived values ───────────────────────────────────
   const isDownloading = dlState?.active && !dlState?.done;
@@ -435,7 +460,7 @@ export default function MassDownloader() {
   }, [allItems, selectedItems]);
 
   // ── Concurrency slider CSS var ───────────────────────────────
-  const concurrencyPct = ((concurrency - 1) / 4) * 100;
+  const concurrencyPct = ((concurrency - 1) / 23) * 100;
 
   // ══════════════════════════════════════════════════════════════
   // ── RENDER ────────────────────────────────────────────────────
@@ -711,8 +736,16 @@ export default function MassDownloader() {
                   <div className="md-settings-field">
                     <label className="md-settings-label">Parallel Downloads</label>
                     <div className="md-concurrency-row">
-                      <input type="range" min="1" max="5" value={concurrency} onChange={e => setConcurrency(Number(e.target.value))} className="md-concurrency-slider" style={{ '--pct': `${concurrencyPct}%` }} />
+                      <input type="range" min="1" max="24" value={concurrency} onChange={e => setConcurrency(Number(e.target.value))} className="md-concurrency-slider" style={{ '--pct': `${concurrencyPct}%` }} />
                       <span className="md-concurrency-val">{concurrency}</span>
+                    </div>
+                  </div>
+
+                  <div className="md-settings-field">
+                    <label className="md-settings-label">Speed Mode</label>
+                    <div className="md-output-toggle">
+                      <button className={`md-toggle-btn ${speedMode === 'BALANCED' ? 'md-toggle-btn--active' : ''}`} onClick={() => setSpeedMode('BALANCED')}>Balanced</button>
+                      <button className={`md-toggle-btn ${speedMode === 'MAXIMUM' ? 'md-toggle-btn--active' : ''}`} onClick={() => setSpeedMode('MAXIMUM')}><Zap size={13} /> Maximum</button>
                     </div>
                   </div>
 

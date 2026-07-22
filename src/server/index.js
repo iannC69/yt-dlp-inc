@@ -4,10 +4,12 @@ import crypto from 'crypto'
 import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 import { resolveSpotifyMetadata } from './spotify-api.js'
+import { getBatchPerformanceProfile } from './batch-engine.js'
 import https from 'https'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ROOT_DIR = path.resolve(__dirname, '../../')
+const ROOT_DIR = process.env.MEDIADL_APP_DIR || path.resolve(__dirname, '../../')
+const bundledBinDir = process.env.MEDIADL_BIN_DIR || path.join(ROOT_DIR, 'bin')
 const configPath = path.resolve(ROOT_DIR, 'config.json')
 
 // ── CONFIG ──────────────────────────────────────────────────────────────
@@ -20,8 +22,8 @@ export function getConfig() {
         spotifyThreshold: cfg.spotifyThreshold ?? 100,
         ytDlpFallbackEnabled: cfg.ytDlpFallbackEnabled ?? true,
         ytDlpDelay: cfg.ytDlpDelay ?? 2,
-        audioFormat: cfg.audioFormat || 'mp3',
-        audioQuality: cfg.audioQuality || '320k',
+        audioFormat: (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
+        audioQuality: (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioQuality') ? urlObj.searchParams.get('audioQuality') : cfg.audioQuality) || '320k',
         spotifyClientId: cfg.spotifyClientId || '',
         spotifyClientSecret: cfg.spotifyClientSecret || ''
       }
@@ -46,9 +48,9 @@ export function saveConfig(cfg) {
   return merged;
 }
 
-export function ensureDownloadsDir() {
+export function ensureDownloadsDir(customPath = null) {
   const cfg = getConfig();
-  let dir = cfg.customPath;
+  let dir = customPath || cfg.customPath;
   if (!dir) dir = path.join(ROOT_DIR, 'downloads');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
@@ -82,7 +84,7 @@ export function log(level, source, message, trackTitle = null) {
 }
 
 // Keep-alive for SSE
-setInterval(() => {
+const sseKeepAliveTimer = setInterval(() => {
   for (const client of sseClients) {
     try {
       client.write(':keepalive\n\n');
@@ -91,6 +93,7 @@ setInterval(() => {
     }
   }
 }, 15000);
+sseKeepAliveTimer.unref?.();
 
 // ── STARTUP CHECKS ──────────────────────────────────────────────────────
 export function checkDependencies() {
@@ -279,12 +282,7 @@ export function configureNewBackend(server) {
 
   // Task 3: Hybrid Mass Download endpoint
   const activeMassDownloads = new Map();
-  const getFfmpegDir = () => {
-    let ffmpegStatic;
-    try { ffmpegStatic = require('ffmpeg-static'); } catch { }
-    const ffmpegBin = ffmpegStatic || path.resolve(__dirname, '../../bin/ffmpeg.exe');
-    return path.dirname(ffmpegBin);
-  };
+  const getFfmpegDir = () => bundledBinDir;
   const parseJsonBody = async (req) => {
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -341,17 +339,20 @@ export function configureNewBackend(server) {
       send({ current: 0, total: tracks.length, status: `Loaded ${tracks.length} tracks. Starting Hybrid Download.` });
       log('INFO', 'system', `Started mass download for ${tracks.length} tracks. Threshold: ${threshold}`);
 
-      const tempDir = path.join(ensureDownloadsDir(), `mass-${safeName}-${Date.now()}`);
+      const tempDir = path.join(ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null), `mass-${safeName}-${Date.now()}`);
       fs.mkdirSync(tempDir, { recursive: true });
 
       let completedCount = 0;
       let failedCount = 0;
       const activeProcs = new Set();
-      const MASS_CONCURRENCY = 3;
+      const requestedConcurrency = Math.min(24, Math.max(1, parseInt(urlObj.searchParams.get('concurrency') || '3', 10)));
+      const speedMode = urlObj.searchParams.get('speedMode') === 'MAXIMUM' ? 'MAXIMUM' : 'BALANCED';
+      const performanceProfile = getBatchPerformanceProfile(requestedConcurrency, speedMode);
+      const MASS_CONCURRENCY = performanceProfile.concurrency;
+      send({ performanceProfile, status: `Starting ${tracks.length} tracks with ${MASS_CONCURRENCY} workers.` });
 
-      const ytDlpPath = path.resolve(__dirname, '../../bin/yt-dlp.exe');
-      const spotDlPath = process.platform === 'win32' ? 'spotdl.exe' : 'spotdl'; 
-      // Ensure spotdl is in system PATH
+      const ytDlpPath = path.join(bundledBinDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+      const spotDlPath = path.join(bundledBinDir, process.platform === 'win32' ? 'spotdl.exe' : 'spotdl');
       
       const downloadTrack = async (track, i) => {
         if (dlState.cancelled) return;
@@ -385,8 +386,8 @@ export function configureNewBackend(server) {
              const args = [
                'download', track.spotifyUrl,
                '--output', outputTemplate,
-               '--format', cfg.audioFormat || 'mp3',
-               '--bitrate', cfg.audioQuality || '320k',
+               '--format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
+               '--bitrate', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioQuality') ? urlObj.searchParams.get('audioQuality') : cfg.audioQuality) || '320k',
                '--threads', '1',
                '--ffmpeg', getFfmpegDir()
              ];
@@ -427,7 +428,7 @@ export function configureNewBackend(server) {
            downloadedOk = await new Promise(resolve => {
              const args = [
                 query,
-                '-x', '--audio-format', cfg.audioFormat || 'mp3',
+                '-x', '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
                 '--audio-quality', '0',
                 '-o', path.join(trackDir, outputName),
                 '--no-playlist',
@@ -445,7 +446,7 @@ export function configureNewBackend(server) {
              proc.on('error', () => resolve(false));
            });
            
-           if (downloadedOk && cfg.audioFormat === 'mp3') {
+           if (downloadedOk && (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) === 'mp3') {
               try {
                 // simple tagging for yt-dlp fallback
                 const files = fs.readdirSync(trackDir).filter(f => f.endsWith('.mp3'));
@@ -508,7 +509,7 @@ export function configureNewBackend(server) {
       try {
         const archiver = (await import('archiver')).default;
         const zipFilename = `spotify-playlist-${safeName}.zip`;
-        const zipPath = path.join(ensureDownloadsDir(), zipFilename);
+        const zipPath = path.join(ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null), zipFilename);
         
         await new Promise((resolve, reject) => {
           const output = fs.createWriteStream(zipPath);
