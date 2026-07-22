@@ -102,10 +102,29 @@ if (portableOnly)       builderTarget = '--win portable'
 else if (installerOnly) builderTarget = '--win nsis'
 else                    builderTarget = '--win nsis portable'
 
-run(`npx electron-builder ${builderTarget} --publish never`)
+const shouldPublish = args.includes('--publish')
+if (shouldPublish && !process.env.GH_TOKEN) {
+  fail('GH_TOKEN environment variable is missing! Please create a GitHub Personal Access Token and set it in your environment variables to auto-publish.');
+}
+
+const publishFlag = shouldPublish ? '--publish always' : '--publish never'
+run(`npx electron-builder ${builderTarget} ${publishFlag}`)
 ok('Packaging complete')
 
-// ── Step 5: Collect and verify artifacts ────────────────────────────────────
+// ── Step 5: Git Commit & Push ───────────────────────────────────────────────
+if (bumpType || shouldPublish) {
+  step('Committing and pushing to GitHub')
+  try {
+    run('git add package.json package-lock.json')
+    run(`git commit -m "chore: release v${version}"`)
+    run('git push')
+    ok('Git push complete')
+  } catch (e) {
+    warn('Git commit/push failed. You may need to push manually.')
+  }
+}
+
+// ── Step 6: Collect and verify artifacts ────────────────────────────────────
 step('Collecting release artifacts')
 const electronDist = path.join(ROOT, 'dist_electron')
 const releaseDir   = path.join(ROOT, 'release', version)
@@ -160,6 +179,9 @@ if (!artifactSrc) {
 
 // ── Done ─────────────────────────────────────────────────────────────────────
 console.log(`\n\x1b[32m✅ Release ${version} complete!\x1b[0m`)
+if (shouldPublish) {
+  console.log(`\n\x1b[32m🚀 Successfully published to GitHub Releases!\x1b[0m`)
+}
 if (artifactSrc) {
   console.log(`   Artifacts: release/${version}/\n`)
 }

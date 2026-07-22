@@ -14,6 +14,7 @@
     "desktop": "npm run build && electron .",
     "dist:portable": "npm run build && electron-builder --win portable --publish never",
     "dist:installer": "npm run build && electron-builder --win nsis --publish never",
+    "release:auto": "node scripts/release.js --installer --bump patch --publish",
     "release": "node scripts/release.js",
     "postinstall": "node scripts/setup-binaries.js"
   },
