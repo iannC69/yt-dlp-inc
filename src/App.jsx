@@ -467,7 +467,7 @@ export default function App() {
                       {activeSettingsTab === 'general' && 'Download path, format and quality defaults'}
                       {activeSettingsTab === 'rules' && 'Naming patterns and quality filters'}
                       {activeSettingsTab === 'theme' && 'Colors, presets and panel customization'}
-                      {activeSettingsTab === 'spotify' && 'API credentials and search behavior'}
+                      {activeSettingsTab === 'spotify' && 'API credentials and search behavior (Updater Test v1.0.3!)'}
                       {activeSettingsTab === 'system' && 'Engine performance and hardware settings'}
                       {activeSettingsTab === 'logs' && 'Live server output and error trace'}
                       {activeSettingsTab === 'youtube' && 'Default quality, format and playlist options'}

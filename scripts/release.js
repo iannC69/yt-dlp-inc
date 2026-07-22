@@ -91,9 +91,9 @@ if (missingBins.length > 0) {
 // ── Step 3: Build frontend ──────────────────────────────────────────────────
 step('Building React frontend (vite build)')
 run('npm run build')
-const distDir = path.join(ROOT, 'dist')
-if (!fs.existsSync(distDir)) fail('dist/ directory not found after build.')
-ok(`Frontend built → dist/`)
+const distDir = path.join(ROOT, 'dist-fe')
+if (!fs.existsSync(distDir)) fail('dist-fe/ directory not found after build.')
+ok(`Frontend built → dist-fe/`)
 
 // ── Step 4: Package Electron ─────────────────────────────────────────────────
 step('Packaging Electron app with electron-builder')

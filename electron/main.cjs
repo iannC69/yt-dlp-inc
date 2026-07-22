@@ -1,15 +1,6 @@
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 
-// Store ALL Electron data (localStorage, session, cache) next to the .exe
-// so it's removed when the user uninstalls the app.
-{
-  const exeDir = app.isPackaged
-    ? path.dirname(app.getPath('exe'))
-    : app.getAppPath();
-  app.setPath('userData', path.join(exeDir, 'app-data'));
-}
-
 const PORT = 5174;
 let mainWindow;
 
@@ -60,9 +51,7 @@ app.whenReady().then(async () => {
   log('App starting, packaged:', app.isPackaged);
 
   const isPackaged = app.isPackaged;
-  const appDir = isPackaged
-    ? path.dirname(app.getPath('exe'))
-    : app.getAppPath();
+  const appDir = app.getPath('userData');
   const binDir = isPackaged
     ? path.join(process.resourcesPath, 'bin')
     : path.join(app.getAppPath(), 'bin');
