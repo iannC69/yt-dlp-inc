@@ -2253,7 +2253,7 @@ function youtubeDownloaderPlugin() {
               '--threads', String(aiConfig.concurrentTracks || 4),
               '--preload',
               '--audio', 'youtube',
-              '--yt-dlp-args', `--js-runtimes=node:${process.execPath}`,
+              `--yt-dlp-args=--js-runtimes=node:${process.execPath}`,
               '--add-unavailable'
             ];
             let spFfmpegArgs = `-threads ${aiConfig.ffmpegThreads}`
