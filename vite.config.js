@@ -2084,7 +2084,7 @@ function youtubeDownloaderPlugin() {
 
         res.setHeader('Content-Type', 'application/json')
         const tempFile = path.join(os.tmpdir(), `spotdl_extract_${Date.now()}.spotdl`)
-        const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe')
+        const spotdlPath = path.resolve(__dirname, 'bin', process.platform === 'win32' ? 'run-spotdl.bat' : 'spotdl')
 
         const proc = spawn(spotdlPath, ['save', spotUrl, '--save-file', tempFile, '--ffmpeg', path.resolve(__dirname, 'bin', 'ffmpeg.exe')], {
           env: {
@@ -2245,7 +2245,7 @@ function youtubeDownloaderPlugin() {
 
           if (isNativePlaylist && isCollection) {
             // Hoist spotdl args so retry pass can reuse them
-            const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe');
+            const spotdlPath = path.resolve(__dirname, 'bin', process.platform === 'win32' ? 'run-spotdl.bat' : 'spotdl');
             const spotdlArgs = [
               spotUrl,
               '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),

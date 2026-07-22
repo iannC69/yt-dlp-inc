@@ -13,7 +13,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   const binPath   = path.join(binDir, 'yt-dlp.exe')
   const ffmpegBin = _ffmpegBin || path.join(binDir, 'ffmpeg.exe')
   const ffmpegDir = path.dirname(ffmpegBin)
-  const spotdlBin = path.join(binDir, 'spotdl.exe')
+  const spotdlBin = path.join(binDir, process.platform === 'win32' ? 'run-spotdl.bat' : 'spotdl')
   const aiConfig  = getOptimalDownloadConfig()
   const COLLECTION_LIMIT = 5000
   const configPath    = path.resolve(appDir, 'config.json')

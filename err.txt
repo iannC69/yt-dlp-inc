@@ -1,0 +1,1 @@
+[PYI-1700:ERROR] Failed to execute script '__main__' due to unhandled exception!

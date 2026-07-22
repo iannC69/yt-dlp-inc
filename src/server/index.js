@@ -352,7 +352,7 @@ export function configureNewBackend(server) {
       send({ performanceProfile, status: `Starting ${tracks.length} tracks with ${MASS_CONCURRENCY} workers.` });
 
       const ytDlpPath = path.join(bundledBinDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
-      const spotDlPath = path.join(bundledBinDir, process.platform === 'win32' ? 'spotdl.exe' : 'spotdl');
+      const spotDlPath = path.join(bundledBinDir, process.platform === 'win32' ? 'run-spotdl.bat' : 'spotdl');
       
       const downloadTrack = async (track, i) => {
         if (dlState.cancelled) return;
