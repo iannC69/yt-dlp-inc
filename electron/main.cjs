@@ -166,6 +166,29 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('context-menu', event => event.preventDefault());
 });
 
+// ── IPC: Persistent Settings Store ─────────────────────────────────────────────
+const settingsPath = path.join(app.getPath('userData'), 'user_settings.json');
+let userSettings = {};
+try {
+  if (require('fs').existsSync(settingsPath)) {
+    userSettings = JSON.parse(require('fs').readFileSync(settingsPath, 'utf8'));
+  }
+} catch (e) { console.error('Error loading settings', e); }
+
+ipcMain.on('store-get', (event, key) => {
+  event.returnValue = userSettings[key] !== undefined ? userSettings[key] : null;
+});
+ipcMain.on('store-set', (event, key, val) => {
+  userSettings[key] = val;
+  require('fs').writeFileSync(settingsPath, JSON.stringify(userSettings, null, 2));
+  event.returnValue = true;
+});
+ipcMain.on('store-delete', (event, key) => {
+  delete userSettings[key];
+  require('fs').writeFileSync(settingsPath, JSON.stringify(userSettings, null, 2));
+  event.returnValue = true;
+});
+
 // ── IPC: Auto Updater ────────────────────────────────────────────────────────
 const { autoUpdater } = require('electron-updater');
 

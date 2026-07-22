@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{ code: string, redirectUri: string }>}
    */
   spotifyAuth: (authUrl) => ipcRenderer.invoke('spotify-auth', authUrl),
+  // Settings Store APIs
+  settings: {
+    get: (key) => ipcRenderer.sendSync('store-get', key),
+    set: (key, val) => ipcRenderer.sendSync('store-set', key, val),
+    delete: (key) => ipcRenderer.sendSync('store-delete', key)
+  },
 
   // Auto Updater APIs
   updater: {

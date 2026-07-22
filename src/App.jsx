@@ -11,6 +11,7 @@ import QueueModal from './QueueModal';
 import LogsTab from './LogsTab';
 import UpdatesTab from './UpdatesTab';
 import './App.css';
+import { storage } from './storage';
 
 const PLATFORMS = [
   {
@@ -54,7 +55,7 @@ const slideVariants = {
 };
 
 export default function App() {
-  const [setupDone, setSetupDone] = useState(() => localStorage.getItem('setup_complete') === '1');
+  const [setupDone, setSetupDone] = useState(() => storage.getItem('setup_complete') === '1');
   const [activeIdx, setActiveIdx] = useState(0);
   const [direction, setDirection] = useState(1);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -73,7 +74,7 @@ export default function App() {
   const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
   const [downloadPreset, setDownloadPreset] = useState('AUTO');
   const [hardwareAcceleration, setHardwareAcceleration] = useState('NONE');
-  const [customPath, setCustomPath] = useState(() => localStorage.getItem('customPath') || '');
+  const [customPath, setCustomPath] = useState(() => storage.getItem('customPath') || '');
   const [customTheme, setCustomTheme] = useState({
     // Global
     primary:     '#ef4444',
@@ -107,36 +108,36 @@ export default function App() {
   const [activeSpotifyJob, setActiveSpotifyJob] = useState(null);
 
   // Backend Config State
-  const [audioFormat, setAudioFormat] = useState(() => localStorage.getItem('audioFormat') || 'mp3');
-  const [audioQuality, setAudioQuality] = useState(() => localStorage.getItem('audioQuality') || '320k');
+  const [audioFormat, setAudioFormat] = useState(() => storage.getItem('audioFormat') || 'mp3');
+  const [audioQuality, setAudioQuality] = useState(() => storage.getItem('audioQuality') || '320k');
   const [spotifyThreshold, setSpotifyThreshold] = useState(100);
   const [ytDlpFallbackEnabled, setYtDlpFallbackEnabled] = useState(true);
 
   // YouTube settings
-  const [ytVideoQuality, setYtVideoQuality] = useState(() => localStorage.getItem('yt_video_quality') || 'best');
-  const [ytSubtitles, setYtSubtitles] = useState(() => localStorage.getItem('yt_subtitles') || 'off');
-  const [ytEmbedThumbnail, setYtEmbedThumbnail] = useState(() => localStorage.getItem('yt_embed_thumbnail') !== 'false');
-  const [ytSponsorBlock, setYtSponsorBlock] = useState(() => localStorage.getItem('yt_sponsorblock') === 'true');
-  const [ytFilenameTemplate, setYtFilenameTemplate] = useState(() => localStorage.getItem('yt_filename_template') || '%(title)s');
-  const [ytWriteThumbnail, setYtWriteThumbnail] = useState(() => localStorage.getItem('yt_write_thumbnail') === 'true');
+  const [ytVideoQuality, setYtVideoQuality] = useState(() => storage.getItem('yt_video_quality') || 'best');
+  const [ytSubtitles, setYtSubtitles] = useState(() => storage.getItem('yt_subtitles') || 'off');
+  const [ytEmbedThumbnail, setYtEmbedThumbnail] = useState(() => storage.getItem('yt_embed_thumbnail') !== 'false');
+  const [ytSponsorBlock, setYtSponsorBlock] = useState(() => storage.getItem('yt_sponsorblock') === 'true');
+  const [ytFilenameTemplate, setYtFilenameTemplate] = useState(() => storage.getItem('yt_filename_template') || '%(title)s');
+  const [ytWriteThumbnail, setYtWriteThumbnail] = useState(() => storage.getItem('yt_write_thumbnail') === 'true');
 
   // Spotify extra settings
-  const [spotDlLyrics, setSpotDlLyrics] = useState(() => localStorage.getItem('spotdl_lyrics') === 'true');
-  const [spotDlArchive, setSpotDlArchive] = useState(() => localStorage.getItem('spotdl_archive') === 'true');
-  const [spotDlEngine, setSpotDlEngine] = useState(() => localStorage.getItem('spotdl_engine') || 'spotdl');
+  const [spotDlLyrics, setSpotDlLyrics] = useState(() => storage.getItem('spotdl_lyrics') === 'true');
+  const [spotDlArchive, setSpotDlArchive] = useState(() => storage.getItem('spotdl_archive') === 'true');
+  const [spotDlEngine, setSpotDlEngine] = useState(() => storage.getItem('spotdl_engine') || 'spotdl');
 
   // Mass DL settings
-  const [massDlConcurrency, setMassDlConcurrency] = useState(() => parseInt(localStorage.getItem('massdl_concurrency') || '3'));
-  const [massDlRetries, setMassDlRetries] = useState(() => parseInt(localStorage.getItem('massdl_retries') || '2'));
-  const [massDlContinueOnError, setMassDlContinueOnError] = useState(() => localStorage.getItem('massdl_continue_on_error') !== 'false');
-  const [massDlOutputFormat, setMassDlOutputFormat] = useState(() => localStorage.getItem('massdl_output_format') || 'mp3');
-  const [massDlDelay, setMassDlDelay] = useState(() => parseInt(localStorage.getItem('massdl_delay') || '0'));
+  const [massDlConcurrency, setMassDlConcurrency] = useState(() => parseInt(storage.getItem('massdl_concurrency') || '3'));
+  const [massDlRetries, setMassDlRetries] = useState(() => parseInt(storage.getItem('massdl_retries') || '2'));
+  const [massDlContinueOnError, setMassDlContinueOnError] = useState(() => storage.getItem('massdl_continue_on_error') !== 'false');
+  const [massDlOutputFormat, setMassDlOutputFormat] = useState(() => storage.getItem('massdl_output_format') || 'mp3');
+  const [massDlDelay, setMassDlDelay] = useState(() => parseInt(storage.getItem('massdl_delay') || '0'));
 
   // Audio Cutter settings
-  const [cutterOutputFormat, setCutterOutputFormat] = useState(() => localStorage.getItem('cutter_output_format') || 'mp3');
-  const [cutterFadeDuration, setCutterFadeDuration] = useState(() => parseInt(localStorage.getItem('cutter_fade_duration') || '50'));
-  const [cutterNormalize, setCutterNormalize] = useState(() => localStorage.getItem('cutter_normalize') === 'true');
-  const [cutterBitrate, setCutterBitrate] = useState(() => localStorage.getItem('cutter_bitrate') || '320k');
+  const [cutterOutputFormat, setCutterOutputFormat] = useState(() => storage.getItem('cutter_output_format') || 'mp3');
+  const [cutterFadeDuration, setCutterFadeDuration] = useState(() => parseInt(storage.getItem('cutter_fade_duration') || '50'));
+  const [cutterNormalize, setCutterNormalize] = useState(() => storage.getItem('cutter_normalize') === 'true');
+  const [cutterBitrate, setCutterBitrate] = useState(() => storage.getItem('cutter_bitrate') || '320k');
 
   const saveConfigToBackend = async (updates) => {
     try {
@@ -152,7 +153,7 @@ export default function App() {
 
   const fetchHistory = () => {
     try {
-      const saved = localStorage.getItem('global_history');
+      const saved = storage.getItem('global_history');
       if (saved) {
         setHistoryData(JSON.parse(saved));
       } else {
@@ -170,7 +171,7 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         setCustomPath(data.path);
-        localStorage.setItem('customPath', data.path);
+        storage.setItem('customPath', data.path);
       }
     } catch (e) { }
   };
@@ -187,10 +188,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    setSpotifyClientId(localStorage.getItem('spotify_client_id') || '');
-    setSpotifyClientSecret(localStorage.getItem('spotify_client_secret') || '');
-    setDownloadPreset(localStorage.getItem('download_preset') || 'AUTO');
-    setHardwareAcceleration(localStorage.getItem('hardware_acceleration') || 'NONE');
+    setSpotifyClientId(storage.getItem('spotify_client_id') || '');
+    setSpotifyClientSecret(storage.getItem('spotify_client_secret') || '');
+    setDownloadPreset(storage.getItem('download_preset') || 'AUTO');
+    setHardwareAcceleration(storage.getItem('hardware_acceleration') || 'NONE');
 
     fetch('/api/ytdl/get-config').then(r => r.json()).then(data => {
       if (data.customPath) setCustomPath(data.customPath);
@@ -201,7 +202,7 @@ export default function App() {
       if (data.ytDlpFallbackEnabled !== undefined) setYtDlpFallbackEnabled(data.ytDlpFallbackEnabled);
     }).catch(() => { });
 
-    const savedTheme = localStorage.getItem('global_theme');
+    const savedTheme = storage.getItem('global_theme');
     if (savedTheme) {
       try { setCustomTheme(prev => ({ ...prev, ...JSON.parse(savedTheme) })); } catch {}
     }
@@ -269,11 +270,11 @@ export default function App() {
   }, [customTheme]);
 
   const saveSettings = () => {
-    localStorage.setItem('spotify_client_id', spotifyClientId.trim());
-    localStorage.setItem('spotify_client_secret', spotifyClientSecret.trim());
-    localStorage.setItem('download_preset', downloadPreset);
-    localStorage.setItem('hardware_acceleration', hardwareAcceleration);
-    localStorage.setItem('global_theme', JSON.stringify(customTheme));
+    storage.setItem('spotify_client_id', spotifyClientId.trim());
+    storage.setItem('spotify_client_secret', spotifyClientSecret.trim());
+    storage.setItem('download_preset', downloadPreset);
+    storage.setItem('hardware_acceleration', hardwareAcceleration);
+    storage.setItem('global_theme', JSON.stringify(customTheme));
     setShowSettingsModal(false);
   };
 
@@ -529,7 +530,7 @@ export default function App() {
                               className={`settings-hw-btn ${audioFormat === f ? 'active' : ''}`}
                               onClick={() => {
                                 setAudioFormat(f);
-                                localStorage.setItem('audioFormat', f);
+                                storage.setItem('audioFormat', f);
                               }}
                             >
                               {f.toUpperCase()}
@@ -552,7 +553,7 @@ export default function App() {
                               className={`settings-hw-btn ${audioQuality === q.value ? 'active' : ''}`}
                               onClick={() => {
                                 setAudioQuality(q.value);
-                                localStorage.setItem('audioQuality', q.value);
+                                storage.setItem('audioQuality', q.value);
                               }}
                             >
                               {q.label}
@@ -779,7 +780,7 @@ export default function App() {
                             { value: 'ytdlp', label: 'yt-dlp first' },
                           ].map(e => (
                             <button key={e.value} className={`settings-hw-btn ${spotDlEngine === e.value ? 'active' : ''}`}
-                              onClick={() => { setSpotDlEngine(e.value); localStorage.setItem('spotdl_engine', e.value); }}>
+                              onClick={() => { setSpotDlEngine(e.value); storage.setItem('spotdl_engine', e.value); }}>
                               {e.label}
                             </button>
                           ))}
@@ -789,14 +790,14 @@ export default function App() {
                       <div className="settings-field">
                         <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
                           <input type="checkbox" checked={spotDlLyrics}
-                            onChange={e => { setSpotDlLyrics(e.target.checked); localStorage.setItem('spotdl_lyrics', String(e.target.checked)); }} />
+                            onChange={e => { setSpotDlLyrics(e.target.checked); storage.setItem('spotdl_lyrics', String(e.target.checked)); }} />
                           Embed lyrics in downloaded tracks
                         </label>
                       </div>
                       <div className="settings-field">
                         <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
                           <input type="checkbox" checked={spotDlArchive}
-                            onChange={e => { setSpotDlArchive(e.target.checked); localStorage.setItem('spotdl_archive', String(e.target.checked)); }} />
+                            onChange={e => { setSpotDlArchive(e.target.checked); storage.setItem('spotdl_archive', String(e.target.checked)); }} />
                           Skip already downloaded tracks (archive mode)
                         </label>
                         <p className="settings-hint">Keeps a record of downloaded tracks and skips re-downloads when syncing playlists.</p>
@@ -819,7 +820,7 @@ export default function App() {
                             <button
                               key={q.value}
                               className={`settings-preset-card ${ytVideoQuality === q.value ? 'active' : ''}`}
-                              onClick={() => { setYtVideoQuality(q.value); localStorage.setItem('yt_video_quality', q.value); }}
+                              onClick={() => { setYtVideoQuality(q.value); storage.setItem('yt_video_quality', q.value); }}
                             >
                               <span className="settings-preset-label">{q.label}</span>
                               <span className="settings-preset-sub">{q.sub}</span>
@@ -838,7 +839,7 @@ export default function App() {
                             { value: 'all', label: 'All langs' },
                           ].map(s => (
                             <button key={s.value} className={`settings-hw-btn ${ytSubtitles === s.value ? 'active' : ''}`}
-                              onClick={() => { setYtSubtitles(s.value); localStorage.setItem('yt_subtitles', s.value); }}>
+                              onClick={() => { setYtSubtitles(s.value); storage.setItem('yt_subtitles', s.value); }}>
                               {s.label}
                             </button>
                           ))}
@@ -850,7 +851,7 @@ export default function App() {
                           type="text"
                           className="settings-input"
                           value={ytFilenameTemplate}
-                          onChange={e => { setYtFilenameTemplate(e.target.value); localStorage.setItem('yt_filename_template', e.target.value); }}
+                          onChange={e => { setYtFilenameTemplate(e.target.value); storage.setItem('yt_filename_template', e.target.value); }}
                           placeholder="%(title)s"
                         />
                         <p className="settings-hint">yt-dlp output template. Variables: %(title)s %(uploader)s %(id)s %(ext)s</p>
@@ -858,21 +859,21 @@ export default function App() {
                       <div className="settings-field">
                         <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
                           <input type="checkbox" checked={ytEmbedThumbnail}
-                            onChange={e => { setYtEmbedThumbnail(e.target.checked); localStorage.setItem('yt_embed_thumbnail', String(e.target.checked)); }} />
+                            onChange={e => { setYtEmbedThumbnail(e.target.checked); storage.setItem('yt_embed_thumbnail', String(e.target.checked)); }} />
                           Embed thumbnail in audio files
                         </label>
                       </div>
                       <div className="settings-field">
                         <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
                           <input type="checkbox" checked={ytWriteThumbnail}
-                            onChange={e => { setYtWriteThumbnail(e.target.checked); localStorage.setItem('yt_write_thumbnail', String(e.target.checked)); }} />
+                            onChange={e => { setYtWriteThumbnail(e.target.checked); storage.setItem('yt_write_thumbnail', String(e.target.checked)); }} />
                           Save thumbnail as separate image file
                         </label>
                       </div>
                       <div className="settings-field">
                         <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
                           <input type="checkbox" checked={ytSponsorBlock}
-                            onChange={e => { setYtSponsorBlock(e.target.checked); localStorage.setItem('yt_sponsorblock', String(e.target.checked)); }} />
+                            onChange={e => { setYtSponsorBlock(e.target.checked); storage.setItem('yt_sponsorblock', String(e.target.checked)); }} />
                           SponsorBlock — mark/remove sponsor segments
                         </label>
                         <p className="settings-hint">Removes sponsor, intro, and self-promo segments from downloaded videos.</p>
@@ -887,7 +888,7 @@ export default function App() {
                         <div className="settings-hw-toggle">
                           {['mp3','flac','m4a','wav','opus'].map(f => (
                             <button key={f} className={`settings-hw-btn ${massDlOutputFormat === f ? 'active' : ''}`}
-                              onClick={() => { setMassDlOutputFormat(f); localStorage.setItem('massdl_output_format', f); }}>
+                              onClick={() => { setMassDlOutputFormat(f); storage.setItem('massdl_output_format', f); }}>
                               {f.toUpperCase()}
                             </button>
                           ))}
@@ -896,7 +897,7 @@ export default function App() {
                       <div className="settings-field">
                         <label className="settings-label-row">Max Concurrent Downloads — <strong style={{color:'#f4f4f5'}}>{massDlConcurrency}</strong></label>
                         <input type="range" min="1" max="20" value={massDlConcurrency}
-                          onChange={e => { setMassDlConcurrency(+e.target.value); localStorage.setItem('massdl_concurrency', e.target.value); }}
+                          onChange={e => { setMassDlConcurrency(+e.target.value); storage.setItem('massdl_concurrency', e.target.value); }}
                           style={{ width:'100%', accentColor:'var(--primary)' }}
                         />
                         <p className="settings-hint">Higher = faster downloads but more CPU and RAM usage. Recommended: 3–8.</p>
@@ -904,7 +905,7 @@ export default function App() {
                       <div className="settings-field">
                         <label className="settings-label-row">Delay Between Downloads — <strong style={{color:'#f4f4f5'}}>{massDlDelay}s</strong></label>
                         <input type="range" min="0" max="10" value={massDlDelay}
-                          onChange={e => { setMassDlDelay(+e.target.value); localStorage.setItem('massdl_delay', e.target.value); }}
+                          onChange={e => { setMassDlDelay(+e.target.value); storage.setItem('massdl_delay', e.target.value); }}
                           style={{ width:'100%', accentColor:'var(--primary)' }}
                         />
                         <p className="settings-hint">Adds a pause between each download to avoid rate limiting.</p>
@@ -914,7 +915,7 @@ export default function App() {
                         <div className="settings-hw-toggle">
                           {[0,1,2,3,5].map(n => (
                             <button key={n} className={`settings-hw-btn ${massDlRetries === n ? 'active' : ''}`}
-                              onClick={() => { setMassDlRetries(n); localStorage.setItem('massdl_retries', String(n)); }}>
+                              onClick={() => { setMassDlRetries(n); storage.setItem('massdl_retries', String(n)); }}>
                               {n}×
                             </button>
                           ))}
@@ -923,7 +924,7 @@ export default function App() {
                       <div className="settings-field">
                         <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
                           <input type="checkbox" checked={massDlContinueOnError}
-                            onChange={e => { setMassDlContinueOnError(e.target.checked); localStorage.setItem('massdl_continue_on_error', String(e.target.checked)); }} />
+                            onChange={e => { setMassDlContinueOnError(e.target.checked); storage.setItem('massdl_continue_on_error', String(e.target.checked)); }} />
                           Continue batch on error
                         </label>
                         <p className="settings-hint">If a track fails all retries, skip it and continue with the rest instead of stopping.</p>
@@ -938,7 +939,7 @@ export default function App() {
                         <div className="settings-hw-toggle">
                           {['mp3','flac','wav','m4a','opus'].map(f => (
                             <button key={f} className={`settings-hw-btn ${cutterOutputFormat === f ? 'active' : ''}`}
-                              onClick={() => { setCutterOutputFormat(f); localStorage.setItem('cutter_output_format', f); }}>
+                              onClick={() => { setCutterOutputFormat(f); storage.setItem('cutter_output_format', f); }}>
                               {f.toUpperCase()}
                             </button>
                           ))}
@@ -949,7 +950,7 @@ export default function App() {
                         <div className="settings-hw-toggle">
                           {['320k','256k','192k','128k'].map(q => (
                             <button key={q} className={`settings-hw-btn ${cutterBitrate === q ? 'active' : ''}`}
-                              onClick={() => { setCutterBitrate(q); localStorage.setItem('cutter_bitrate', q); }}>
+                              onClick={() => { setCutterBitrate(q); storage.setItem('cutter_bitrate', q); }}>
                               {q}
                             </button>
                           ))}
@@ -958,7 +959,7 @@ export default function App() {
                       <div className="settings-field">
                         <label className="settings-label-row">Default Fade In/Out — <strong style={{color:'#f4f4f5'}}>{cutterFadeDuration}ms</strong></label>
                         <input type="range" min="0" max="3000" step="50" value={cutterFadeDuration}
-                          onChange={e => { setCutterFadeDuration(+e.target.value); localStorage.setItem('cutter_fade_duration', e.target.value); }}
+                          onChange={e => { setCutterFadeDuration(+e.target.value); storage.setItem('cutter_fade_duration', e.target.value); }}
                           style={{ width:'100%', accentColor:'var(--primary)' }}
                         />
                         <p className="settings-hint">Applied automatically when exporting cuts. Set to 0 to disable.</p>
@@ -966,7 +967,7 @@ export default function App() {
                       <div className="settings-field">
                         <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
                           <input type="checkbox" checked={cutterNormalize}
-                            onChange={e => { setCutterNormalize(e.target.checked); localStorage.setItem('cutter_normalize', String(e.target.checked)); }} />
+                            onChange={e => { setCutterNormalize(e.target.checked); storage.setItem('cutter_normalize', String(e.target.checked)); }} />
                           Normalize audio loudness on export
                         </label>
                         <p className="settings-hint">Uses FFmpeg loudnorm filter to bring volume to a consistent level.</p>

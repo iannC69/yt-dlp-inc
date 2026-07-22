@@ -6,6 +6,7 @@ import {
   Link2, Music, Folder, Cpu
 } from 'lucide-react'
 import './SetupWizard.css'
+import { storage } from './storage';
 
 const STEPS = ['Welcome', 'Spotify', 'Preferences', 'All Set']
 
@@ -88,7 +89,7 @@ function WelcomeStep({ onNext }) {
 
 // ── Step 1 — Spotify ─────────────────────────────────────────────────────────
 function SpotifyStep({ onNext, onBack }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('spotify_access_token'))
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!storage.getItem('spotify_access_token'))
 
   const handleLogin = async () => {
     const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || 'YOUR_SPOTIFY_CLIENT_ID_HERE';
@@ -113,9 +114,9 @@ function SpotifyStep({ onNext, onBack }) {
         });
         const data = await res.json();
         if (data.access_token) {
-          localStorage.setItem('spotify_access_token',  data.access_token);
-          localStorage.setItem('spotify_expires_at',    String(Date.now() + data.expires_in * 1000));
-          if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+          storage.setItem('spotify_access_token',  data.access_token);
+          storage.setItem('spotify_expires_at',    String(Date.now() + data.expires_in * 1000));
+          if (data.refresh_token) storage.setItem('spotify_refresh_token', data.refresh_token);
           setIsLoggedIn(true);
         } else {
           alert('Spotify login failed: ' + (data.error_description || data.error || 'Unknown error'));
@@ -251,7 +252,7 @@ function PreferencesStep({ audioFormat, setAudioFormat, audioQuality, setAudioQu
 // ── Step 3 — Done ────────────────────────────────────────────────────────────
 function DoneStep({ audioFormat, audioQuality, customPath, onFinish }) {
   const [launching, setLaunching] = useState(false)
-  const hasSpotify = !!localStorage.getItem('spotify_access_token')
+  const hasSpotify = !!storage.getItem('spotify_access_token')
   const summary = [
     { color: hasSpotify ? '#1DB954' : '#52525b', icon: hasSpotify ? <Check size={14}/> : <Link2 size={14}/>,
       label: 'Spotify', value: hasSpotify ? 'Connected' : 'Public fallback' },
@@ -331,10 +332,10 @@ export default function SetupWizard({ onComplete }) {
       customPath,
     }
     // Mark setup done in localStorage (install-specific since userData is in {installDir}/app-data)
-    localStorage.setItem('setup_complete',        '1')
-    localStorage.setItem('audioFormat',           data.audioFormat)
-    localStorage.setItem('audioQuality',          data.audioQuality)
-    if (data.customPath) localStorage.setItem('customPath', data.customPath)
+    storage.setItem('setup_complete',        '1')
+    storage.setItem('audioFormat',           data.audioFormat)
+    storage.setItem('audioQuality',          data.audioQuality)
+    if (data.customPath) storage.setItem('customPath', data.customPath)
     // Also persist to config.json via backend (for server-side features)
     try {
       await fetch('/api/setup/complete', {
