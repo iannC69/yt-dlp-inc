@@ -352,7 +352,9 @@ export function configureNewBackend(server) {
       send({ performanceProfile, status: `Starting ${tracks.length} tracks with ${MASS_CONCURRENCY} workers.` });
 
       const ytDlpPath = path.join(bundledBinDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
-      const spotDlPath = path.join(bundledBinDir, process.platform === 'win32' ? 'run-spotdl.bat' : 'spotdl');
+      const spotDlPath = path.join(bundledBinDir, process.platform === 'win32' ? 'spotdl.exe' : 'spotdl');
+      const isWin = process.platform === 'win32';
+      const spotdlCmd = isWin ? 'cmd.exe' : spotDlPath;
       
       const downloadTrack = async (track, i) => {
         if (dlState.cancelled) return;
@@ -391,7 +393,8 @@ export function configureNewBackend(server) {
                '--threads', '1',
                '--ffmpeg', getFfmpegDir()
              ];
-             const proc = spawn(spotDlPath, args, { shell: process.platform === 'win32' });
+             const spotdlExecArgs = isWin ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotDlPath, ...args] : args;
+             const proc = spawn(spotdlCmd, spotdlExecArgs, { windowsHide: true });
              activeProcs.add(proc);
              dlState.procs.add(proc);
              

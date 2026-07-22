@@ -2084,9 +2084,12 @@ function youtubeDownloaderPlugin() {
 
         res.setHeader('Content-Type', 'application/json')
         const tempFile = path.join(os.tmpdir(), `spotdl_extract_${Date.now()}.spotdl`)
-        const spotdlPath = path.resolve(__dirname, 'bin', process.platform === 'win32' ? 'run-spotdl.bat' : 'spotdl')
+        const spotdlPath = path.resolve(__dirname, 'bin', process.platform === 'win32' ? 'spotdl.exe' : 'spotdl')
+        const isWin = process.platform === 'win32';
+        const spotdlCmd = isWin ? 'cmd.exe' : spotdlPath;
+        const spotdlExecArgs = isWin ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotdlPath, 'save', spotUrl, '--save-file', tempFile, '--ffmpeg', path.resolve(__dirname, 'bin', 'ffmpeg.exe')] : ['save', spotUrl, '--save-file', tempFile, '--ffmpeg', path.resolve(__dirname, 'bin', 'ffmpeg.exe')];
 
-        const proc = spawn(spotdlPath, ['save', spotUrl, '--save-file', tempFile, '--ffmpeg', path.resolve(__dirname, 'bin', 'ffmpeg.exe')], {
+        const proc = spawn(spotdlCmd, spotdlExecArgs, {
           env: {
             ...process.env,
             PYTHONIOENCODING: 'utf-8',
@@ -2245,7 +2248,9 @@ function youtubeDownloaderPlugin() {
 
           if (isNativePlaylist && isCollection) {
             // Hoist spotdl args so retry pass can reuse them
-            const spotdlPath = path.resolve(__dirname, 'bin', process.platform === 'win32' ? 'run-spotdl.bat' : 'spotdl');
+            const spotdlPath = path.resolve(__dirname, 'bin', process.platform === 'win32' ? 'spotdl.exe' : 'spotdl');
+            const isWin = process.platform === 'win32';
+            const spotdlCmd = isWin ? 'cmd.exe' : spotdlPath;
             const spotdlArgs = [
               spotUrl,
               '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
@@ -2276,7 +2281,8 @@ function youtubeDownloaderPlugin() {
                 progress: 5
               });
 
-              const proc = spawn(spotdlPath, spotdlArgs, {
+              const spotdlExecArgs = isWin ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotdlPath, ...spotdlArgs] : spotdlArgs;
+              const proc = spawn(spotdlCmd, spotdlExecArgs, {
                 windowsHide: true,
                 env: {
                   ...process.env,
