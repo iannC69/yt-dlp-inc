@@ -8,11 +8,11 @@ export default function UpdatesTab() {
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    if (!window.electron?.updater) return;
+    if (!window.electronAPI?.updater) return;
 
-    window.electron.updater.getAppVersion().then(v => setVersion(v));
+    window.electronAPI.updater.getAppVersion().then(v => setVersion(v));
 
-    const cleanup = window.electron.updater.onUpdaterEvent((name, data) => {
+    const cleanup = window.electronAPI.updater.onUpdaterEvent((name, data) => {
       console.log('Updater Event:', name, data);
       if (name === 'checking-for-update') setStatus('checking');
       if (name === 'update-available') setStatus('available');
@@ -32,20 +32,20 @@ export default function UpdatesTab() {
   }, []);
 
   const checkForUpdates = () => {
-    if (!window.electron?.updater) return alert('Updates are not supported in this environment.');
+    if (!window.electronAPI?.updater) return alert('Updates are not supported in this environment.');
     setStatus('checking');
-    window.electron.updater.checkForUpdates();
+    window.electronAPI.updater.checkForUpdates();
   };
 
   const downloadUpdate = () => {
-    if (!window.electron?.updater) return;
+    if (!window.electronAPI?.updater) return;
     setStatus('downloading');
-    window.electron.updater.downloadUpdate();
+    window.electronAPI.updater.downloadUpdate();
   };
 
   const installUpdate = () => {
-    if (!window.electron?.updater) return;
-    window.electron.updater.installUpdate();
+    if (!window.electronAPI?.updater) return;
+    window.electronAPI.updater.installUpdate();
   };
 
   return (
