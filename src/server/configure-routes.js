@@ -216,7 +216,73 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/audio-cutter/export',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();if(req.method!=='POST'){res.statusCode=405;return res.end(JSON.stringify({error:'POST only'}))};const b=await parseJsonBody(req);const sp=typeof b.sourcePath==='string'?b.sourcePath:'';const st=Number(b.start)||0;const en=Number(b.end);const fmt=['mp3','m4a','wav','flac'].includes(b.format)?b.format:'mp3';const on=sanitizeFilename(String(b.outputName||'audio-clip')).replace(/\.[^.]+$/,'')||'audio-clip';const fi=Math.max(0,Number(b.fadeIn)||0);const fo=Math.max(0,Number(b.fadeOut)||0);const vol=Number(b.volume)||0;const spd=Math.min(2,Math.max(0.5,Number(b.speed)||1));const norm=Boolean(b.normalize);const meta=b.metadata||{};const ae=new Set(['.mp3','.m4a','.aac','.wav','.flac','.ogg','.opus','.webm']);if(!sp||!ae.has(path.extname(sp).toLowerCase())||!fs.existsSync(sp)){res.statusCode=400;return res.end(JSON.stringify({error:'Invalid source.'}))};if(!Number.isFinite(en)||en<=st){res.statusCode=400;return res.end(JSON.stringify({error:'Invalid range.'}))};const dur=en-st;const filters=[];if(fi>0)filters.push(`afade=t=in:st=0:d=${fi.toFixed(3)}`);if(fo>0)filters.push(`afade=t=out:st=${Math.max(0,dur-fo).toFixed(3)}:d=${fo.toFixed(3)}`);if(vol!==0)filters.push(`volume=${vol}dB`);if(spd!==1)filters.push(`atempo=${spd.toFixed(4)}`);if(norm)filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');const ca=fmt==='mp3'?['-codec:a','libmp3lame','-q:a','0']:fmt==='m4a'?['-codec:a','aac','-b:a','256k']:fmt==='flac'?['-codec:a','flac']:['-codec:a','pcm_s16le'];const fn=`${on}-${Date.now()}.${fmt}`;const op=path.join(ensureDownloadsDir(u.searchParams.get('customPath')),fn);const args=['-y','-ss',String(st),'-i',sp,'-t',String(dur),'-map_metadata','0','-vn'];if(filters.length)args.push('-af',filters.join(','));args.push(...ca);if(meta.title)args.push('-metadata',`title=${meta.title}`);if(meta.artist)args.push('-metadata',`artist=${meta.artist}`);if(meta.album)args.push('-metadata',`album=${meta.album}`);if(meta.track)args.push('-metadata',`track=${meta.track}`);args.push('-id3v2_version','3',op);const p=spawn(ffmpegBin,args,{windowsHide:true});let se='';p.stderr.on('data',c=>se+=c);p.on('error',e=>{if(!res.headersSent){res.statusCode=500;res.end(JSON.stringify({error:`FFmpeg: ${e.message}`}))}});p.on('close',code=>{if(code!==0||!fs.existsSync(op)){res.statusCode=500;return res.end(JSON.stringify({error:`FFmpeg error (${code}): ${se.slice(-500)}`}))};scheduleDownloadCleanup(op,60*60*1000);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,filename:fn,title:on}))})})
 
-  middlewares.use('/api/spotify-oauth',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();if(req.method!=='POST'){res.statusCode=405;return res.end(JSON.stringify({error:'POST only'}))};const cid=req.headers['x-spotify-client-id'];const cs=req.headers['x-spotify-client-secret'];const b=await parseJsonBody(req);const{code,redirectUri}=b;if(!code||!redirectUri||!cid||!cs){res.statusCode=400;return res.end(JSON.stringify({error:'Missing params'}))};try{const tr=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':`Basic ${Buffer.from(`${cid}:${cs}`).toString('base64')}`},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:redirectUri})});const d=await tr.json();if(!tr.ok)throw new Error(d.error_description||d.error||'Token fetch failed');res.setHeader('Content-Type','application/json');res.end(JSON.stringify(d))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})
+  let pendingSpotifyToken = null;
+
+  middlewares.use('/api/spotify-callback', async (req, res, next) => {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    if (u.pathname !== '/') return next();
+    
+    const code = u.searchParams.get('code');
+    if (!code) {
+      res.statusCode = 400;
+      return res.end('Missing code parameter');
+    }
+
+    const cid = process.env.VITE_SPOTIFY_CLIENT_ID;
+    const cs = process.env.VITE_SPOTIFY_CLIENT_SECRET;
+    const redirectUri = `http://127.0.0.1:5174/api/spotify-callback`;
+
+    if (!cid || !cs) {
+      res.statusCode = 500;
+      return res.end('Missing Spotify credentials in .env');
+    }
+
+    try {
+      const tr = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${Buffer.from(`${cid}:${cs}`).toString('base64')}`
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: redirectUri
+        })
+      });
+      const d = await tr.json();
+      if (!tr.ok) throw new Error(d.error_description || d.error || 'Token fetch failed');
+      
+      pendingSpotifyToken = d;
+      res.setHeader('Content-Type', 'text/html');
+      res.end(`<html>
+        <body style="background:#080a0f;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+          <div style="text-align:center;">
+            <svg viewBox="0 0 24 24" fill="#1DB954" width="64" height="64" style="margin-bottom:1rem;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+            <h1 style="color:#1DB954;margin:0;">Spotify Connected!</h1>
+            <p style="color:#94a3b8;margin-top:0.5rem;">Authentication successful. You can safely close this tab and return to MediaDL.</p>
+            <script>setTimeout(() => window.close(), 3000)</script>
+          </div>
+        </body>
+      </html>`);
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(`<html><body style="background:#080a0f;color:#fff;font-family:sans-serif;padding:2rem;"><h1>Error</h1><p>${e.message}</p></body></html>`);
+    }
+  });
+
+  middlewares.use('/api/spotify-status', (req, res, next) => {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    if (u.pathname !== '/') return next();
+    res.setHeader('Content-Type', 'application/json');
+    if (pendingSpotifyToken) {
+      const d = { ...pendingSpotifyToken };
+      pendingSpotifyToken = null;
+      res.end(JSON.stringify({ success: true, data: d }));
+    } else {
+      res.end(JSON.stringify({ success: false }));
+    }
+  });
 
   middlewares.use('/api/spotify-refresh',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();if(req.method!=='POST'){res.statusCode=405;return res.end(JSON.stringify({error:'POST only'}))};const cid=req.headers['x-spotify-client-id'];const cs=req.headers['x-spotify-client-secret'];const b=await parseJsonBody(req);const{refresh_token}=b;if(!refresh_token||!cid||!cs){res.statusCode=400;return res.end(JSON.stringify({error:'Missing params'}))};try{const tr=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':`Basic ${Buffer.from(`${cid}:${cs}`).toString('base64')}`},body:new URLSearchParams({grant_type:'refresh_token',refresh_token})});const d=await tr.json();if(!tr.ok)throw new Error(d.error_description||d.error||'Refresh failed');res.setHeader('Content-Type','application/json');res.end(JSON.stringify(d))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})
 

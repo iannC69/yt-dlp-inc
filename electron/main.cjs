@@ -98,69 +98,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => app.quit());
 
-// ── IPC: Spotify OAuth popup ─────────────────────────────────────────────────
-// Creates a dedicated BrowserWindow for the Spotify login page.
-// Intercepts the redirect back to http://127.0.0.1:PORT/?code=...
-// before it loads, extracts the auth code, closes the popup, and
-// returns { code, redirectUri } to the renderer via the Promise.
-// This keeps everything inside Electron's own localStorage (not the system browser).
-ipcMain.handle('spotify-auth', (_event, authUrl) => {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-
-    const settle = (result) => {
-      if (settled) return;
-      settled = true;
-      try { if (!authWindow.isDestroyed()) authWindow.close(); } catch {}
-      if (result.code) {
-        resolve({ code: result.code, redirectUri: result.redirectUri });
-      } else {
-        reject(new Error(result.error || 'Spotify auth cancelled'));
-      }
-    };
-
-    const authWindow = new BrowserWindow({
-      width: 820,
-      height: 700,
-      title: 'Login with Spotify',
-      parent: mainWindow,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-
-    const callbackBase = `http://127.0.0.1:${PORT}/`;
-
-    // Intercept any navigation/redirect heading to our callback URI.
-    const interceptUrl = (event, url) => {
-      if (typeof url === 'string' && url.startsWith(callbackBase)) {
-        // Stop the popup from loading the callback page — we handle it ourselves.
-        if (event && typeof event.preventDefault === 'function') event.preventDefault();
-        const parsed = new URL(url);
-        const code  = parsed.searchParams.get('code');
-        const error = parsed.searchParams.get('error');
-        settle(code
-          ? { code, redirectUri: callbackBase }
-          : { error: error || 'OAuth error or access denied' });
-      }
-    };
-
-    // will-navigate  → client-side navigation (JS redirect)
-    // will-redirect  → server-side HTTP redirect (most common for OAuth)
-    // did-redirect-navigation → fired after HTTP redirects (backup)
-    authWindow.webContents.on('will-navigate',          (ev, url) => interceptUrl(ev, url));
-    authWindow.webContents.on('will-redirect',          (ev, url) => interceptUrl(ev, url));
-    authWindow.webContents.on('did-redirect-navigation', (_ev, url) => interceptUrl(null, url));
-
-    authWindow.on('closed', () => {
-      if (!settled) reject(new Error('Spotify login window was closed'));
-    });
-
-    authWindow.loadURL(authUrl);
-  });
-});
+// ── Spotify OAuth is now handled natively via the browser and Vite/Express proxy ──
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('context-menu', event => event.preventDefault());

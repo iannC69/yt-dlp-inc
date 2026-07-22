@@ -742,35 +742,9 @@ export default function App() {
                           <span className={`settings-cred-dot ok`} />
                           <span className="settings-cred-status-label">Pre-configured integration</span>
                         </div>
-                        <button className="settings-help-btn" onClick={() => setShowHelp(!showHelp)} title="How to get these?">
-                          <HelpCircle size={15} />
-                        </button>
-                      </div>
-
-                      <AnimatePresence>
-                        {showHelp && (
-                          <motion.div
-                            className="settings-help-box"
-                            initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                            animate={{ height: 'auto', opacity: 1, marginBottom: 16 }}
-                            exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                            style={{ overflow: 'hidden' }}
-                          >
-                            <h4>How to get your credentials:</h4>
-                            <ol>
-                              <li>Go to the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Spotify Developer Dashboard <ExternalLink size={10} /></a> and log in.</li>
-                              <li>Click <strong>Create app</strong>.</li>
-                              <li>Name your app, and set the Redirect URI to: <code>http://localhost:5174/</code></li>
-                              <li>Check the <strong>Web API</strong> box and accept the terms to save.</li>
-                              <li>Click <strong>Settings</strong> to reveal your Client ID and Client Secret.</li>
-                            </ol>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
                       <p className="settings-hint" style={{ color: '#1DB954', fontWeight: 500, margin: '16px 0' }}>
                         <CheckCircle2 size={14} style={{ display: 'inline-block', verticalAlign: 'text-bottom', marginRight: 4 }} />
-                        Spotify integration is pre-configured. Head over to the Spotify tab and click "Login" to sync your playlists!
+                        Spotify integration is fully configured! Head over to the Spotify tab and click "Login" to sync your playlists and albums.
                       </p>
                       <div className="settings-field" style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '18px' }}>
                         <label className="settings-label-row">Download Engine Priority</label>

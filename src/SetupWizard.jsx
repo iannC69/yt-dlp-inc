@@ -92,38 +92,31 @@ function SpotifyStep({ onNext, onBack }) {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!storage.getItem('spotify_access_token'))
 
   const handleLogin = async () => {
-    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || 'YOUR_SPOTIFY_CLIENT_ID_HERE';
-    const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || 'YOUR_SPOTIFY_CLIENT_SECRET_HERE';
-    if (clientId === 'YOUR_SPOTIFY_CLIENT_ID_HERE') return alert('Developer: Please set VITE_SPOTIFY_CLIENT_ID in the .env file!');
+    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+    if (!clientId) return alert('Developer: Please set VITE_SPOTIFY_CLIENT_ID in the .env file!');
 
-    const redirectUri = window.location.origin + '/';
+    const redirectUri = 'http://127.0.0.1:5174/api/spotify-callback';
     const scope   = encodeURIComponent('playlist-read-private playlist-read-collaborative');
     const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true`;
 
-    if (window.electronAPI?.spotifyAuth) {
-      try {
-        const { code, redirectUri: cbUri } = await window.electronAPI.spotifyAuth(authUrl);
-        const res = await fetch('/api/spotify-oauth', {
-          method: 'POST',
-          headers: {
-            'x-spotify-client-id':     clientId,
-            'x-spotify-client-secret': clientSecret,
-            'Content-Type':            'application/json',
-          },
-          body: JSON.stringify({ code, redirectUri: cbUri }),
-        });
-        const data = await res.json();
-        if (data.access_token) {
-          storage.setItem('spotify_access_token',  data.access_token);
-          storage.setItem('spotify_expires_at',    String(Date.now() + data.expires_in * 1000));
-          if (data.refresh_token) storage.setItem('spotify_refresh_token', data.refresh_token);
-          setIsLoggedIn(true);
-        } else {
-          alert('Spotify login failed: ' + (data.error_description || data.error || 'Unknown error'));
+    if (window.electronAPI?.openExternal) {
+      window.electronAPI.openExternal(authUrl);
+      
+      const pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/api/spotify-status');
+          const data = await res.json();
+          if (data.success && data.data.access_token) {
+            clearInterval(pollInterval);
+            storage.setItem('spotify_access_token',  data.data.access_token);
+            storage.setItem('spotify_expires_at',    String(Date.now() + data.data.expires_in * 1000));
+            if (data.data.refresh_token) storage.setItem('spotify_refresh_token', data.data.refresh_token);
+            setIsLoggedIn(true);
+          }
+        } catch (err) {
+          // Ignore polling errors
         }
-      } catch (err) {
-        if (!err.message.includes('closed')) alert('Spotify login failed: ' + err.message);
-      }
+      }, 1000);
     } else {
       window.location.href = authUrl;
     }

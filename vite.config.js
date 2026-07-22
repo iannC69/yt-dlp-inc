@@ -1407,35 +1407,30 @@ function youtubeDownloaderPlugin() {
         let stderr = ''
         proc.stderr.on('data', chunk => { stderr += chunk.toString() })
         proc.on('error', err => { if (!res.headersSent) { res.statusCode = 500; res.end(JSON.stringify({ error: `FFmpeg failed: ${err.message}` })) } })
-        proc.on('close', code => {
-          if (code !== 0 || !fs.existsSync(outputPath)) {
-            res.statusCode = 500; return res.end(JSON.stringify({ error: `FFmpeg error (code ${code}): ${stderr.slice(-500)}` }))
-          }
-          scheduleDownloadCleanup(outputPath, 60 * 60 * 1000)
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ success: true, filename, title: outputName }))
+res.end(JSON.stringify({ success: true, filename, title: outputName }))
         })
       })
 
-      // ── Spotify OAuth Token Exchange ──
-      server.middlewares.use('/api/spotify-oauth', async (req, res, next) => {
+      let pendingSpotifyToken = null;
+
+      // ── Spotify Browser Auth Callback ──
+      server.middlewares.use('/api/spotify-callback', async (req, res, next) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`)
         if (urlObj.pathname !== '/') return next()
 
-        if (req.method !== 'POST') {
-          res.statusCode = 405
-          return res.end(JSON.stringify({ error: 'Method not allowed' }))
+        const code = urlObj.searchParams.get('code')
+        if (!code) {
+          res.statusCode = 400
+          return res.end('Missing code parameter')
         }
 
-        const clientId = req.headers['x-spotify-client-id']
-        const clientSecret = req.headers['x-spotify-client-secret']
+        const clientId = process.env.VITE_SPOTIFY_CLIENT_ID;
+        const clientSecret = process.env.VITE_SPOTIFY_CLIENT_SECRET;
+        const redirectUri = `http://127.0.0.1:5174/api/spotify-callback`;
 
-        const body = await parseJsonBody(req)
-        const { code, redirectUri } = body
-
-        if (!code || !redirectUri || !clientId || !clientSecret) {
-          res.statusCode = 400
-          return res.end(JSON.stringify({ error: 'Missing parameters' }))
+        if (!clientId || !clientSecret) {
+           res.statusCode = 500;
+           return res.end('Missing Spotify credentials in .env');
         }
 
         try {
@@ -1455,12 +1450,37 @@ function youtubeDownloaderPlugin() {
           const data = await tokenRes.json()
           if (!tokenRes.ok) throw new Error(data.error_description || data.error || 'Token fetch failed')
 
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(data))
+          pendingSpotifyToken = data;
+
+          res.setHeader('Content-Type', 'text/html')
+          res.end(`<html>
+            <body style="background:#080a0f;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+              <div style="text-align:center;">
+                <svg viewBox="0 0 24 24" fill="#1DB954" width="64" height="64" style="margin-bottom:1rem;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                <h1 style="color:#1DB954;margin:0;">Spotify Connected!</h1>
+                <p style="color:#94a3b8;margin-top:0.5rem;">Authentication successful. You can safely close this tab and return to MediaDL.</p>
+                <script>setTimeout(() => window.close(), 3000)</script>
+              </div>
+            </body>
+          </html>`)
         } catch (err) {
-          console.error('Spotify OAuth error:', err)
           res.statusCode = 500
-          res.end(JSON.stringify({ error: err.message }))
+          res.end(`<html><body style="background:#080a0f;color:#fff;font-family:sans-serif;padding:2rem;"><h1>Error</h1><p>${err.message}</p></body></html>`)
+        }
+      })
+
+      // ── Spotify Polling Status ──
+      server.middlewares.use('/api/spotify-status', (req, res, next) => {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`)
+        if (urlObj.pathname !== '/') return next()
+
+        res.setHeader('Content-Type', 'application/json')
+        if (pendingSpotifyToken) {
+          const data = { ...pendingSpotifyToken }
+          pendingSpotifyToken = null; // consume
+          res.end(JSON.stringify({ success: true, data }))
+        } else {
+          res.end(JSON.stringify({ success: false }))
         }
       })
 

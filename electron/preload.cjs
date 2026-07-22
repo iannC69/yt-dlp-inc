@@ -8,15 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @param {string} url
    */
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
-
-  /**
-   * Trigger Spotify OAuth via a dedicated popup BrowserWindow.
-   * Returns a Promise that resolves to { code, redirectUri } when the user
-   * completes login, or rejects if they close the popup.
-   * @param {string} authUrl  – the full Spotify /authorize URL
-   * @returns {Promise<{ code: string, redirectUri: string }>}
-   */
-  spotifyAuth: (authUrl) => ipcRenderer.invoke('spotify-auth', authUrl),
+  
   // Settings Store APIs
   settings: {
     get: (key) => ipcRenderer.sendSync('store-get', key),

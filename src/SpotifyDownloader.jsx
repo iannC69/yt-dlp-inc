@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getAverageColor } from './utils/colorUtils';
 import WaveformBg from './WaveformBg';
+import { storage } from './storage';
 import './SpotifyDownloader.css';
 
 const AUDIO_FORMATS = [
@@ -131,9 +132,9 @@ function TrackRow({ track, status, progress, errorText, overrideUrl, onOverrideC
 }
 
 async function getValidAccessToken(clientId, clientSecret) {
-  const expiresAt = parseInt(localStorage.getItem('spotify_expires_at') || '0', 10);
-  const accessToken = localStorage.getItem('spotify_access_token') || '';
-  const refreshToken = localStorage.getItem('spotify_refresh_token') || '';
+  const expiresAt = parseInt(storage.getItem('spotify_expires_at') || '0', 10);
+  const accessToken = storage.getItem('spotify_access_token') || '';
+  const refreshToken = storage.getItem('spotify_refresh_token') || '';
 
   if (accessToken && Date.now() < expiresAt - 60000) return accessToken;
 
@@ -150,9 +151,9 @@ async function getValidAccessToken(clientId, clientSecret) {
       });
       const data = await res.json();
       if (data.access_token) {
-        localStorage.setItem('spotify_access_token', data.access_token);
-        localStorage.setItem('spotify_expires_at', Date.now() + data.expires_in * 1000);
-        if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+        storage.setItem('spotify_access_token', data.access_token);
+        storage.setItem('spotify_expires_at', Date.now() + data.expires_in * 1000);
+        if (data.refresh_token) storage.setItem('spotify_refresh_token', data.refresh_token);
         return data.access_token;
       }
     } catch (e) {
@@ -170,9 +171,9 @@ async function getValidAccessToken(clientId, clientSecret) {
 }
 
 function clearSpotifyAuth() {
-  localStorage.removeItem('spotify_access_token');
-  localStorage.removeItem('spotify_refresh_token');
-  localStorage.removeItem('spotify_expires_at');
+  storage.removeItem('spotify_access_token');
+  storage.removeItem('spotify_refresh_token');
+  storage.removeItem('spotify_expires_at');
 }
 
 
@@ -887,46 +888,31 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               <div className="sp-header-actions">
                 {!accessToken ? (
                   <button className="sp-login-btn" onClick={async () => {
-                    const clientId     = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
-                    const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || '';
-                    if (!clientId)     return alert('Developer: Please set VITE_SPOTIFY_CLIENT_ID in the .env file before building!');
-                    if (!clientSecret) return alert('Developer: Please set VITE_SPOTIFY_CLIENT_SECRET in the .env file before building!');
+                    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+                    if (!clientId) return alert('Developer: Please set VITE_SPOTIFY_CLIENT_ID in the .env file before building!');
 
-                    const redirectUri = window.location.origin + '/';
+                    const redirectUri = 'http://127.0.0.1:5174/api/spotify-callback';
                     const scope   = encodeURIComponent('playlist-read-private playlist-read-collaborative');
                     const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true`;
 
-                    if (window.electronAPI?.spotifyAuth) {
-                      // ── Electron: popup window approach ──────────────────────────────
-                      // Main process opens a BrowserWindow for the Spotify auth page,
-                      // intercepts the ?code= redirect before it loads, and resolves
-                      // this promise with the code — all inside Electron's storage context.
-                      try {
-                        const { code, redirectUri: cbUri } = await window.electronAPI.spotifyAuth(authUrl);
-                        const res = await fetch('/api/spotify-oauth', {
-                          method: 'POST',
-                          headers: {
-                            'x-spotify-client-id':     clientId,
-                            'x-spotify-client-secret': clientSecret,
-                            'Content-Type':            'application/json',
-                          },
-                          body: JSON.stringify({ code, redirectUri: cbUri }),
-                        });
-                        const data = await res.json();
-                        if (data.access_token) {
-                          localStorage.setItem('spotify_access_token',  data.access_token);
-                          localStorage.setItem('spotify_expires_at',    String(Date.now() + data.expires_in * 1000));
-                          if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
-                          setAccessToken(data.access_token);
-                        } else {
-                          alert('Spotify login failed: ' + (data.error_description || data.error || 'Unknown error'));
+                    if (window.electronAPI?.openExternal) {
+                      window.electronAPI.openExternal(authUrl);
+                      
+                      const pollInterval = setInterval(async () => {
+                        try {
+                          const res = await fetch('/api/spotify-status');
+                          const data = await res.json();
+                          if (data.success && data.data.access_token) {
+                            clearInterval(pollInterval);
+                            storage.setItem('spotify_access_token',  data.data.access_token);
+                            storage.setItem('spotify_expires_at',    String(Date.now() + data.data.expires_in * 1000));
+                            if (data.data.refresh_token) storage.setItem('spotify_refresh_token', data.data.refresh_token);
+                            setAccessToken(data.data.access_token);
+                          }
+                        } catch (err) {
+                          // Ignore
                         }
-                      } catch (err) {
-                        // User closed the popup — treat as a silent cancel
-                        if (!err.message.includes('closed')) {
-                          alert('Spotify login failed: ' + err.message);
-                        }
-                      }
+                      }, 1000);
                     } else {
                       // ── Browser / dev mode: standard redirect ─────────────────────────
                       window.location.href = authUrl;
