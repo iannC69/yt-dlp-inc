@@ -1430,13 +1430,13 @@ function youtubeDownloaderPlugin() {
           return res.end('Missing code parameter')
         }
 
-        const clientId = process.env.VITE_SPOTIFY_CLIENT_ID;
-        const clientSecret = process.env.VITE_SPOTIFY_CLIENT_SECRET;
+        const clientId = process.env.VITE_SPOTIFY_CLIENT_ID || '71eaf6d9db064a05a8600b17c310d31a';
+        const clientSecret = process.env.VITE_SPOTIFY_CLIENT_SECRET || '3d8380457ea54ec3b98e4d8ffa08e5e7';
         const redirectUri = `http://127.0.0.1:5174/api/spotify-callback`;
 
         if (!clientId || !clientSecret) {
            res.statusCode = 500;
-           return res.end('Missing Spotify credentials in .env');
+           return res.end('Missing Spotify credentials');
         }
 
         try {
