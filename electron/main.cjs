@@ -151,5 +151,5 @@ ipcMain.handle('check-for-updates', () => {
   return autoUpdater.checkForUpdates();
 });
 ipcMain.handle('download-update', () => autoUpdater.downloadUpdate());
-ipcMain.handle('install-update', () => autoUpdater.quitAndInstall(true, true));
+ipcMain.handle('install-update', () => autoUpdater.quitAndInstall(false, true));
 ipcMain.handle('get-app-version', () => app.getVersion());

@@ -2287,6 +2287,7 @@ function youtubeDownloaderPlugin() {
                 env: {
                   ...process.env,
                   PYTHONIOENCODING: 'utf-8',
+                  PYTHONUTF8: '1',
                   PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}`
                 }
               })
@@ -2295,54 +2296,57 @@ function youtubeDownloaderPlugin() {
               let currentTrack = 0;
               let nativeTotalTracks = totalTracks;
 
+              let stdoutBuf = '';
               proc.stdout.on('data', c => {
-                const text = c.toString();
-                let mFound = text.match(/Found (\d+) songs in/);
-                if (mFound) {
-                  nativeTotalTracks = parseInt(mFound[1]);
-                  send({ totalTracks: nativeTotalTracks });
-                }
+                stdoutBuf += c.toString();
+                const lines = stdoutBuf.split(/\r?\n|\r/);
+                stdoutBuf = lines.pop();
 
-                // Depending on spotdl version and arguments, it either prints [1/10] Downloading ...
-                // or just Downloaded "song name"
-                let m1 = text.match(/\[(\d+)\/(\d+)\] Downloading (.+)/);
-                if (m1) {
-                  currentTrack = parseInt(m1[1]);
-                  nativeTotalTracks = parseInt(m1[2]);
-                  send({
-                    currentTrack,
-                    totalTracks: nativeTotalTracks,
-                    status: `Downloading: ${m1[3]}`,
-                    trackProgress: 0,
-                    progress: Math.round(5 + (currentTrack / nativeTotalTracks) * 85)
-                  });
-                } else {
-                  let mDl = text.match(/Downloaded "([^"]+)"/);
-                  if (mDl) {
-                    // Try to find correct track index by matching the name
-                    const dName = (mDl[1] || '').toLowerCase().replace(/[^\w\s]/g, '');
-                    const matchedIdx = tracks.findIndex(t => {
-                      const tName = (t.title || '').toLowerCase().replace(/[^\w\s]/g, '');
-                      return tName && (dName.includes(tName) || tName.includes(dName));
-                    });
-                    
-                    const resolvedTrack = matchedIdx !== -1 ? matchedIdx + 1 : ++currentTrack;
-                    
+                for (const text of lines) {
+                  let mFound = text.match(/Found (\d+) songs in/);
+                  if (mFound) {
+                    nativeTotalTracks = parseInt(mFound[1]);
+                    send({ totalTracks: nativeTotalTracks });
+                  }
+
+                  let m1 = text.match(/\[(\d+)\/(\d+)\] Downloading (.+)/);
+                  if (m1) {
+                    currentTrack = parseInt(m1[1]);
+                    nativeTotalTracks = parseInt(m1[2]);
                     send({
-                      currentTrack: resolvedTrack,
-                      trackDone: true,
+                      currentTrack,
                       totalTracks: nativeTotalTracks,
-                      status: `Downloaded: ${mDl[1]}`,
-                      trackProgress: 100,
-                      progress: Math.round(5 + (resolvedTrack / nativeTotalTracks) * 85)
+                      status: `Downloading: ${m1[3]}`,
+                      trackProgress: 0,
+                      progress: Math.round(5 + (currentTrack / nativeTotalTracks) * 85)
                     });
                   } else {
-                    let m2 = text.match(/(\d+)%/);
-                    if (m2 && currentTrack > 0) {
-                      send({
-                        currentTrack,
-                        trackProgress: parseFloat(m2[1])
+                    let mDl = text.match(/Downloaded "([^"]+)"/);
+                    if (mDl) {
+                      const dName = (mDl[1] || '').toLowerCase().replace(/[^\w\s]/g, '');
+                      const matchedIdx = tracks.findIndex(t => {
+                        const tName = (t.title || '').toLowerCase().replace(/[^\w\s]/g, '');
+                        return tName && (dName.includes(tName) || tName.includes(dName));
                       });
+                      
+                      const resolvedTrack = matchedIdx !== -1 ? matchedIdx + 1 : ++currentTrack;
+                      
+                      send({
+                        currentTrack: resolvedTrack,
+                        trackDone: true,
+                        totalTracks: nativeTotalTracks,
+                        status: `Downloaded: ${mDl[1]}`,
+                        trackProgress: 100,
+                        progress: Math.round(5 + (resolvedTrack / nativeTotalTracks) * 85)
+                      });
+                    } else {
+                      let m2 = text.match(/(\d+)%/);
+                      if (m2 && currentTrack > 0) {
+                        send({
+                          currentTrack,
+                          trackProgress: parseFloat(m2[1])
+                        });
+                      }
                     }
                   }
                 }

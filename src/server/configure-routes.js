@@ -296,7 +296,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/spotify-info',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const su=u.searchParams.get('url');const cid=req.headers['x-spotify-client-id'];const cs=req.headers['x-spotify-client-secret'];const at=req.headers['x-spotify-access-token'];if(!su){res.statusCode=400;return res.end(JSON.stringify({error:'Missing url'}))};try{res.setHeader('Content-Type','application/json');let md;try{md=await resolveSpotifyMetadata(su,cid,cs,at)}catch(e){if(/^(SPOTIFY_(401|403|404)|Spotify auth failed|Missing SPOTIFY)/.test(e.message||''))throw e;console.log(`resolveSpotifyMetadata failed (${e.message}), fallback…`);try{md=await resolveSpotifyFallback(su)}catch(fe){throw new Error(e.message)}};return res.end(JSON.stringify(md))}catch(e){console.error('Spotify info error:',e);res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})
 
-  middlewares.use('/api/spotdl-extract',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const su=u.searchParams.get('url');if(!su){res.statusCode=400;return res.end(JSON.stringify({error:'Missing url'}))};res.setHeader('Content-Type','application/json');const tf=path.join(os.tmpdir(),`spotdl_extract_${Date.now()}.spotdl`);const spotdlCmd=process.platform==='win32'?'cmd.exe':spotdlBin;const spotdlArgs=process.platform==='win32'?['/c','chcp','65001','>','nul','&','call',spotdlBin,'save',su,'--save-file',tf,'--ffmpeg',ffmpegBin]:['save',su,'--save-file',tf,'--ffmpeg',ffmpegBin];const p=spawn(spotdlCmd,spotdlArgs,{env:{...process.env,PYTHONIOENCODING:'utf-8',PATH:`${binDir}${path.delimiter}${process.env.PATH}`}});p.stdout.on('data',()=>{});p.stderr.on('data',()=>{});p.on('close',code=>{if(fs.existsSync(tf)){try{const tracks=JSON.parse(fs.readFileSync(tf,'utf8'));fs.unlinkSync(tf);res.end(JSON.stringify({type:'playlist',title:tracks[0]?.list_name||'Spotify Playlist',trackCount:tracks.length,totalTracks:tracks.length,totalDurationMs:0,tracks:tracks.map((t,i)=>({trackNumber:i+1,title:t.name,artist:t.artist,allArtists:t.artists.join(', '),durationMs:t.duration*1000,spotifyUrl:t.url,coverUrl:t.cover_url}))}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}}else{res.statusCode=500;res.end(JSON.stringify({error:'spotdl failed'}))}})})
+  middlewares.use('/api/spotdl-extract',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const su=u.searchParams.get('url');if(!su){res.statusCode=400;return res.end(JSON.stringify({error:'Missing url'}))};res.setHeader('Content-Type','application/json');const tf=path.join(os.tmpdir(),`spotdl_extract_${Date.now()}.spotdl`);const spotdlCmd=process.platform==='win32'?'cmd.exe':spotdlBin;const spotdlArgs=process.platform==='win32'?['/c','chcp','65001','>','nul','&','call',spotdlBin,'save',su,'--save-file',tf,'--ffmpeg',ffmpegBin]:['save',su,'--save-file',tf,'--ffmpeg',ffmpegBin];const p=spawn(spotdlCmd,spotdlArgs,{env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONUTF8:'1',PATH:`${binDir}${path.delimiter}${process.env.PATH}`}});p.stdout.on('data',()=>{});p.stderr.on('data',()=>{});p.on('close',code=>{if(fs.existsSync(tf)){try{const tracks=JSON.parse(fs.readFileSync(tf,'utf8'));fs.unlinkSync(tf);res.end(JSON.stringify({type:'playlist',title:tracks[0]?.list_name||'Spotify Playlist',trackCount:tracks.length,totalTracks:tracks.length,totalDurationMs:0,tracks:tracks.map((t,i)=>({trackNumber:i+1,title:t.name,artist:t.artist,allArtists:t.artists.join(', '),durationMs:t.duration*1000,spotifyUrl:t.url,coverUrl:t.cover_url}))}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}}else{res.statusCode=500;res.end(JSON.stringify({error:'spotdl failed'}))}})})
 
   
 // ── Spotify Download (SSE, Multi-Track) ──
@@ -401,7 +401,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               '--threads', String(aiConfig.concurrentTracks || 4),
               '--preload',
               '--audio', 'youtube',
-              '--yt-dlp-args', ` --js-runtimes="node:${process.execPath}"`,
+              '--yt-dlp-args', ` --js-runtimes="node:${process.execPath}" -N ${aiConfig.fragments || 4} --extractor-args youtube:player_client=android,web`,
               '--add-unavailable'
             ];
             let spFfmpegArgs = `-threads ${aiConfig.ffmpegThreads}`
@@ -430,6 +430,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 env: {
                   ...process.env,
                   PYTHONIOENCODING: 'utf-8',
+                  PYTHONUTF8: '1',
                   PATH: `${binDir}${path.delimiter}${process.env.PATH}`
                 }
               })
@@ -438,54 +439,57 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               let currentTrack = 0;
               let nativeTotalTracks = totalTracks;
 
+              let stdoutBuf = '';
               proc.stdout.on('data', c => {
-                const text = c.toString();
-                let mFound = text.match(/Found (\d+) songs in/);
-                if (mFound) {
-                  nativeTotalTracks = parseInt(mFound[1]);
-                  send({ totalTracks: nativeTotalTracks });
-                }
+                stdoutBuf += c.toString();
+                const lines = stdoutBuf.split(/\r?\n|\r/);
+                stdoutBuf = lines.pop();
 
-                // Depending on spotdl version and arguments, it either prints [1/10] Downloading ...
-                // or just Downloaded "song name"
-                let m1 = text.match(/\[(\d+)\/(\d+)\] Downloading (.+)/);
-                if (m1) {
-                  currentTrack = parseInt(m1[1]);
-                  nativeTotalTracks = parseInt(m1[2]);
-                  send({
-                    currentTrack,
-                    totalTracks: nativeTotalTracks,
-                    status: `Downloading: ${m1[3]}`,
-                    trackProgress: 0,
-                    progress: Math.round(5 + (currentTrack / nativeTotalTracks) * 85)
-                  });
-                } else {
-                  let mDl = text.match(/Downloaded "([^"]+)"/);
-                  if (mDl) {
-                    // Try to find correct track index by matching the name
-                    const dName = (mDl[1] || '').toLowerCase().replace(/[^\w\s]/g, '');
-                    const matchedIdx = tracks.findIndex(t => {
-                      const tName = (t.title || '').toLowerCase().replace(/[^\w\s]/g, '');
-                      return tName && (dName.includes(tName) || tName.includes(dName));
-                    });
-                    
-                    const resolvedTrack = matchedIdx !== -1 ? matchedIdx + 1 : ++currentTrack;
-                    
+                for (const text of lines) {
+                  let mFound = text.match(/Found (\d+) songs in/);
+                  if (mFound) {
+                    nativeTotalTracks = parseInt(mFound[1]);
+                    send({ totalTracks: nativeTotalTracks });
+                  }
+
+                  let m1 = text.match(/\[(\d+)\/(\d+)\] Downloading (.+)/);
+                  if (m1) {
+                    currentTrack = parseInt(m1[1]);
+                    nativeTotalTracks = parseInt(m1[2]);
                     send({
-                      currentTrack: resolvedTrack,
-                      trackDone: true,
+                      currentTrack,
                       totalTracks: nativeTotalTracks,
-                      status: `Downloaded: ${mDl[1]}`,
-                      trackProgress: 100,
-                      progress: Math.round(5 + (resolvedTrack / nativeTotalTracks) * 85)
+                      status: `Downloading: ${m1[3]}`,
+                      trackProgress: 0,
+                      progress: Math.round(5 + (currentTrack / nativeTotalTracks) * 85)
                     });
                   } else {
-                    let m2 = text.match(/(\d+)%/);
-                    if (m2 && currentTrack > 0) {
-                      send({
-                        currentTrack,
-                        trackProgress: parseFloat(m2[1])
+                    let mDl = text.match(/Downloaded "([^"]+)"/);
+                    if (mDl) {
+                      const dName = (mDl[1] || '').toLowerCase().replace(/[^\w\s]/g, '');
+                      const matchedIdx = tracks.findIndex(t => {
+                        const tName = (t.title || '').toLowerCase().replace(/[^\w\s]/g, '');
+                        return tName && (dName.includes(tName) || tName.includes(dName));
                       });
+                      
+                      const resolvedTrack = matchedIdx !== -1 ? matchedIdx + 1 : ++currentTrack;
+                      
+                      send({
+                        currentTrack: resolvedTrack,
+                        trackDone: true,
+                        totalTracks: nativeTotalTracks,
+                        status: `Downloaded: ${mDl[1]}`,
+                        trackProgress: 100,
+                        progress: Math.round(5 + (resolvedTrack / nativeTotalTracks) * 85)
+                      });
+                    } else {
+                      let m2 = text.match(/(\d+)%/);
+                      if (m2 && currentTrack > 0) {
+                        send({
+                          currentTrack,
+                          trackProgress: parseFloat(m2[1])
+                        });
+                      }
                     }
                   }
                 }

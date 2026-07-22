@@ -391,10 +391,18 @@ export function configureNewBackend(server) {
                '--format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
                '--bitrate', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioQuality') ? urlObj.searchParams.get('audioQuality') : cfg.audioQuality) || '320k',
                '--threads', '1',
-               '--ffmpeg', getFfmpegDir()
+               '--ffmpeg', getFfmpegDir(),
+               '--yt-dlp-args', ` --js-runtimes="node:${process.execPath}" -N ${performanceProfile?.fragments || 4} --extractor-args youtube:player_client=android,web`
              ];
              const spotdlExecArgs = isWin ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotDlPath, ...args] : args;
-             const proc = spawn(spotdlCmd, spotdlExecArgs, { windowsHide: true });
+              const proc = spawn(spotdlCmd, spotdlExecArgs, { 
+                windowsHide: true,
+                env: {
+                  ...process.env,
+                  PYTHONIOENCODING: 'utf-8',
+                  PYTHONUTF8: '1'
+                }
+              });
              activeProcs.add(proc);
              dlState.procs.add(proc);
              
