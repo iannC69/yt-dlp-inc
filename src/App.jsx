@@ -10,6 +10,7 @@ import LibraryModal from './LibraryModal';
 import QueueModal from './QueueModal';
 import LogsTab from './LogsTab';
 import UpdatesTab from './UpdatesTab';
+import UpdateOverlay from './UpdateOverlay';
 import './App.css';
 import { storage } from './storage';
 
@@ -62,6 +63,12 @@ export default function App() {
   const [activeSettingsTab, setActiveSettingsTab] = useState('general');
   const [showLibrary, setShowLibrary] = useState(false);
   const [showQueueModal, setShowQueueModal] = useState(false);
+  const [updateNotice, setUpdateNotice] = useState(null);
+  const [showUpdateOverlay, setShowUpdateOverlay] = useState(false);
+  const [updateState, setUpdateState] = useState('idle');
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [updateSpeed, setUpdateSpeed] = useState(0);
+  const [updateInfo, setUpdateInfo] = useState({});
   const [historyData, setHistoryData] = useState([]);
   const overlayMouseDownRef = useRef(false);
   const colorPickerActiveRef = useRef(false);
@@ -223,7 +230,37 @@ export default function App() {
       
     const handleHistoryUpdate = () => fetchHistory();
     window.addEventListener('history_updated', handleHistoryUpdate);
-    return () => window.removeEventListener('history_updated', handleHistoryUpdate);
+    
+    let cleanupUpdater = () => {};
+    if (window.electronAPI && window.electronAPI.updater) {
+      cleanupUpdater = window.electronAPI.updater.onUpdaterEvent((name, data) => {
+        if (name === 'update-available') {
+          setUpdateNotice('available');
+          if (data) setUpdateInfo(data);
+        }
+        if (name === 'download-progress') {
+          setUpdateNotice(null);
+          setShowUpdateOverlay(true);
+          setUpdateState('downloading');
+          if (data && data.percent) setUpdateProgress(data.percent);
+          if (data && data.bytesPerSecond) setUpdateSpeed(data.bytesPerSecond);
+        }
+        if (name === 'update-downloaded') {
+          setUpdateNotice('downloaded');
+          setUpdateState('downloaded');
+          if (data) setUpdateInfo(data);
+        }
+      });
+      // Check for updates quietly in background on startup
+      setTimeout(() => {
+        window.electronAPI.updater.checkForUpdates();
+      }, 5000);
+    }
+    
+    return () => {
+      window.removeEventListener('history_updated', handleHistoryUpdate);
+      cleanupUpdater();
+    };
   }, []);
 
   useEffect(() => {
@@ -1018,6 +1055,54 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Update Toast */}
+      <AnimatePresence>
+        {updateNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="update-toast"
+          >
+            <div className="update-toast-icon">
+              {updateNotice === 'available' ? <RefreshCw size={16} /> : <CheckCircle2 size={16} />}
+            </div>
+            <div className="update-toast-info">
+              <div className="update-toast-title">
+                {updateNotice === 'available' ? 'Update Available' : 'Update Ready'}
+              </div>
+              <div className="update-toast-desc">
+                {updateNotice === 'available' ? 'A new version can be downloaded.' : 'Restart to install the new version.'}
+              </div>
+            </div>
+            <button className="update-toast-btn" onClick={() => {
+              setUpdateNotice(null);
+              setShowSettingsModal(true);
+              setActiveSettingsTab('updates');
+            }}>
+              View
+            </button>
+            <button className="update-toast-close" onClick={() => setUpdateNotice(null)}>
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Update Overlay */}
+      <AnimatePresence>
+        {showUpdateOverlay && (
+          <UpdateOverlay 
+            status={updateState}
+            progress={updateProgress}
+            speed={updateSpeed}
+            info={updateInfo}
+            onInstall={() => window.electronAPI.updater.installUpdate()}
+            onDismiss={() => setShowUpdateOverlay(false)}
+          />
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

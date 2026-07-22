@@ -1,0 +1,169 @@
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(8, 10, 15, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-color);
+}
+
+.update-overlay-content {
+  background: var(--panel-color);
+  border: 1px solid var(--border-color);
+  width: 100%;
+  max-width: 520px;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.uo-header {
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.uo-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.uo-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.uo-subtitle {
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+.uo-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: 0.2s;
+  padding: 4px;
+}
+.uo-close:hover { opacity: 1; }
+
+.uo-progress-container {
+  padding: 2rem;
+  background: rgba(0,0,0,0.2);
+}
+
+.uo-progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.uo-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  border-radius: 4px;
+  box-shadow: 0 0 12px var(--secondary);
+}
+
+.uo-progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.uo-notes {
+  padding: 2rem;
+  flex: 1;
+  max-height: 250px;
+  overflow-y: auto;
+}
+/* custom scrollbar for notes */
+.uo-notes::-webkit-scrollbar { width: 6px; }
+.uo-notes::-webkit-scrollbar-track { background: transparent; }
+.uo-notes::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+.uo-notes-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.5;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.uo-notes-body {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  opacity: 0.85;
+}
+.uo-notes-body ul { margin-left: 1.25rem; margin-top: 0.5rem; }
+.uo-notes-body li { margin-bottom: 0.25rem; }
+.uo-notes-body p { margin-bottom: 0.75rem; }
+.uo-notes-body h1, .uo-notes-body h2, .uo-notes-body h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+}
+
+.uo-footer {
+  padding: 1.5rem 2rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.uo-wait {
+  width: 100%;
+  text-align: center;
+  font-size: 0.9rem;
+  opacity: 0.6;
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+.uo-btn-install {
+  background: var(--secondary);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: 0.2s;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+.uo-btn-install:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
