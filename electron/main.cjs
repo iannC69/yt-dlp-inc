@@ -99,6 +99,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => app.quit());
 
 // ── Spotify OAuth is now handled natively via the browser and Vite/Express proxy ──
+ipcMain.handle('open-external', (_event, url) => shell.openExternal(url));
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('context-menu', event => event.preventDefault());
