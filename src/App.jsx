@@ -484,53 +484,61 @@ export default function App() {
                 <div className="settings-scroll-content">
                   {activeSettingsTab === 'general' && (
                     <div className="settings-section">
-                      <h3>Director descărcări (Local)</h3>
-                      <div className="settings-path-picker">
-                        <input
-                          type="text"
-                          readOnly
-                          value={customPath || 'Mod Implicit (Folderul Aplicației/downloads)'}
-                          className="settings-input"
-                          title={customPath}
-                        />
-                        <button className="settings-save-btn" onClick={handleSelectFolder} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
-                          <FolderOpen size={16} style={{ display: 'inline', marginRight: '4px' }} /> Folder
-                        </button>
+                      <div className="settings-field">
+                        <label className="settings-label-row">Download Directory (Local)</label>
+                        <div className="settings-path-picker">
+                          <input
+                            type="text"
+                            readOnly
+                            value={customPath || 'Mod Implicit (Folderul Aplicației/downloads)'}
+                            className="settings-input"
+                            title={customPath}
+                          />
+                          <button className="settings-save-btn" onClick={handleSelectFolder} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
+                            <FolderOpen size={16} style={{ display: 'inline', marginRight: '4px' }} /> Folder
+                          </button>
+                        </div>
                       </div>
 
                       <div className="settings-field" style={{ marginTop: '20px' }}>
-                        <label>Audio Format</label>
-                        <select 
-                          className="settings-input" 
-                          value={audioFormat} 
-                          onChange={e => {
-                            setAudioFormat(e.target.value);
-                            localStorage.setItem('audioFormat', e.target.value);
-                          }}
-                        >
-                          <option value="mp3">MP3</option>
-                          <option value="m4a">M4A</option>
-                          <option value="flac">FLAC</option>
-                          <option value="wav">WAV</option>
-                          <option value="opus">OPUS</option>
-                        </select>
+                        <label className="settings-label-row">Audio Format</label>
+                        <div className="settings-hw-toggle">
+                          {['mp3', 'm4a', 'flac', 'wav', 'opus'].map(f => (
+                            <button
+                              key={f}
+                              className={`settings-hw-btn ${audioFormat === f ? 'active' : ''}`}
+                              onClick={() => {
+                                setAudioFormat(f);
+                                localStorage.setItem('audioFormat', f);
+                              }}
+                            >
+                              {f.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       
                       <div className="settings-field">
-                        <label>Audio Quality (Bitrate)</label>
-                        <select 
-                          className="settings-input" 
-                          value={audioQuality} 
-                          onChange={e => {
-                            setAudioQuality(e.target.value);
-                            localStorage.setItem('audioQuality', e.target.value);
-                          }}
-                        >
-                          <option value="320k">320 kbps (High)</option>
-                          <option value="256k">256 kbps</option>
-                          <option value="192k">192 kbps (Standard)</option>
-                          <option value="128k">128 kbps (Low)</option>
-                        </select>
+                        <label className="settings-label-row">Audio Quality (Bitrate)</label>
+                        <div className="settings-hw-toggle">
+                          {[
+                            { value: '320k', label: '320k (High)' },
+                            { value: '256k', label: '256k' },
+                            { value: '192k', label: '192k (Std)' },
+                            { value: '128k', label: '128k (Low)' }
+                          ].map(q => (
+                            <button
+                              key={q.value}
+                              className={`settings-hw-btn ${audioQuality === q.value ? 'active' : ''}`}
+                              onClick={() => {
+                                setAudioQuality(q.value);
+                                localStorage.setItem('audioQuality', q.value);
+                              }}
+                            >
+                              {q.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
