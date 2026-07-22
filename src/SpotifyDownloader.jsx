@@ -371,8 +371,8 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const clientId = localStorage.getItem('spotify_client_id') || '';
-      const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+      const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
+      const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || '';
       const storedToken = await getValidAccessToken(clientId, clientSecret);
       if (storedToken) setAccessToken(storedToken);
 
@@ -418,8 +418,8 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       })
         .then(async r => {
           if (r.status === 401) {
-            const clientId = localStorage.getItem('spotify_client_id');
-            const clientSecret = localStorage.getItem('spotify_client_secret');
+            const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
+            const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || '';
             const newToken = await getValidAccessToken(clientId, clientSecret);
             if (newToken && newToken !== accessToken) {
               setAccessToken(newToken);
@@ -476,8 +476,8 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       return;
     }
 
-    const clientId = localStorage.getItem('spotify_client_id') || '';
-    const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
+    const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || '';
     // A preview may be requested long after the user authenticated. Refresh the
     // OAuth token first so private/collaborative playlists are read as the
     // signed-in user instead of falling back to the public client flow.
@@ -672,8 +672,8 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     const dlId = Date.now().toString();
     downloadIdRef.current = dlId;
 
-    const clientId = localStorage.getItem('spotify_client_id') || '';
-    const clientSecret = localStorage.getItem('spotify_client_secret') || '';
+    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
+    const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || '';
     const userAccessToken = localStorage.getItem('spotify_access_token') || '';
 
     if (!clientId.trim() || !clientSecret.trim()) {
@@ -887,10 +887,10 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               <div className="sp-header-actions">
                 {!accessToken ? (
                   <button className="sp-login-btn" onClick={async () => {
-                    const clientId     = localStorage.getItem('spotify_client_id')     || '';
-                    const clientSecret = localStorage.getItem('spotify_client_secret') || '';
-                    if (!clientId)     return alert('Please set your Spotify Client ID in Settings first!');
-                    if (!clientSecret) return alert('Please set your Spotify Client Secret in Settings first!');
+                    const clientId     = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
+                    const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || '';
+                    if (!clientId)     return alert('Developer: Please set VITE_SPOTIFY_CLIENT_ID in the .env file before building!');
+                    if (!clientSecret) return alert('Developer: Please set VITE_SPOTIFY_CLIENT_SECRET in the .env file before building!');
 
                     const redirectUri = window.location.origin + '/';
                     const scope   = encodeURIComponent('playlist-read-private playlist-read-collaborative');

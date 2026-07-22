@@ -86,16 +86,21 @@ export default function App() {
     // YouTube panel
     ytBg:        '#080a0f',
     ytAccent:    '#ef4444',
+    ytSecondary: '#3b82f6',
+    ytText:      '#f1f5f9',
     // Spotify panel
     spBg:        '#060a06',
     spAccent:    '#1DB954',
+    spText:      '#f8fafc',
     // Mass DL panel
     mdBg:        '#07060f',
     mdAccent:    '#a855f7',
     mdSecondary: '#d946ef',
+    mdText:      '#e2d9f3',
     // Audio Cutter panel
     acBg:        '#060910',
     acAccent:    '#22d3ee',
+    acText:      '#d8e4f0',
   });
   const [showHelp, setShowHelp] = useState(false);
   const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
@@ -222,6 +227,13 @@ export default function App() {
 
   useEffect(() => {
     const root = document.documentElement;
+    const hexToRgb = (hex) => {
+      let c = (hex || '#000000').replace('#', '');
+      if (c.length === 3) c = c.split('').map(x => x + x).join('');
+      const num = parseInt(c, 16);
+      return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
+    };
+
     // Global
     root.style.setProperty('--primary',      customTheme.primary);
     root.style.setProperty('--primary-dark',  customTheme.primary + 'CC');
@@ -235,17 +247,25 @@ export default function App() {
     // YouTube
     root.style.setProperty('--theme-bg',      customTheme.ytBg     || '#080a0f');
     root.style.setProperty('--theme-primary', customTheme.ytAccent || '#ef4444');
+    root.style.setProperty('--theme-secondary', customTheme.ytSecondary || '#3b82f6');
+    root.style.setProperty('--yt-text',       customTheme.ytText   || '#f1f5f9');
     // Spotify
     root.style.setProperty('--sp-bg',         customTheme.spBg     || '#060a06');
     root.style.setProperty('--sp-green',      customTheme.spAccent || '#1DB954');
     root.style.setProperty('--sp-green-dim',  (customTheme.spAccent || '#1DB954') + '26');
+    root.style.setProperty('--sp-text',       customTheme.spText   || '#f8fafc');
     // Mass DL
     root.style.setProperty('--md-bg',         customTheme.mdBg        || '#07060f');
     root.style.setProperty('--md-purple',     customTheme.mdAccent    || '#a855f7');
+    root.style.setProperty('--md-purple-rgb', hexToRgb(customTheme.mdAccent || '#a855f7'));
     root.style.setProperty('--md-magenta',    customTheme.mdSecondary || '#d946ef');
+    root.style.setProperty('--md-magenta-rgb',hexToRgb(customTheme.mdSecondary || '#d946ef'));
+    root.style.setProperty('--md-text',       customTheme.mdText      || '#e2d9f3');
     // Audio Cutter
     root.style.setProperty('--ac-bg',         customTheme.acBg     || '#060910');
     root.style.setProperty('--ac-accent',     customTheme.acAccent || '#22d3ee');
+    root.style.setProperty('--ac-accent-rgb', hexToRgb(customTheme.acAccent || '#22d3ee'));
+    root.style.setProperty('--ac-text',       customTheme.acText   || '#d8e4f0');
   }, [customTheme]);
 
   const saveSettings = () => {
@@ -626,8 +646,8 @@ export default function App() {
                       colorPickerTimerRef.current = setTimeout(() => { colorPickerActiveRef.current = false; }, 600);
                     };
 
-                    const CPicker = ({ stateKey, label }) => (
-                      <div className="cp-color-row">
+                    const renderCPicker = (stateKey, label) => (
+                      <div className="cp-color-row" key={stateKey}>
                         <div className="cp-color-swatch-wrap" onMouseDown={armColorPicker}>
                           <input type="color"
                             value={customTheme[stateKey] || '#000000'}
@@ -645,8 +665,8 @@ export default function App() {
                       </div>
                     )
 
-                    const PanelSection = ({ title, icon, children }) => (
-                      <div className="cp-panel-section">
+                    const renderPanelSection = (title, icon, children) => (
+                      <div className="cp-panel-section" key={title}>
                         <div className="cp-panel-section-title"><span style={{display:'flex',alignItems:'center',gap:'6px'}}>{icon}<span>{title}</span></span></div>
                         <div className="cp-color-grid">{children}</div>
                       </div>
@@ -671,35 +691,40 @@ export default function App() {
                           </div>
                         </div>
 
-                        <PanelSection title="Global" icon={<Globe size={11}/>}>
-                          <CPicker stateKey="primary"     label="Accent / Buttons" />
-                          <CPicker stateKey="bgBase"      label="App Background" />
-                          <CPicker stateKey="panelColor"  label="Panel / Card" />
-                          <CPicker stateKey="navColor"    label="Navbar" />
-                          <CPicker stateKey="textColor"   label="Primary Text" />
-                          <CPicker stateKey="borderColor" label="Borders & Glow" />
-                        </PanelSection>
+                        {renderPanelSection("Global", <Globe size={11}/>, [
+                          renderCPicker("primary", "Accent / Buttons"),
+                          renderCPicker("bgBase", "App Background"),
+                          renderCPicker("panelColor", "Panel / Card"),
+                          renderCPicker("navColor", "Navbar"),
+                          renderCPicker("textColor", "Primary Text"),
+                          renderCPicker("borderColor", "Borders & Glow")
+                        ])}
 
-                        <PanelSection title="YouTube Panel" icon={<Play size={11}/>}>
-                          <CPicker stateKey="ytBg"     label="Background" />
-                          <CPicker stateKey="ytAccent" label="Accent color" />
-                        </PanelSection>
+                        {renderPanelSection("YouTube Panel", <Play size={11}/>, [
+                          renderCPicker("ytBg", "Background"),
+                          renderCPicker("ytAccent", "Accent color"),
+                          renderCPicker("ytSecondary", "Secondary color"),
+                          renderCPicker("ytText", "Text color")
+                        ])}
 
-                        <PanelSection title="Spotify Panel" icon={<Music2 size={11}/>}>
-                          <CPicker stateKey="spBg"     label="Background" />
-                          <CPicker stateKey="spAccent" label="Accent / Green" />
-                        </PanelSection>
+                        {renderPanelSection("Spotify Panel", <Music2 size={11}/>, [
+                          renderCPicker("spBg", "Background"),
+                          renderCPicker("spAccent", "Accent / Green"),
+                          renderCPicker("spText", "Text color")
+                        ])}
 
-                        <PanelSection title="Mass DL Panel" icon={<Layers size={11}/>}>
-                          <CPicker stateKey="mdBg"        label="Background" />
-                          <CPicker stateKey="mdAccent"    label="Purple accent" />
-                          <CPicker stateKey="mdSecondary" label="Magenta accent" />
-                        </PanelSection>
+                        {renderPanelSection("Mass DL Panel", <Layers size={11}/>, [
+                          renderCPicker("mdBg", "Background"),
+                          renderCPicker("mdAccent", "Purple accent"),
+                          renderCPicker("mdSecondary", "Magenta accent"),
+                          renderCPicker("mdText", "Text color")
+                        ])}
 
-                        <PanelSection title="Audio Cutter Panel" icon={<Scissors size={11}/>}>
-                          <CPicker stateKey="acBg"     label="Background" />
-                          <CPicker stateKey="acAccent" label="Cyan accent" />
-                        </PanelSection>
+                        {renderPanelSection("Audio Cutter Panel", <Scissors size={11}/>, [
+                          renderCPicker("acBg", "Background"),
+                          renderCPicker("acAccent", "Cyan accent"),
+                          renderCPicker("acText", "Text color")
+                        ])}
 
                         <button className="settings-reset-btn" style={{ marginTop: '8px' }}
                           onClick={() => setCustomTheme(DEFAULTS)}>
@@ -713,8 +738,8 @@ export default function App() {
                     <div className="settings-section">
                       <div className="settings-cred-header">
                         <div className="settings-cred-status">
-                          <span className={`settings-cred-dot ${isConfigured ? 'ok' : 'err'}`} />
-                          <span className="settings-cred-status-label">{isConfigured ? 'Connected' : 'Optional — public fallback enabled'}</span>
+                          <span className={`settings-cred-dot ok`} />
+                          <span className="settings-cred-status-label">Pre-configured integration</span>
                         </div>
                         <button className="settings-help-btn" onClick={() => setShowHelp(!showHelp)} title="How to get these?">
                           <HelpCircle size={15} />
@@ -742,33 +767,10 @@ export default function App() {
                         )}
                       </AnimatePresence>
 
-                      <p className="settings-hint">Credentials are optional. Skip them to use public Spotify links through the fallback resolver; add them for fuller API support.</p>
-                      <div className="settings-field">
-                        <label>Spotify Client ID</label>
-                        <div className="settings-masked-input-wrap">
-                          <input
-                            type="text"
-                            value={spotifyClientId}
-                            onChange={e => setSpotifyClientId(e.target.value)}
-                            placeholder="Paste Client ID..."
-                            className="settings-masked-input"
-                          />
-                          {spotifyClientId && <span className="settings-input-check"><CheckCircle2 size={14} color="#1DB954" /></span>}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label>Spotify Client Secret</label>
-                        <div className="settings-masked-input-wrap">
-                          <input
-                            type="password"
-                            value={spotifyClientSecret}
-                            onChange={e => setSpotifyClientSecret(e.target.value)}
-                            placeholder="Paste Client Secret..."
-                            className="settings-masked-input"
-                          />
-                          {spotifyClientSecret && <span className="settings-input-check"><CheckCircle2 size={14} color="#1DB954" /></span>}
-                        </div>
-                      </div>
+                      <p className="settings-hint" style={{ color: '#1DB954', fontWeight: 500, margin: '16px 0' }}>
+                        <CheckCircle2 size={14} style={{ display: 'inline-block', verticalAlign: 'text-bottom', marginRight: 4 }} />
+                        Spotify integration is pre-configured. Head over to the Spotify tab and click "Login" to sync your playlists!
+                      </p>
                       <div className="settings-field" style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '18px' }}>
                         <label className="settings-label-row">Download Engine Priority</label>
                         <div className="settings-hw-toggle">

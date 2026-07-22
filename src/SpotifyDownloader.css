@@ -31,6 +31,7 @@
   height: 100%;
   width: 100%;
   background: var(--sp-bg);
+  color: var(--sp-text, #fff);
   font-family: var(--sp-font);
   overflow: hidden;
   display: flex;

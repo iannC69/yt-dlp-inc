@@ -20,7 +20,7 @@
   overflow-y: auto;
   background: var(--theme-bg);
   font-family: 'Inter', sans-serif;
-  color: #e2e8f0;
+  color: var(--yt-text, #e2e8f0);
   position: relative;
   overflow-x: hidden;
   width: 100%;

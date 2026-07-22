@@ -87,11 +87,46 @@ function WelcomeStep({ onNext }) {
 }
 
 // ── Step 1 — Spotify ─────────────────────────────────────────────────────────
-function SpotifyStep({ clientId, setClientId, clientSecret, setClientSecret, onNext, onBack }) {
-  const [showSecret, setShowSecret] = useState(false)
-  const hasId     = clientId.trim().length > 10
-  const hasSecret = clientSecret.trim().length > 10
-  const bothFilled = hasId && hasSecret
+function SpotifyStep({ onNext, onBack }) {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('spotify_access_token'))
+
+  const handleLogin = async () => {
+    const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || 'YOUR_SPOTIFY_CLIENT_ID_HERE';
+    const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || 'YOUR_SPOTIFY_CLIENT_SECRET_HERE';
+    if (clientId === 'YOUR_SPOTIFY_CLIENT_ID_HERE') return alert('Developer: Please set VITE_SPOTIFY_CLIENT_ID in the .env file!');
+
+    const redirectUri = window.location.origin + '/';
+    const scope   = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+    const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true`;
+
+    if (window.electronAPI?.spotifyAuth) {
+      try {
+        const { code, redirectUri: cbUri } = await window.electronAPI.spotifyAuth(authUrl);
+        const res = await fetch('/api/spotify-oauth', {
+          method: 'POST',
+          headers: {
+            'x-spotify-client-id':     clientId,
+            'x-spotify-client-secret': clientSecret,
+            'Content-Type':            'application/json',
+          },
+          body: JSON.stringify({ code, redirectUri: cbUri }),
+        });
+        const data = await res.json();
+        if (data.access_token) {
+          localStorage.setItem('spotify_access_token',  data.access_token);
+          localStorage.setItem('spotify_expires_at',    String(Date.now() + data.expires_in * 1000));
+          if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+          setIsLoggedIn(true);
+        } else {
+          alert('Spotify login failed: ' + (data.error_description || data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        if (!err.message.includes('closed')) alert('Spotify login failed: ' + err.message);
+      }
+    } else {
+      window.location.href = authUrl;
+    }
+  }
 
   return (
     <div className="sw-step-content">
@@ -106,58 +141,27 @@ function SpotifyStep({ clientId, setClientId, clientSecret, setClientSecret, onN
         </div>
         <div>
           <h1 className="sw-step-title" style={{ marginBottom: '0.3rem' }}>Connect Spotify</h1>
-          <p className="sw-step-sub" style={{ marginBottom: 0 }}>Free Spotify Developer credentials for full playlist & album support.</p>
+          <p className="sw-step-sub" style={{ marginBottom: 0 }}>Log in to access your personal playlists and albums.</p>
         </div>
       </div>
 
-      <div className="sw-steps-how">
-        {[
-          { n:'1', text: <>Visit <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" style={{color:'#1DB954'}}>developer.spotify.com</a> and log in</> },
-          { n:'2', text: <>Click <strong style={{color:'#e4e4e7'}}>Create app</strong> — any name works</> },
-          { n:'3', text: <>Set Redirect URI to <code className="sw-code">http://localhost:5174/</code></> },
-          { n:'4', text: <>Check <strong style={{color:'#e4e4e7'}}>Web API</strong>, save → open <strong style={{color:'#e4e4e7'}}>Settings</strong> to copy keys</> },
-        ].map(s => (
-          <div className="sw-how-row" key={s.n}>
-            <div className="sw-how-num">{s.n}</div>
-            <div className="sw-how-text">{s.text}</div>
-          </div>
-        ))}
+      <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'flex-start' }}>
+        {isLoggedIn ? (
+          <motion.div className="sw-sp-status" initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}>
+            <CheckCircle2 size={15} color="#1DB954" /> Successfully connected! You're ready to go.
+          </motion.div>
+        ) : (
+          <button className="sw-btn-next" style={{ background: '#1DB954', color: 'black', fontWeight: 600 }} onClick={handleLogin}>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" style={{ marginRight: 8 }}><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+            Log in with Spotify
+          </button>
+        )}
       </div>
 
-      <div className="sw-fields-pair">
-        <div className="sw-field">
-          <label className="sw-label">Client ID</label>
-          <div className="sw-input-wrap">
-            <input className="sw-input" type="text" placeholder="Paste your Client ID…"
-              value={clientId} onChange={e => setClientId(e.target.value)}
-              style={{ paddingRight: hasId ? '2.4rem' : undefined }} />
-            {hasId && <span className="sw-input-check"><CheckCircle2 size={16} color="#1DB954" /></span>}
-          </div>
-        </div>
-        <div className="sw-field">
-          <label className="sw-label">Client Secret</label>
-          <div className="sw-input-wrap">
-            <input className="sw-input" type={showSecret ? 'text' : 'password'} placeholder="Paste your Client Secret…"
-              value={clientSecret} onChange={e => setClientSecret(e.target.value)}
-              style={{ paddingRight: '2.6rem' }} />
-            {hasSecret && !showSecret && <span className="sw-input-check" style={{ right: '38px' }}><CheckCircle2 size={16} color="#1DB954" /></span>}
-            <button className="sw-input-eye" onClick={() => setShowSecret(s => !s)}>
-              {showSecret ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {bothFilled && (
-        <motion.div className="sw-sp-status" initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}>
-          <CheckCircle2 size={15} color="#1DB954" /> Credentials look good — you're ready to connect Spotify
-        </motion.div>
-      )}
-
-      <div className="sw-nav">
+      <div className="sw-nav" style={{ marginTop: 'auto' }}>
         <button className="sw-btn-back" onClick={onBack}>Back</button>
         <div style={{ display:'flex', gap:'0.75rem', alignItems:'center' }}>
-          <button className="sw-btn-skip" onClick={onNext}>Skip for now</button>
+          {!isLoggedIn && <button className="sw-btn-skip" onClick={onNext}>Skip for now</button>}
           <button className="sw-btn-next" onClick={onNext}>Continue <ArrowRight size={16} /></button>
         </div>
       </div>
@@ -245,9 +249,9 @@ function PreferencesStep({ audioFormat, setAudioFormat, audioQuality, setAudioQu
 }
 
 // ── Step 3 — Done ────────────────────────────────────────────────────────────
-function DoneStep({ clientId, audioFormat, audioQuality, customPath, onFinish }) {
+function DoneStep({ audioFormat, audioQuality, customPath, onFinish }) {
   const [launching, setLaunching] = useState(false)
-  const hasSpotify = clientId.trim().length > 5
+  const hasSpotify = !!localStorage.getItem('spotify_access_token')
   const summary = [
     { color: hasSpotify ? '#1DB954' : '#52525b', icon: hasSpotify ? <Check size={14}/> : <Link2 size={14}/>,
       label: 'Spotify', value: hasSpotify ? 'Connected' : 'Public fallback' },
@@ -311,8 +315,6 @@ function DoneStep({ clientId, audioFormat, audioQuality, customPath, onFinish })
 export default function SetupWizard({ onComplete }) {
   const [step,          setStep]          = useState(0)
   const [direction,     setDirection]     = useState(1)
-  const [clientId,      setClientId]      = useState('')
-  const [clientSecret,  setClientSecret]  = useState('')
   const [audioFormat,   setAudioFormat]   = useState('mp3')
   const [audioQuality,  setAudioQuality]  = useState('320k')
   const [customPath,    setCustomPath]    = useState('')
@@ -324,16 +326,12 @@ export default function SetupWizard({ onComplete }) {
 
   const finish = async () => {
     const data = {
-      clientId:     clientId.trim(),
-      clientSecret: clientSecret.trim(),
       audioFormat,
       audioQuality,
       customPath,
     }
     // Mark setup done in localStorage (install-specific since userData is in {installDir}/app-data)
     localStorage.setItem('setup_complete',        '1')
-    localStorage.setItem('spotify_client_id',     data.clientId)
-    localStorage.setItem('spotify_client_secret', data.clientSecret)
     localStorage.setItem('audioFormat',           data.audioFormat)
     localStorage.setItem('audioQuality',          data.audioQuality)
     if (data.customPath) localStorage.setItem('customPath', data.customPath)
@@ -430,8 +428,6 @@ export default function SetupWizard({ onComplete }) {
             {step === 0 && <WelcomeStep onNext={() => go(1)} />}
             {step === 1 && (
               <SpotifyStep
-                clientId={clientId}      setClientId={setClientId}
-                clientSecret={clientSecret} setClientSecret={setClientSecret}
                 onNext={() => go(2)}     onBack={() => go(0)}
               />
             )}
@@ -445,7 +441,6 @@ export default function SetupWizard({ onComplete }) {
             )}
             {step === 3 && (
               <DoneStep
-                clientId={clientId}
                 audioFormat={audioFormat}
                 audioQuality={audioQuality}
                 customPath={customPath}
