@@ -391,7 +391,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
           if (isNativePlaylist && isCollection) {
             // Hoist spotdl args so retry pass can reuse them
-            const spotdlPath = path.resolve(__dirname, 'bin', 'spotdl.exe');
+            const spotdlPath = spotdlBin;
             const spotdlArgs = [
               spotUrl,
               '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
@@ -410,7 +410,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               else if (hwaccel === 'QSV') spFfmpegArgs = `-hwaccel qsv ` + spFfmpegArgs
               spotdlArgs.push('--ffmpeg-args', spFfmpegArgs)
             }
-            spotdlArgs.push('--ffmpeg', path.resolve(__dirname, 'bin', 'ffmpeg.exe'));
+            spotdlArgs.push('--ffmpeg', ffmpegBin);
 
             const result = await new Promise((resolve) => {
               if (dlState.cancelled) return resolve({ skipped: true })
@@ -427,7 +427,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 env: {
                   ...process.env,
                   PYTHONIOENCODING: 'utf-8',
-                  PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}`
+                  PATH: `${binDir}${path.delimiter}${process.env.PATH}`
                 }
               })
               dlState.proc = proc;
@@ -531,8 +531,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   console.log(`[spotdl-rescue] ${files.length}/${expectedCount} downloaded. Rescuing ${missingTracks.length} missing tracks via yt-dlp...`);
                   send({ status: `Rescuing ${missingTracks.length} missing tracks via smart search...`, progress: 88 });
 
-                  const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe');
-                  const ffmpegPath = path.resolve(__dirname, 'bin', 'ffmpeg.exe');
+                  const ytDlpPath = binPath;
+                  const ffmpegPath = ffmpegBin;
 
                   for (let mi = 0; mi < missingTracks.length; mi++) {
                     if (dlState.cancelled) break;
@@ -582,7 +582,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                       const ok = await new Promise((resolveRescue) => {
                         const rProc = spawn(ytDlpPath, rescueArgs, {
                           windowsHide: true,
-                          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` }
+                          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
                         });
                         rProc.stdout.on('data', () => {});
                         rProc.stderr.on('data', () => {});
@@ -719,13 +719,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                       '--playlist-items', '1'
                     ];
 
-                    const ytDlpPath = path.resolve(__dirname, 'bin', 'yt-dlp.exe');
+                    const ytDlpPath = binPath;
                     const proc = spawn(ytDlpPath, ytDlpArgs, {
                       windowsHide: true,
                       env: {
                         ...process.env,
                         PYTHONIOENCODING: 'utf-8',
-                        PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}`
+                        PATH: `${binDir}${path.delimiter}${process.env.PATH}`
                       }
                     })
                     // Store only the latest proc for cancellation
