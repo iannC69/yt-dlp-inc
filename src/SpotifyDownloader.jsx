@@ -753,7 +753,8 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
     if (info.type === 'playlist') {
       params.append('nativePlaylist', 'true');
-    } else if (selectedTracks.size > 0) {
+    }
+    if (selectedTracks.size > 0) {
       params.append('selectedTracks', Array.from(selectedTracks).join(','));
     }
 
@@ -1237,7 +1238,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
             {showDownloadModal && info && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="sp-modal-overlay">
                 <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="sp-modal">
-                  <h3 className="sp-modal-title">SetÄƒri descÄƒrcare {info.trackCount > 1 && 'Playlist'}</h3>
+                  <h3 className="sp-modal-title">Setari Descarcare {info.trackCount > 1 && 'Playlist'}</h3>
                   <div className="sp-modal-settings">
                     <div className="sp-setting-group">
                       <span className="sp-setting-label">Formatul dorit</span>
@@ -1258,34 +1259,27 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                       <div className="sp-track-selection-section">
                         <div className="sp-track-selection-header">
                           <label className="sp-modal-label">
-                            {info.type === 'playlist' ? 'MELODIILE DIN PLAYLIST' : `SELECTEAZÄ‚ (${selectedTracks.size} ALESE)`}
+                            SELECTEAZA MELODII ({selectedTracks.size} ALESE)
                           </label>
-                          {info.type !== 'playlist' && (
-                            <div className="sp-track-utils">
-                              <button className="sp-track-util-btn" onClick={selectAllTracks}>Toate</button>
-                              <button className="sp-track-util-btn" onClick={deselectAllTracks}>Niciuna</button>
-                            </div>
-                          )}
+                          <div className="sp-track-utils">
+                            <button className="sp-track-util-btn" onClick={selectAllTracks}>Toate</button>
+                            <button className="sp-track-util-btn" onClick={deselectAllTracks}>Niciuna</button>
+                          </div>
                         </div>
                         <div className="sp-track-list">
-                          {info.tracks?.slice(0, info.type === 'playlist' ? 5 : undefined).map(track => {
-                            const isSelected = info.type === 'playlist' || selectedTracks.has(track.trackNumber);
+                          {info.tracks.map(track => {
+                            const isSelected = selectedTracks.has(track.trackNumber);
                             return (
                               <div key={track.trackNumber} className={`sp-track-item ${isSelected ? 'selected' : ''}`}
-                                onClick={() => info.type !== 'playlist' && toggleTrack(track.trackNumber)}
-                                style={{ cursor: info.type === 'playlist' ? 'default' : 'pointer' }}>
-                                {info.type !== 'playlist' && <div className="sp-track-checkbox" />}
+                                onClick={() => toggleTrack(track.trackNumber)}
+                                style={{ cursor: 'pointer' }}>
+                                <div className="sp-track-checkbox" />
                                 <span className="sp-track-index">{track.trackNumber}.</span>
                                 <span className="sp-track-name">{track.title} {track.artist && track.artist !== info.artist ? `- ${track.artist}` : ''}</span>
                                 <span className="sp-track-duration">{fmtDuration(track.durationMs)}</span>
                               </div>
                             );
                           })}
-                          {info.type === 'playlist' && info.totalTracks > 5 && (
-                            <p style={{ textAlign: 'center', padding: '0.75rem', fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
-                              ... și încă {info.totalTracks - 5} melodii
-                            </p>
-                          )}
                         </div>
                       </div>
                     )}

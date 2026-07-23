@@ -539,7 +539,7 @@ export async function parseSpotifyEmbed(urlStr, clientId = null, clientSecret = 
         allArtists: tArtist,
         album: title,
         year: '',
-        coverUrl: coverUrl,
+        coverUrl: null,
         spotifyId: trackId,
         spotifyUrl: `https://open.spotify.com/track/${trackId}`,
         durationMs: t.duration || 0,

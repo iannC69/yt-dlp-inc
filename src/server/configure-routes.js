@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { spawn } from 'child_process'
+import { spawn, spawnSync } from 'child_process'
 import os from 'os'
 import https from 'https'
 import NodeID3 from 'node-id3'
@@ -681,7 +681,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
             const SPOTDL_LIMIT = 100;
             const isWin = process.platform === 'win32';
-            const safeLimit = Math.min(limit, 3);
+            const safeLimit = limit || 8;
 
             // ── Helper: fetch cover buffer from Spotify album art ──────────────────
             const fetchCoverBuffer = async (coverUrl) => {
@@ -719,6 +719,10 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   year: track.year ? String(track.year) : existing.year,
                   trackNumber: `${track.trackNumber}/${track.totalTracks}`
                 };
+                delete tags.comment;
+                delete tags.userDefinedUrl;
+                delete tags.description;
+                
                 if (coverBuffer) {
                   // Overwrite with the track’s own album art from Spotify
                   tags.image = {
@@ -727,9 +731,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     description: 'Cover',
                     imageBuffer: coverBuffer
                   };
-                } else {
-                  // No cover fetched — clear any wrong cover spotdl may have embedded
-                  delete tags.image;
                 }
                 // NodeID3.write = full tag block rewrite, NOT just update specific frames
                 NodeID3.write(tags, filePath);
@@ -788,17 +789,34 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 const errLog = `spotdl could not download: ${track.title} (provider: ${provider})`;
                 const isNotFound = stdoutBuf.toLowerCase().includes('not found') || stderrBuf.toLowerCase().includes('not found') || stdoutBuf.toLowerCase().includes('denied');
 
+                const files = fs.existsSync(outputDir) ? fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3')) : [];
+                
                 const mDl = stdoutBuf.match(/Downloaded "([^"]+)"/);
                 if (mDl && mDl[1]) {
-                  return resolve({ filename: path.basename(mDl[1]) });
+                  const parsedName = path.basename(mDl[1]);
+                  const checkName = parsedName.endsWith('.mp3') ? parsedName : `${parsedName}.mp3`;
+                  if (files.includes(checkName)) {
+                    return resolve({ filename: checkName, provider: 'spotdl' });
+                  }
                 }
                 
-                // fallback to searching for a file that includes the title
-                const files = fs.existsSync(outputDir) ? fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3')) : [];
-                const cleanTitle = track.title.toLowerCase().replace(/[^\w\s]/g, '').trim();
-                const matchedFile = files.find(f => f.toLowerCase().replace(/[^\w\s]/g, '').includes(cleanTitle));
+                // fallback to searching for a file that includes the title or sanitized words
+                const cleanTitle = track.title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+                const titleWords = cleanTitle.split(' ').filter(w => w.length > 2);
+                
+                const matchedFile = files.find(f => {
+                  const fClean = f.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+                  if (cleanTitle && fClean.includes(cleanTitle)) return true;
+                  // If clean title fails, check if at least 2 words of the title are in the filename
+                  if (titleWords.length >= 2) {
+                    const matchedWords = titleWords.filter(w => fClean.includes(w));
+                    return matchedWords.length >= titleWords.length - 1; // Allows 1 missing word due to sanitization
+                  }
+                  return false;
+                });
+                
                 if (matchedFile) {
-                  return resolve({ filename: matchedFile });
+                  return resolve({ filename: matchedFile, provider: 'spotdl' });
                 }
                 
                 if (code !== 0) {
@@ -869,7 +887,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
               const isWin = process.platform === 'win32';
               try {
-                const ariaCheck = require('child_process').spawnSync(isWin ? 'where' : 'which', ['aria2c']);
+                const ariaCheck = spawnSync(isWin ? 'where' : 'which', ['aria2c']);
                 if (ariaCheck.status === 0) {
                    ytDlpArgs.push('--downloader', 'aria2c', '--downloader-args', 'aria2c:-x 16 -s 16 -k 1M');
                 }
@@ -916,7 +934,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     trackNumber: `${trackIndex + 1}`
                   };
                   if (track.coverUrl) {
-                    const imgResp = require('child_process').spawnSync('node', [
+                    const imgResp = spawnSync('node', [
                       '-e', 
                       `require("https").get("${track.coverUrl}", r => { let d = []; r.on("data", c => d.push(c)); r.on("end", () => process.stdout.write(Buffer.concat(d))); })`
                     ], { maxBuffer: 10 * 1024 * 1024 });
@@ -947,8 +965,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 await Promise.race(activePromises);
               }
 
-              // Stagger to avoid YouTube rate limits
-              if (i > 0) await new Promise(r => setTimeout(r, 800));
+              // Stagger slightly to avoid instantaneous API spikes
+              if (i > 0) await new Promise(r => setTimeout(r, 200));
               if (dlState.cancelled) break;
 
               const track = tracks[i];
@@ -987,12 +1005,27 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     failedTracks.push({ ...track, error: result.error });
                     send({ trackError: result.error, currentTrack: trackIndex + 1, trackTitle: track.title, progress: overallProgress });
                   } else {
-                    // Always overwrite embedded art with the track's own Spotify album cover
-                    const filePath = path.resolve(outputDir, result.filename);
-                    const coverBuffer = await fetchCoverBuffer(track.coverUrl);
-                    writeTrackTags(filePath, track, coverBuffer);
+                    const finalFilename = result.filename.endsWith('.mp3') ? result.filename : `${result.filename}.mp3`;
+                    const filePath = path.resolve(outputDir, finalFilename);
+                    
+                    if (result.provider === 'spotdl') {
+                      try {
+                        const tags = NodeID3.read(filePath);
+                        if (tags) {
+                          delete tags.comment;
+                          delete tags.userDefinedUrl;
+                          delete tags.description;
+                          NodeID3.write(tags, filePath);
+                        }
+                      } catch (e) {
+                        console.error(`[tags] Failed to clean spotdl tags for ${track.title}:`, e.message);
+                      }
+                    } else {
+                      const coverBuffer = await fetchCoverBuffer(track.coverUrl);
+                      writeTrackTags(filePath, track, coverBuffer);
+                    }
 
-                    completedTracks.push(result.filename);
+                    completedTracks.push(finalFilename);
                     send({
                       trackDone: true,
                       currentTrack: trackIndex + 1,
