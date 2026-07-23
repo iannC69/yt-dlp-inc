@@ -1089,7 +1089,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
             )}
           </AnimatePresence>
 
-          {/* â”€â”€ Info Card â”€â”€ */}
+          {/* ——— Info Card ——— */}
           <AnimatePresence>
             {info && fetchStatus === 'done' && (
               <motion.div className="sp-info-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
@@ -1101,15 +1101,25 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                     ) : (
                       <div className="sp-info-thumb-fallback"><Music size={28} /></div>
                     )}
-                    <SpotifyBadge type={info.type} />
                   </div>
 
                   <div className="sp-info-meta">
                     <h3 className="sp-info-title">{info.title}</h3>
                     {info.artist && <p className="sp-info-artist">{info.artist}</p>}
-                    {info.owner && <p className="sp-info-owner"><Users size={12} /> {info.owner}</p>}
-
+                    {info.owner && (
+                      <div className="sp-info-owner-wrap">
+                        {info.ownerThumbnail ? (
+                          <img src={info.ownerThumbnail} alt={info.owner} className="sp-info-owner-pfp" />
+                        ) : (
+                          <div className="sp-info-owner-pfp-fallback">
+                            {info.owner.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="sp-info-owner-name">{info.owner}</span>
+                      </div>
+                    )}
                     <div className="sp-info-pills">
+                      <SpotifyBadge type={info.type} />
                       {info.releaseDate && (
                         <span className="sp-info-pill"><Calendar size={11} /> {info.releaseDate.slice(0, 4)}</span>
                       )}

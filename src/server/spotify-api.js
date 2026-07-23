@@ -449,11 +449,21 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       console.log(`[spotify-api] Filtered ${allItems.length - validTracks.length} non-track items`)
     }
 
+    let ownerThumbnail = playlist.owner?.images?.[0]?.url || null
+    if (!ownerThumbnail && playlist.owner?.id) {
+      try {
+        const ownerData = await fetchWithRetry(`/v1/users/${playlist.owner.id}`, clientId, clientSecret, accessToken)
+        ownerThumbnail = ownerData?.images?.[0]?.url || null
+      } catch (err) {
+        console.warn(`[spotify-api] Could not fetch owner thumbnail for ${playlist.owner.id}`)
+      }
+    }
+
     return {
       type: 'playlist',
       title: playlist.name,
       owner: playlist.owner?.display_name || playlist.owner?.id || 'Unknown',
-      ownerThumbnail: playlist.owner?.images?.[0]?.url || null,
+      ownerThumbnail,
       coverUrl: playlist.images?.[0]?.url || null,
       trackCount,
       totalTracks: playlist.tracks?.total || trackCount,
@@ -586,10 +596,26 @@ export async function parseSpotifyEmbed(urlStr, clientId = null, clientSecret = 
       }
     }
 
+    let ownerThumbnail = null;
+    try {
+      const puppeteer = (await import('puppeteer')).default;
+      const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      await page.goto(urlStr, { waitUntil: 'networkidle2', timeout: 15000 });
+      const imgs = await page.evaluate(() => Array.from(document.querySelectorAll('img')).map(img => img.src));
+      const pfp = imgs.find(src => src.includes('ab677570'));
+      if (pfp) ownerThumbnail = pfp;
+      await browser.close();
+    } catch (pagErr) {
+      console.warn('[parseSpotifyEmbed] Failed to scrape owner thumbnail:', pagErr.message || pagErr);
+    }
+
     return {
       type,
       title,
       owner: entity.subtitle || 'Spotify',
+      ownerThumbnail,
       coverUrl,
       trackCount: tracks.length,
       totalTracks: tracks.length,
