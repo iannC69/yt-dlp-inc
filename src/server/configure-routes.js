@@ -324,7 +324,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
         const send = (data) => { try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch { } }
 
-        const dlState = { cancelled: false, proc: null }
+        const dlState = { cancelled: false, proc: null, procs: new Set() }
         spotifyActiveDownloads.set(downloadId, dlState)
 
         const runDownload = async () => {
@@ -437,7 +437,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   PATH: `${binDir}${path.delimiter}${process.env.PATH}`
                 }
               })
-              dlState.proc = proc;
+              dlState.procs.add(proc);
+              proc.on('close', () => dlState.procs.delete(proc));
               let stderr = '';
               let currentTrack = 0;
               let nativeTotalTracks = totalTracks;
@@ -592,7 +593,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                         '--no-playlist',
                         '--playlist-items', '1',
                       ];
-                      const cp = path.resolve(appDir, 'cookies.txt');
+                      const cp = path.resolve(appDir,'cookies.txt');
                       if (fs.existsSync(cp)) {
                         rescueArgs.push('--cookies', cp);
                       }
@@ -602,10 +603,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                           windowsHide: true,
                           env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
                         });
-                        rProc.stdout.on('data', () => {});
-                        rProc.stderr.on('data', () => {});
-                        rProc.on('close', (code) => resolveRescue(code === 0 && fs.existsSync(finalOutputPath)));
-                        rProc.on('error', () => resolveRescue(false));
+                        dlState.procs.add(rProc);
+                        rProc.on('close', (code) => { dlState.procs.delete(rProc); resolveRescue(code === 0 && fs.existsSync(finalOutputPath)); });
+                        rProc.on('error', () => { dlState.procs.delete(rProc); resolveRescue(false); });
                       });
 
                       if (ok) {
@@ -750,7 +750,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const hasCookies = fs.existsSync(cookiesPath);
 
               const baseArgs = [
-                track.spotifyUrl,
+                `${track.artist} - ${track.title}`,
                 '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
                 '--audio', provider,
                 '--lyrics', 'genius',
@@ -773,7 +773,16 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 windowsHide: true,
                 env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
               });
-              dlState.proc = proc;
+              dlState.procs.add(proc);
+              
+              const timeoutId = setTimeout(() => {
+                try {
+                  if (isWin) spawnSync('taskkill', ['/pid', proc.pid, '/f', '/t']);
+                  else proc.kill('SIGKILL');
+                } catch (e) {}
+                resolve({ error: `spotdl timed out after 4 minutes`, trackTitle: track.title });
+              }, 4 * 60 * 1000);
+
               let stdoutBuf = '';
               let stderrBuf = '';
               proc.stdout.on('data', c => {
@@ -784,6 +793,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               });
               proc.stderr.on('data', c => { stderrBuf += c.toString(); });
               proc.on('close', async (code) => {
+                clearTimeout(timeoutId);
+                dlState.procs.delete(proc);
                 if (dlState.cancelled) return resolve({ skipped: true });
 
                 const errLog = `spotdl could not download: ${track.title} (provider: ${provider})`;
@@ -843,7 +854,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
                 return resolve({ error: errLog, trackTitle: track.title });
               });
-              proc.on('error', err => resolve({ error: `spotdl spawn error: ${err.message}`, trackTitle: track.title }));
+              proc.on('error', err => { dlState.procs.delete(proc); resolve({ error: `spotdl spawn error: ${err.message}`, trackTitle: track.title })});
             });
 
             // ── Helper: download one track via yt-dlp with bestaudio ───────────────
@@ -870,9 +881,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--audio-quality', '0',
                 '--geo-bypass',
                 '--no-playlist',
-                '--embed-metadata',
-                '--embed-thumbnail',
-                '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)',
                 '--extractor-retries', '5',
                 '--fragment-retries', '10',
                 '--retry-sleep', 'linear=1::2',
@@ -899,7 +907,16 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 windowsHide: true,
                 env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
               });
-              dlState.proc = proc;
+              dlState.procs.add(proc);
+              
+              const timeoutId = setTimeout(() => {
+                try {
+                  if (isWin) spawnSync('taskkill', ['/pid', proc.pid, '/f', '/t']);
+                  else proc.kill('SIGKILL');
+                } catch (e) {}
+                resolve({ error: `yt-dlp timed out after 4 minutes`, trackTitle: track.title });
+              }, 4 * 60 * 1000);
+
               let stderr = '';
               proc.stdout.on('data', c => {
                 const text = c.toString();
@@ -908,8 +925,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               });
               proc.stderr.on('data', c => { stderr += c.toString(); });
               proc.on('close', code => {
+                clearTimeout(timeoutId);
+                dlState.procs.delete(proc);
                 if (dlState.cancelled) return resolve({ skipped: true });
-                if (code !== 0) return resolve({ error: `yt-dlp failed (${code}): ${stderr.slice(-300)}`, trackTitle: track.title });
+                if (code !== 0) {
+                  console.error(`[yt-dlp] Failed with code ${code} for ${track.title}. stderr: ${stderr}`);
+                  return resolve({ error: `yt-dlp failed (${code}): ${stderr.slice(-300)}`, trackTitle: track.title });
+                }
                 let resolvedFilename = '';
                 const outputPath = path.join(outputDir, finalOutputName);
                 if (fs.existsSync(outputPath)) {
@@ -929,7 +951,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 
                 resolve({ filename: resolvedFilename });
               });
-              proc.on('error', err => resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title }));
+              proc.on('error', err => { dlState.procs.delete(proc); resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title })});
             });
 
             // ── Main download loop ────────────────────────────────────────────────
@@ -965,16 +987,33 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 });
 
                 try {
-                  let result;
-                  if (useSpotdl) {
-                    result = await downloadViaSpotdl(track, trackIndex);
-                    // If spotdl fails, fall back to yt-dlp
-                    if (result.error) {
-                      console.warn(`[spotdl] Falling back to yt-dlp for: ${track.title} — ${result.error}`);
+                  let result = { error: 'Init' };
+                  let attempts = 0;
+                  const maxAttempts = 2;
+
+                  while (attempts < maxAttempts) {
+                    if (dlState.cancelled) break;
+                    attempts++;
+                    
+                    if (useSpotdl) {
+                      result = await downloadViaSpotdl(track, trackIndex);
+                      if (result.error && !dlState.cancelled) {
+                        console.warn(`[spotdl] Falling back to yt-dlp for: ${track.title} — ${result.error}`);
+                        result = await downloadViaYtdlp(track, trackIndex);
+                      }
+                    } else {
                       result = await downloadViaYtdlp(track, trackIndex);
                     }
-                  } else {
-                    result = await downloadViaYtdlp(track, trackIndex);
+
+                    if (!result.error && !result.skipped) {
+                      break; // Success!
+                    }
+
+                    if (result.error && attempts < maxAttempts && !dlState.cancelled) {
+                      console.warn(`[Retry] Track failed (attempt ${attempts}/${maxAttempts}): ${track.title}. Retrying in 3s...`);
+                      send({ status: `Retrying ${track.title} (${attempts}/${maxAttempts})...`, currentTrack: trackIndex + 1 });
+                      await new Promise(r => setTimeout(r, 3000));
+                    }
                   }
 
                   tracksProcessed++;
@@ -982,6 +1021,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
                   if (result.skipped) return;
                   if (result.error) {
+                    console.error(`[Download Error] Track failed completely: ${track.title} - ${result.error}`);
                     failedTracks.push({ ...track, error: result.error });
                     send({ trackError: result.error, currentTrack: trackIndex + 1, trackTitle: track.title, progress: overallProgress });
                   } else {
@@ -1128,7 +1168,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
         req.on('close', () => {
           dlState.cancelled = true
-          if (dlState.proc) { try { dlState.proc.kill() } catch { } }
+          for (const p of dlState.procs) {
+            try { 
+               if(process.platform==='win32') require('child_process').spawnSync('taskkill',['/pid',p.pid,'/f','/t']);
+               else p.kill('SIGKILL');
+            } catch { }
+          }
           spotifyActiveDownloads.delete(downloadId)
         })
 
@@ -1142,8 +1187,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           res.end()
         })
       })
-middlewares.use('/api/spotify-cancel',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const did=u.searchParams.get('downloadId');if(!did){res.statusCode=400;return res.end(JSON.stringify({error:'Missing downloadId'}))};const dl=spotifyActiveDownloads.get(did);if(dl){dl.cancelled=true;if(dl.proc){try{dl.proc.kill()}catch{}};spotifyActiveDownloads.delete(did)};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true}))})
 
+middlewares.use('/api/spotify-cancel',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const did=u.searchParams.get('downloadId');if(!did){res.statusCode=400;return res.end(JSON.stringify({error:'Missing downloadId'}))};const dl=spotifyActiveDownloads.get(did);if(dl){dl.cancelled=true;if(dl.procs){for(const p of dl.procs){try{if(process.platform==='win32'){require('child_process').spawnSync('taskkill',['/pid',p.pid,'/f','/t'])}else{p.kill('SIGKILL')}}catch{}}};if(dl.proc){try{dl.proc.kill()}catch{}};spotifyActiveDownloads.delete(did)};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true}))})
 }
 
 
