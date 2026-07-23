@@ -870,6 +870,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--audio-quality', '0',
                 '--geo-bypass',
                 '--no-playlist',
+                '--embed-metadata',
+                '--embed-thumbnail',
+                '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)',
                 '--extractor-retries', '5',
                 '--fragment-retries', '10',
                 '--retry-sleep', 'linear=1::2',
@@ -924,29 +927,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 }
                 if (!resolvedFilename) return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title });
                 
-                // Embed correct metadata manually using node-id3
-                try {
-                  const finalOutputPath = path.join(outputDir, resolvedFilename);
-                  const tags = {
-                    title: track.title,
-                    artist: track.artist,
-                    album: track.album || '',
-                    trackNumber: `${trackIndex + 1}`
-                  };
-                  if (track.coverUrl) {
-                    const imgResp = spawnSync('node', [
-                      '-e', 
-                      `require("https").get("${track.coverUrl}", r => { let d = []; r.on("data", c => d.push(c)); r.on("end", () => process.stdout.write(Buffer.concat(d))); })`
-                    ], { maxBuffer: 10 * 1024 * 1024 });
-                    if (imgResp.stdout && imgResp.stdout.length > 0) {
-                      tags.image = { mime: 'image/jpeg', type: { id: 3, name: 'front cover' }, imageBuffer: imgResp.stdout };
-                    }
-                  }
-                  NodeID3.write(tags, finalOutputPath);
-                } catch (e) {
-                  console.error('Error embedding metadata in yt-dlp fallback:', e.message);
-                }
-
                 resolve({ filename: resolvedFilename });
               });
               proc.on('error', err => resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title }));
