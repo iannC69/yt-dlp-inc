@@ -252,7 +252,7 @@ async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
 }
 
 // ── Smart Cache ──────────────────────────────────────────────────────────────
-const CACHE_FILE = path.join(__dirname, 'spotify_cache.json')
+const CACHE_FILE = path.join(process.env.MEDIADL_APP_DIR || __dirname, 'spotify_cache.json')
 let memCache = null
 
 function loadCache() {
