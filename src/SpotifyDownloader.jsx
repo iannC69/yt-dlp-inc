@@ -283,12 +283,24 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const [showHistory, setShowHistory] = useState(false);
   const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
   const [ambientColor, setAmbientColor] = useState('rgba(29, 185, 84, 0.12)'); // default green glow
+  const [hasCookies, setHasCookies] = useState(true);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem('sp_history');
       if (saved) setHistory(JSON.parse(saved));
     } catch { }
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/cookies/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.hasCookies !== undefined) {
+          setHasCookies(data.hasCookies);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const saveToHistory = (newUrl, title, thumbnail, artist, artistThumbnail) => {
@@ -663,6 +675,37 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       setDownloadState(prev => ({ ...prev, active: false, done: true, error: 'Connection lost. Please try again.' }));
     }
   };
+
+  const retryFailedTracks = () => {
+    if (!downloadState || !downloadState.failedTracksData || downloadState.failedTracksData.length === 0) return;
+    
+    const failedData = downloadState.failedTracksData;
+    
+    const retryInfo = {
+      type: 'album',
+      title: `Retry: ${downloadState.collectionTitle}`,
+      artist: 'Failed Tracks',
+      coverUrl: info?.coverUrl || null,
+      trackCount: failedData.length,
+      tracks: failedData.map((t, idx) => ({
+        trackNumber: idx + 1,
+        title: t.title,
+        artist: t.artist,
+        duration: t.duration || 0,
+        spotifyUrl: t.spotifyUrl || null
+      }))
+    };
+    
+    setInfo(retryInfo);
+    setUrl('bulk://meta');
+    setBulkMeta(JSON.stringify(retryInfo));
+    setDownloadState(null);
+    setTrackStatuses({});
+    
+    setSelectedTracks(new Set(retryInfo.tracks.map(t => t.trackNumber)));
+    setShowDownloadModal(true);
+  };
+
   const handleDownload = async () => {
     if (!info || downloadState?.active) return;
     if (esRef.current) esRef.current.close();
@@ -961,7 +1004,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
             </div>
           </motion.div>
 
-          {/* â”€â”€ URL INPUT CARD â”€â”€ */}
+          {/* ── URL INPUT CARD ── */}
           <motion.div className="sp-input-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
             <div className="sp-input-wrapper">
               <AnimatePresence>
@@ -1392,6 +1435,11 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                         </p>
                       )}
                       <div className="sp-result-actions">
+                        {downloadState.failedTracks > 0 && downloadState.failedTracksData && (
+                          <button className="sp-retry-failed-btn" onClick={retryFailedTracks} style={{ background: 'var(--sp-green)', color: '#000' }}>
+                            <RefreshCw size={14} /> Retry Failed ({downloadState.failedTracks})
+                          </button>
+                        )}
                         {downloadState.downloadUrl && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
                           <a className="sp-download-link" href={downloadState.downloadUrl} download={downloadState.finalFilename}>
                             <Download size={14} /> Save File

@@ -1201,3 +1201,6 @@
 .update-toast-btn:hover { filter: brightness(1.1); }
 .update-toast-close { background: none; border: none; color: inherit; opacity: 0.5; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: 0.2s; }
 .update-toast-close:hover { opacity: 1; }
+
+.settings-scroll-content { overflow-y: auto; flex: 1; padding-bottom: 80px; }
+

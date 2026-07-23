@@ -25,7 +25,8 @@ export function getConfig() {
         audioFormat: (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
         audioQuality: (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioQuality') ? urlObj.searchParams.get('audioQuality') : cfg.audioQuality) || '320k',
         spotifyClientId: cfg.spotifyClientId || '',
-        spotifyClientSecret: cfg.spotifyClientSecret || ''
+        spotifyClientSecret: cfg.spotifyClientSecret || '',
+        youtubePoToken: cfg.youtubePoToken || ''
       }
     } catch (e) { }
   }
@@ -37,7 +38,8 @@ export function getConfig() {
     audioFormat: 'mp3', 
     audioQuality: '320k',
     spotifyClientId: '',
-    spotifyClientSecret: ''
+    spotifyClientSecret: '',
+    youtubePoToken: ''
   }
 }
 
@@ -106,7 +108,16 @@ export function checkDependencies() {
     proc.stdout.on('data', d => output += d);
     proc.on('close', (code) => {
       if (code === 0) {
-        log('SUCCESS', 'system', `${tool} found: ${output.split('\n')[0].trim()}`);
+        const toolPath = output.split('\n')[0].trim();
+        log('SUCCESS', 'system', `${tool} found: ${toolPath}`);
+        if (tool === 'yt-dlp') {
+           log('INFO', 'system', 'Updating yt-dlp in background...');
+           const updateProc = spawn(toolPath, ['-U']);
+           updateProc.on('close', (uCode) => {
+             if (uCode === 0) log('SUCCESS', 'system', 'yt-dlp updated successfully.');
+             else log('ERROR', 'system', 'yt-dlp update check failed or already up to date.');
+           });
+        }
       } else {
         log('ERROR', 'system', `${tool} NOT FOUND — install it before downloading`);
       }
@@ -143,6 +154,49 @@ export function configureNewBackend(server) {
       return;
     }
     next();
+  });
+
+  server.middlewares.use('/api/cookies/status', (req, res, next) => {
+    const urlObj = new URL(req.url, `http://${req.headers.host}`)
+    if (urlObj.pathname !== '/') return next()
+    const hasCookies = fs.existsSync(path.resolve(ROOT_DIR, 'cookies.txt'));
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ hasCookies }));
+  });
+
+  // Cookies import API
+  server.middlewares.use('/api/cookies/import', (req, res, next) => {
+    const urlObj = new URL(req.url, `http://${req.headers.host}`)
+    if (urlObj.pathname !== '/' || req.method !== 'POST') return next()
+    
+    try {
+      const cookieFile = path.resolve(ROOT_DIR, 'cookies.txt');
+      const binPath = path.join(bundledBinDir, 'yt-dlp.exe');
+      
+      const p = spawn(binPath, ['--cookies-from-browser', 'chrome', '--cookies', cookieFile, 'about:blank', '--skip-download']);
+      
+      let stderr = '';
+      p.stderr.on('data', d => stderr += d);
+      
+      p.on('close', code => {
+        if (code === 0 && fs.existsSync(cookieFile)) {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true }));
+        } else {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ success: false, error: stderr || 'Failed to extract cookies.' }));
+        }
+      });
+      
+      p.on('error', err => {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      });
+      
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
   });
 
   // Logging API
@@ -385,15 +439,23 @@ export function configureNewBackend(server) {
            log('INFO', 'spotdl', `Downloading via spotdl: ${track.artist} - ${track.title}`);
            downloadedOk = await new Promise(resolve => {
              const outputTemplate = path.join(trackDir, `{list-position} - {artist} - {title}.{output-ext}`);
+             const cookiesPath = path.resolve(ROOT_DIR, 'cookies.txt');
+             const hasCookies = fs.existsSync(cookiesPath);
              const args = [
                'download', track.spotifyUrl,
                '--output', outputTemplate,
+               '--audio-provider', 'youtube-music',
+               '--lyrics-provider', 'genius',
                '--format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
                '--bitrate', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioQuality') ? urlObj.searchParams.get('audioQuality') : cfg.audioQuality) || '320k',
-               '--threads', '1',
-               '--ffmpeg', getFfmpegDir(),
-               '--yt-dlp-args', ` --js-runtimes="node:${process.execPath}" -N ${performanceProfile?.fragments || 4} --extractor-args youtube:player_client=android,web`
+               '--threads', '4',
+               '--overwrite', 'skip',
+               '--geo-bypass',
+               '--ffmpeg', getFfmpegDir()
              ];
+             if (hasCookies) {
+               args.push('--cookie-file', cookiesPath);
+             }
              const spotdlExecArgs = isWin ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotDlPath, ...args] : args;
               const proc = spawn(spotdlCmd, spotdlExecArgs, { 
                 windowsHide: true,
@@ -436,15 +498,45 @@ export function configureNewBackend(server) {
               : (track.url && !track.url.startsWith('ytsearch') && !track.url.startsWith('http') ? `ytsearch1:${track.url}` : track.url);
               
            const outputName = `${String(i + 1).padStart(4, '0')} - ${safeArtist} - ${safeTitle}.%(ext)s`;
+           const cookiesPath = path.resolve(ROOT_DIR, 'cookies.txt');
+           const hasCookies = fs.existsSync(cookiesPath);
            downloadedOk = await new Promise(resolve => {
+             const poToken = cfg.youtubePoToken || '';
+             const extractorArgs = poToken 
+                ? `youtube:player_client=android,web;po_token=${poToken}` 
+                : 'youtube:player_client=android,web';
+
              const args = [
                 query,
-                '-x', '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
+                '--format', 'bestaudio[ext=m4a]/bestaudio/best',
+                '--extract-audio',
+                '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
                 '--audio-quality', '0',
-                '-o', path.join(trackDir, outputName),
+                '--embed-thumbnail',
+                '--embed-metadata',
+                '--add-metadata',
+                '--geo-bypass',
                 '--no-playlist',
+                '--extractor-retries', '5',
+                '--fragment-retries', '10',
+                '--retry-sleep', 'linear=1::2',
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                '--extractor-args', extractorArgs,
+                '--js-runtimes', `node:${process.execPath}`,
+                '-o', path.join(trackDir, outputName),
                 '--ffmpeg-location', getFfmpegDir()
              ];
+             if (hasCookies) {
+               args.push('--cookies', cookiesPath);
+             }
+             const isWin = process.platform === 'win32';
+             try {
+                const ariaCheck = require('child_process').spawnSync(isWin ? 'where' : 'which', ['aria2c']);
+                if (ariaCheck.status === 0) {
+                   args.push('--downloader', 'aria2c', '--downloader-args', 'aria2c:-x 16 -s 16 -k 1M');
+                }
+             } catch (e) {}
              const proc = spawn(ytDlpPath, args, { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
              activeProcs.add(proc);
              dlState.procs.add(proc);

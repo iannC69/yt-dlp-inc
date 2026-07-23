@@ -127,6 +127,7 @@ export default function App() {
   const [ytSponsorBlock, setYtSponsorBlock] = useState(() => storage.getItem('yt_sponsorblock') === 'true');
   const [ytFilenameTemplate, setYtFilenameTemplate] = useState(() => storage.getItem('yt_filename_template') || '%(title)s');
   const [ytWriteThumbnail, setYtWriteThumbnail] = useState(() => storage.getItem('yt_write_thumbnail') === 'true');
+  const [youtubePoToken, setYoutubePoToken] = useState('');
 
   // Spotify extra settings
   const [spotDlLyrics, setSpotDlLyrics] = useState(() => storage.getItem('spotdl_lyrics') === 'true');
@@ -207,6 +208,7 @@ export default function App() {
     fetch('/api/config').then(r => r.json()).then(data => {
       if (data.spotifyThreshold !== undefined) setSpotifyThreshold(data.spotifyThreshold);
       if (data.ytDlpFallbackEnabled !== undefined) setYtDlpFallbackEnabled(data.ytDlpFallbackEnabled);
+      if (data.youtubePoToken !== undefined) setYoutubePoToken(data.youtubePoToken);
     }).catch(() => { });
 
     const savedTheme = storage.getItem('global_theme');
@@ -889,6 +891,36 @@ export default function App() {
                           SponsorBlock — mark/remove sponsor segments
                         </label>
                         <p className="settings-hint">Removes sponsor, intro, and self-promo segments from downloaded videos.</p>
+                      </div>
+                      <div className="settings-field">
+                        <label className="settings-label-row">YouTube PO Token (optional)</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={youtubePoToken}
+                          onChange={e => {
+                            setYoutubePoToken(e.target.value);
+                            saveConfigToBackend({ youtubePoToken: e.target.value });
+                          }}
+                          placeholder="PO_TOKEN"
+                        />
+                        <p className="settings-hint">Passes the Proof of Origin token to bypass bot detection on some connections.</p>
+                      </div>
+                      <div className="settings-field" style={{ marginTop: '20px' }}>
+                        <label className="settings-label-row">Browser Cookies</label>
+                        <button className="settings-save-btn" onClick={async () => {
+                          try {
+                            const res = await fetch('/api/cookies/import', { method: 'POST' });
+                            const data = await res.json();
+                            if (data.success) alert('Cookies imported successfully!');
+                            else alert('Failed to import cookies: ' + data.error);
+                          } catch (e) {
+                            alert('Network error while importing cookies.');
+                          }
+                        }} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
+                          Import cookies from Chrome
+                        </button>
+                        <p className="settings-hint">Imports YouTube cookies from Chrome to help bypass restrictions.</p>
                       </div>
                     </div>
                   )}
