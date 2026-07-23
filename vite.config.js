@@ -2246,7 +2246,7 @@ function youtubeDownloaderPlugin() {
           let tracksProcessed = 0;
           const isNativePlaylist = urlObj.searchParams.get('nativePlaylist') === 'true';
 
-          if (isNativePlaylist && isCollection) {
+          if (false /* disabled due to spotdl playlist parsing bug */) {
             // Hoist spotdl args so retry pass can reuse them
             const spotdlPath = path.resolve(__dirname, 'bin', process.platform === 'win32' ? 'spotdl.exe' : 'spotdl');
             const isWin = process.platform === 'win32';
@@ -2256,7 +2256,6 @@ function youtubeDownloaderPlugin() {
               '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
               '--format', 'mp3',
               '--threads', String(aiConfig.concurrentTracks || 4),
-              '--preload',
               '--audio', 'youtube',
               '--yt-dlp-args', ` --js-runtimes="node:${process.execPath}"`,
               '--add-unavailable'

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, session } = require('electron');
 const path = require('path');
 
 const PORT = 5174;
@@ -17,6 +17,24 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
     }
   });
+
+  // Set Content-Security-Policy to suppress Electron security warning
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' http://127.0.0.1:* http://localhost:*;" +
+          "script-src 'self' 'unsafe-inline';" +
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;" +
+          "font-src 'self' https://fonts.gstatic.com data:;" +
+          "img-src 'self' data: blob: https: http://127.0.0.1:*;" +
+          "connect-src 'self' http://127.0.0.1:* http://localhost:* https://api.spotify.com https://open.spotify.com https://accounts.spotify.com;"
+        ]
+      }
+    });
+  });
+
   mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);

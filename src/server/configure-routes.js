@@ -389,7 +389,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           let tracksProcessed = 0;
           const isNativePlaylist = urlObj.searchParams.get('nativePlaylist') === 'true';
 
-          if (isNativePlaylist && isCollection) {
+          if (false /* disabled due to spotdl playlist parsing bug */) {
             // Hoist spotdl args so retry pass can reuse them
             const spotdlPath = spotdlBin;
             const isWin = process.platform === 'win32';
@@ -399,7 +399,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
               '--format', 'mp3',
               '--threads', String(aiConfig.concurrentTracks || 4),
-              '--preload',
               '--audio', 'youtube',
               '--yt-dlp-args', ` --js-runtimes="node:${process.execPath}" -N ${aiConfig.fragments || 4} --extractor-args youtube:player_client=android,web`,
               '--add-unavailable'
@@ -552,12 +551,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
                     const durationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
 
-                    // 4 search strategies — try each until one succeeds
+                    // Search strategies — NO "official audio" suffix (that returns clean/radio versions)
+                    // We rely on duration matching to pick the explicit studio version
                     const searchStrategies = [
-                      `ytsearch5:${track.artist} ${track.title}`,
-                      `ytsearch5:"${track.title}" "${track.artist}"`,
-                      `ytsearch5:${track.title} ${track.artist} official audio`,
-                      `ytsearch8:${track.title} official audio`,
+                      `ytsearch10:${track.artist} ${track.title}`,
+                      `ytsearch10:"${track.title}" "${track.artist}"`,
+                      `ytsearch10:${track.title} ${track.artist} audio`,
+                      `ytsearch15:${track.title} ${track.artist}`,
                     ];
 
                     let rescued = false;
@@ -569,13 +569,15 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                         progress: 88 + Math.round((mi / missingTracks.length) * 7)
                       });
 
+                      // Tight ±20s duration window to avoid radio edits or live versions
                       const matchFilter = durationSec > 0
-                        ? `!is_live & duration>${Math.max(30, durationSec - 25)} & duration<${durationSec + 45}`
+                        ? `!is_live & duration>${Math.max(30, durationSec - 20)} & duration<${durationSec + 20}`
                         : '!is_live & duration>30';
 
                       const rescueArgs = [
                         query,
                         '--match-filter', matchFilter,
+                        '--format', 'bestaudio/best',
                         '--extractor-args', 'youtube:player_client=android,web',
                         '--js-runtimes', `node:${process.execPath}`,
                         '-x', '--audio-format', 'mp3',
@@ -663,31 +665,196 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
 
           } else {
-            // Cap Spotify concurrent downloads (ytsearch) to prevent 429 Too Many Requests
+            // ── Hybrid download engine ──────────────────────────────────────────────
+            // Tracks 1-100   → spotdl per-track (audio-only, Spotify/YTM source)
+            // Tracks 101+    → yt-dlp with --format bestaudio (pure audio, never video)
+            // Cover art      → always from track.coverUrl (Spotify album art), written via NodeID3
+
+            const SPOTDL_LIMIT = 100;
+            const isWin = process.platform === 'win32';
             const safeLimit = Math.min(limit, 3);
 
+            // ── Helper: fetch cover buffer from Spotify album art ──────────────────
+            const fetchCoverBuffer = async (coverUrl) => {
+              if (!coverUrl) return null;
+              try {
+                return await new Promise((resolveImg, rejectImg) => {
+                  const fetchImage = (url) => {
+                    https.get(url, (resImg) => {
+                      if (resImg.statusCode >= 300 && resImg.statusCode < 400 && resImg.headers.location) {
+                        fetchImage(resImg.headers.location);
+                      } else if (resImg.statusCode === 200) {
+                        const chunks = [];
+                        resImg.on('data', chunk => chunks.push(chunk));
+                        resImg.on('end', () => resolveImg(Buffer.concat(chunks)));
+                      } else {
+                        rejectImg(new Error(`Status ${resImg.statusCode}`));
+                      }
+                    }).on('error', rejectImg);
+                  };
+                  fetchImage(coverUrl);
+                });
+              } catch { return null; }
+            };
+
+            // ── Helper: write ID3 tags (FULL REWRITE — guarantees Spotify album art replaces anything spotdl embedded) ──
+            const writeTrackTags = (filePath, track, coverBuffer) => {
+              try {
+                // Read existing tags first so we don’t lose anything we didn’t set
+                const existing = NodeID3.read(filePath) || {};
+                const tags = {
+                  ...existing,
+                  title: track.title,
+                  artist: track.allArtists || track.artist,
+                  album: track.album,
+                  year: track.year ? String(track.year) : existing.year,
+                  trackNumber: `${track.trackNumber}/${track.totalTracks}`
+                };
+                if (coverBuffer) {
+                  // Overwrite with the track’s own album art from Spotify
+                  tags.image = {
+                    mime: 'image/jpeg',
+                    type: { id: 3, name: 'Front Cover' },
+                    description: 'Cover',
+                    imageBuffer: coverBuffer
+                  };
+                } else {
+                  // No cover fetched — clear any wrong cover spotdl may have embedded
+                  delete tags.image;
+                }
+                // NodeID3.write = full tag block rewrite, NOT just update specific frames
+                NodeID3.write(tags, filePath);
+              } catch (err) {
+                console.error(`[tags] Error writing tags for ${track.title}:`, err.message);
+              }
+            };
+
+            // ── Helper: download one track via spotdl (per-track, not playlist) ──
+            const downloadViaSpotdl = (track, trackIndex) => new Promise((resolve) => {
+              if (dlState.cancelled) return resolve({ skipped: true });
+              const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
+              const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
+              const spotdlCmd = isWin ? 'cmd.exe' : spotdlBin;
+              const baseArgs = [
+                track.spotifyUrl,
+                '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
+                '--format', 'mp3',
+                '--audio', 'youtube',
+                '--yt-dlp-args', `--js-runtimes="node:${process.execPath}" --format bestaudio/best --extractor-args youtube:player_client=android,web`,
+                '--ffmpeg', ffmpegBin,
+                '--add-unavailable'
+              ];
+              const spotdlArgs = isWin
+                ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotdlBin, ...baseArgs]
+                : baseArgs;
+              const proc = spawn(spotdlCmd, spotdlArgs, {
+                windowsHide: true,
+                env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
+              });
+              dlState.proc = proc;
+              let stdoutBuf = '';
+              proc.stdout.on('data', c => {
+                const text = c.toString();
+                stdoutBuf += text;
+                const pct = text.match(/(\d+)%/);
+                if (pct) send({ trackProgress: Math.min(parseInt(pct[1]), 95), currentTrack: trackIndex + 1 });
+              });
+              proc.stderr.on('data', () => {});
+              proc.on('close', () => {
+                if (dlState.cancelled) return resolve({ skipped: true });
+                const files = fs.existsSync(outputDir) ? fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3')) : [];
+                const normTitle = safeTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const matched = files.find(f => f.replace(/\.mp3$/, '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(normTitle));
+                if (matched) return resolve({ filename: matched });
+                return resolve({ error: `spotdl could not download: ${track.title}`, trackTitle: track.title });
+              });
+              proc.on('error', err => resolve({ error: `spotdl spawn error: ${err.message}`, trackTitle: track.title }));
+            });
+
+            // ── Helper: download one track via yt-dlp with bestaudio ───────────────
+            const downloadViaYtdlp = (track, trackIndex) => new Promise((resolve) => {
+              if (dlState.cancelled) return resolve({ skipped: true });
+              const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
+              const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
+              const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
+              // Build search query WITHOUT 'official audio' — that suffix lands on clean/radio edits.
+              // Instead we use 10 results and pick the one matching the track's Spotify duration.
+              const searchQuery = `ytsearch10:${track.artist} ${track.title}`;
+              // Duration filter: Spotify gives us the exact duration in ms
+              // We allow ±20 seconds to account for intro/outro silence differences
+              const durationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
+              const durationFilter = durationSec > 0
+                ? `!is_live & duration>${Math.max(30, durationSec - 20)} & duration<${durationSec + 20}`
+                : '!is_live & duration>30';
+              const ytDlpArgs = [
+                searchQuery,
+                '--match-filter', durationFilter,
+                // STRICT audio-only — bestaudio never pulls a video stream
+                '--format', 'bestaudio/best',
+                '--extractor-args', 'youtube:player_client=android,web',
+                '--js-runtimes', `node:${process.execPath}`,
+                '-x', '--audio-format', 'mp3',
+                '--audio-quality', '0',
+                '--ffmpeg-location', ffmpegDir,
+                '-o', path.join(outputDir, finalOutputName),
+                '--no-playlist',
+                '--playlist-items', '1'
+              ];
+              const proc = spawn(binPath, ytDlpArgs, {
+                windowsHide: true,
+                env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
+              });
+              dlState.proc = proc;
+              let stderr = '';
+              proc.stdout.on('data', c => {
+                const text = c.toString();
+                const pctMatch = text.match(/\[download\]\s+(\d+\.?\d*)%/);
+                if (pctMatch) send({ trackProgress: Math.min(parseFloat(pctMatch[1]), 95), currentTrack: trackIndex + 1, status: `Downloading: ${track.title}` });
+              });
+              proc.stderr.on('data', c => { stderr += c.toString(); });
+              proc.on('close', code => {
+                if (dlState.cancelled) return resolve({ skipped: true });
+                if (code !== 0) return resolve({ error: `yt-dlp failed (${code}): ${stderr.slice(-300)}`, trackTitle: track.title });
+                let resolvedFilename = '';
+                if (fs.existsSync(path.join(outputDir, finalOutputName))) {
+                  resolvedFilename = finalOutputName;
+                } else {
+                  try {
+                    const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'));
+                    const matched = files.find(f => f.includes(safeTitle) || f.includes(safeArtist));
+                    resolvedFilename = matched || files[files.length - 1] || '';
+                  } catch { }
+                }
+                if (!resolvedFilename) return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title });
+                resolve({ filename: resolvedFilename });
+              });
+              proc.on('error', err => resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title }));
+            });
+
+            // ── Main download loop ────────────────────────────────────────────────
             for (let i = 0; i < tracks.length; i++) {
               if (dlState.cancelled) {
                 if (collectionDir) try { fs.rmSync(collectionDir, { recursive: true, force: true }) } catch { }
-                send({ done: true, error: 'Download cancelled by user.' })
-                res.end()
-                return
+                send({ done: true, error: 'Download cancelled by user.' });
+                res.end();
+                return;
               }
 
               while (activePromises.size >= safeLimit) {
                 await Promise.race(activePromises);
               }
 
-              // Stagger spawns to avoid YouTube search rate limits
-              if (i > 0) await new Promise(r => setTimeout(r, 1200));
+              // Stagger to avoid YouTube rate limits
+              if (i > 0) await new Promise(r => setTimeout(r, 800));
               if (dlState.cancelled) break;
 
               const track = tracks[i];
               const trackIndex = i;
+              const useSpotdl = (trackIndex < SPOTDL_LIMIT) && !!track.spotifyUrl;
 
               const downloadTask = (async () => {
                 send({
-                  status: `Downloading: ${track.title} — ${track.artist}`,
+                  status: `Downloading: ${track.title} — ${track.artist} ${useSpotdl ? '(Spotify)' : '(YouTube Audio)'}`,
                   progress: Math.round(5 + (tracksProcessed / totalTracks) * 85),
                   currentTrack: trackIndex + 1,
                   totalTracks,
@@ -697,144 +864,17 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 });
 
                 try {
-                  const result = await new Promise((resolve) => {
-                    if (dlState.cancelled) return resolve({ skipped: true })
-
-                    const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
-                    const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
-                    const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
-
-                    // Build a YouTube-focused search query. Prefer ISRC/Spotify track URL
-                    // so we get the original (uncensored) version, not a YouTube Music
-                    // auto-generated or censored upload.
-                    const isrc = track.isrc || '';
-                    const searchQuery = isrc
-                      ? `ytsearch3:${track.artist} ${track.title}` // will rank-match ISRC below
-                      : `ytsearch5:${track.artist} ${track.title}`;
-
-                    const ytDlpArgs = [
-                      searchQuery,
-                      '--match-filter',
-                      // Prefer non-auto-generated YouTube Music channels; pick the first non-music video
-                      '!is_live & duration>60',
-                      '--extractor-args', 'youtube:player_client=android,web',
-                      '--js-runtimes', `node:${process.execPath}`,
-                      '-x', '--audio-format', 'mp3',
-                      '--audio-quality', '0',
-                      '-o', path.join(outputDir, finalOutputName),
-                      '--no-playlist',
-                      '--playlist-items', '1'
-                    ];
-
-                    const ytDlpPath = binPath;
-                    const proc = spawn(ytDlpPath, ytDlpArgs, {
-                      windowsHide: true,
-                      env: {
-                        ...process.env,
-                        PYTHONIOENCODING: 'utf-8',
-                        PATH: `${binDir}${path.delimiter}${process.env.PATH}`
-                      }
-                    })
-                    // Store only the latest proc for cancellation
-                    dlState.proc = proc;
-                    let stderr = '';
-                    let startTime = Date.now();
-
-                    proc.stdout.on('data', c => {
-                      const text = c.toString();
-                      stderr += text; // Capture stdout in case of error
-                      const pctMatch = text.match(/\[download\]\s+(\d+\.?\d*)%/);
-                      if (pctMatch) {
-                        send({
-                          trackProgress: Math.min(parseFloat(pctMatch[1]), 95),
-                          status: `Downloading: ${track.title}`,
-                          currentTrack: trackIndex + 1,
-                        });
-                      }
-                    });
-                    proc.stderr.on('data', c => { stderr += c.toString() });
-
-                    proc.on('close', async code => {
-                      if (dlState.cancelled) return resolve({ skipped: true })
-                      if (code !== 0) {
-                        return resolve({ error: `yt-dlp failed with code ${code}: ${stderr}`, trackTitle: track.title })
-                      }
-
-                      let resolvedFilename = ''
-                      if (fs.existsSync(path.join(outputDir, finalOutputName))) {
-                        resolvedFilename = finalOutputName;
-                      } else {
-                        // Fallback scan without mtime restriction in case yt-dlp did something weird
-                        try {
-                          const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'))
-                          if (files.length > 0) {
-                            // Sort by creation time just in case, but just grab the file that includes the title
-                            const matched = files.find(f => f.includes(safeTitle) || f.includes(safeArtist));
-                            if (matched) resolvedFilename = matched;
-                            else resolvedFilename = files[files.length - 1]; // last resort
-                          }
-                        } catch { }
-                      }
-
-                      if (!resolvedFilename) {
-                        return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title })
-                      }
-
-                      const finalFilename = resolvedFilename;
-
-                      let coverBuffer = null
-                      if (track.coverUrl) {
-                        try {
-                          coverBuffer = await new Promise((resolveImg, rejectImg) => {
-                            const fetchImage = (url) => {
-                              https.get(url, (resImg) => {
-                                if (resImg.statusCode >= 300 && resImg.statusCode < 400 && resImg.headers.location) {
-                                  fetchImage(resImg.headers.location)
-                                } else if (resImg.statusCode === 200) {
-                                  const chunks = []
-                                  resImg.on('data', chunk => chunks.push(chunk))
-                                  resImg.on('end', () => resolveImg(Buffer.concat(chunks)))
-                                } else {
-                                  rejectImg(new Error(`Status ${resImg.statusCode}`))
-                                }
-                              }).on('error', rejectImg)
-                            }
-                            fetchImage(track.coverUrl)
-                          })
-                        } catch (err) {
-                          console.error(`Failed to fetch cover art for ${track.title}:`, err.message)
-                        }
-                      }
-
-                      try {
-                        const tags = {
-                          title: track.title,
-                          artist: track.allArtists,
-                          album: track.album,
-                          year: track.year,
-                          trackNumber: `${track.trackNumber}/${track.totalTracks}`
-                        }
-                        if (coverBuffer) {
-                          tags.image = {
-                            mime: "image/jpeg",
-                            type: { id: 3, name: "Front Cover" },
-                            description: "Cover",
-                            imageBuffer: coverBuffer
-                          }
-                        }
-                        const filePath = path.resolve(outputDir, finalFilename)
-                        const success = NodeID3.update(tags, filePath)
-                        if (!success) {
-                          console.warn(`Failed to write ID3 tags for ${track.title}`)
-                        }
-                      } catch (err) {
-                        console.error(`Error writing tags for ${track.title}:`, err.message)
-                      }
-
-                      resolve({ filename: finalFilename, trackTitle: track.title })
-                    });
-                    proc.on('error', (err) => resolve({ error: `spotdl spawn failed: ${err.message}. Make sure spotdl is installed.`, trackTitle: track.title }))
-                  });
+                  let result;
+                  if (useSpotdl) {
+                    result = await downloadViaSpotdl(track, trackIndex);
+                    // If spotdl fails, fall back to yt-dlp
+                    if (result.error) {
+                      console.warn(`[spotdl] Falling back to yt-dlp for: ${track.title} — ${result.error}`);
+                      result = await downloadViaYtdlp(track, trackIndex);
+                    }
+                  } else {
+                    result = await downloadViaYtdlp(track, trackIndex);
+                  }
 
                   tracksProcessed++;
                   const overallProgress = Math.round(5 + (tracksProcessed / totalTracks) * 85);
@@ -844,6 +884,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     failedTracks.push({ ...track, error: result.error });
                     send({ trackError: result.error, currentTrack: trackIndex + 1, trackTitle: track.title, progress: overallProgress });
                   } else {
+                    // Always overwrite embedded art with the track's own Spotify album cover
+                    const filePath = path.resolve(outputDir, result.filename);
+                    const coverBuffer = await fetchCoverBuffer(track.coverUrl);
+                    writeTrackTags(filePath, track, coverBuffer);
+
                     completedTracks.push(result.filename);
                     send({
                       trackDone: true,
