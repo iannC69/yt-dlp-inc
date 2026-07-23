@@ -9,27 +9,41 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 let tokenCache = null
 
 export async function getSpotifyToken(clientId, clientSecret) {
-  if (tokenCache && Date.now() < tokenCache.expiresAt) {
+  if (tokenCache && tokenCache.accessToken && tokenCache.expiresAt > Date.now()) {
     return tokenCache.accessToken
   }
-  if (!clientId || !clientSecret) {
-    throw new Error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET from request headers")
+
+  const useAnonymous = async () => {
+    console.log('[spotify-api] Falling back to anonymous token')
+    const anonToken = await getAnonymousSpotifyToken()
+    if (!anonToken) throw new Error("Could not fetch anonymous token")
+    tokenCache = {
+      accessToken: anonToken,
+      expiresAt: Date.now() + 3500 * 1000
+    }
+    return anonToken
   }
+
+  if (!clientId || !clientSecret) {
+    return useAnonymous()
+  }
+  
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
   const data = 'grant_type=client_credentials'
+
   return new Promise((resolve, reject) => {
     const req = https.request('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(data)
+        'Content-Length': data.length
       }
     }, (res) => {
       let body = ''
-      res.on('data', chunk => body += chunk.toString())
+      res.on('data', chunk => body += chunk)
       res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (res.statusCode === 200) {
           try {
             const json = JSON.parse(body)
             if (json.access_token) {
@@ -37,19 +51,19 @@ export async function getSpotifyToken(clientId, clientSecret) {
                 accessToken: json.access_token,
                 expiresAt: Date.now() + (json.expires_in - 60) * 1000
               }
-              resolve(tokenCache.accessToken)
+              resolve(json.access_token)
             } else {
-              reject(new Error("Failed to get Spotify token: No access_token in response"))
+              resolve(useAnonymous())
             }
           } catch (e) {
-            reject(new Error("Failed to parse Spotify token response"))
+            resolve(useAnonymous())
           }
         } else {
-          reject(new Error(`Spotify auth failed with status ${res.statusCode}: ${body}`))
+          resolve(useAnonymous())
         }
       })
     })
-    req.on('error', reject)
+    req.on('error', () => resolve(useAnonymous()))
     req.write(data)
     req.end()
   })
@@ -264,7 +278,8 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
 
   const cacheKey = `${match[1]}_${match[2]}`
   const cache = loadCache()
-  if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < 48 * 60 * 60 * 1000) {
+  // Force bust cache once to clear corrupted embed data
+  if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < -1) {
     const cachedData = cache[cacheKey].data;
     // Bust cache if we don't have artistThumbnail (added recently)
     if (cachedData && (cachedData.type === 'track' || cachedData.type === 'album') && cachedData.artistThumbnail === undefined) {

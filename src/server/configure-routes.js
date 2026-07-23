@@ -751,13 +751,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const baseArgs = [
                 track.spotifyUrl,
                 '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
-                '--audio-provider', provider,
-                '--lyrics-provider', 'genius',
+                '--audio', provider,
+                '--lyrics', 'genius',
                 '--format', 'mp3',
                 '--bitrate', '320k',
                 '--threads', '4',
                 '--overwrite', 'skip',
-                '--geo-bypass',
                 '--ffmpeg', ffmpegBin,
                 '--add-unavailable'
               ];
@@ -783,21 +782,30 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 if (pct) send({ trackProgress: Math.min(parseInt(pct[1]), 95), currentTrack: trackIndex + 1 });
               });
               proc.stderr.on('data', c => { stderrBuf += c.toString(); });
-              proc.on('close', async () => {
+              proc.on('close', async (code) => {
                 if (dlState.cancelled) return resolve({ skipped: true });
-                const files = fs.existsSync(outputDir) ? fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3')) : [];
-                // SpotDL might sanitize the filename differently, so grab any MP3 modified in the last 30 seconds
-                const recentFile = files
-                  .map(f => ({ name: f, time: fs.statSync(path.join(outputDir, f)).mtimeMs }))
-                  .sort((a, b) => b.time - a.time)[0];
-                
-                if (recentFile && (Date.now() - recentFile.time < 30000)) {
-                  return resolve({ filename: recentFile.name });
-                }
 
                 const errLog = `spotdl could not download: ${track.title} (provider: ${provider})`;
-                const isRateLimited = stdoutBuf.includes('429') || stderrBuf.includes('429') || stdoutBuf.includes('403') || stderrBuf.includes('403');
                 const isNotFound = stdoutBuf.toLowerCase().includes('not found') || stderrBuf.toLowerCase().includes('not found') || stdoutBuf.toLowerCase().includes('denied');
+
+                const mDl = stdoutBuf.match(/Downloaded "([^"]+)"/);
+                if (mDl && mDl[1]) {
+                  return resolve({ filename: path.basename(mDl[1]) });
+                }
+                
+                // fallback to searching for a file that includes the title
+                const files = fs.existsSync(outputDir) ? fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3')) : [];
+                const cleanTitle = track.title.toLowerCase().replace(/[^\w\s]/g, '').trim();
+                const matchedFile = files.find(f => f.toLowerCase().replace(/[^\w\s]/g, '').includes(cleanTitle));
+                if (matchedFile) {
+                  return resolve({ filename: matchedFile });
+                }
+                
+                if (code !== 0) {
+                  console.error(`[spotdl] Failed with code ${code}. stdout: ${stdoutBuf.slice(-300)} stderr: ${stderrBuf.slice(-300)}`);
+                }
+
+                const isRateLimited = stdoutBuf.includes('429') || stderrBuf.includes('429') || stdoutBuf.includes('403') || stderrBuf.includes('403');
 
                 if (isRateLimited) {
                   const delay = retryCount === 0 ? 2 : (retryCount === 1 ? 5 : 10);
