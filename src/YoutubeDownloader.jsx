@@ -177,6 +177,10 @@ const YoutubeDownloader = ({ activeJobId }) => {
   const [downloadScope, setDownloadScope] = useState('single');
   const [downloadStatus, setDownloadStatus] = useState('');
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [prependNumbers, setPrependNumbers] = useState(() => {
+    const saved = localStorage.getItem('ytdl_prepend_numbers');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
   const [pendingScope, setPendingScope] = useState('single');
   const [currentJobId, setCurrentJobId] = useState(null);
   const [clipboardToast, setClipboardToast] = useState(false);
@@ -515,10 +519,12 @@ const YoutubeDownloader = ({ activeJobId }) => {
             scope,
             title: info.title,
             thumbnail: info.thumbnail,
-            formatStr: computedFormat || downloadFormat,
-            scheduleTime: scheduleTime || null,
+            formatStr: computedFormat,
+            jobId: Date.now().toString(),
+            customPath: localStorage.getItem('customPath') || '',
             preset: localStorage.getItem('download_preset') || 'AUTO',
-            hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE'
+            hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE',
+            prependNumbers
           })
         });
 
@@ -542,7 +548,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
           jobId: Date.now().toString(),
           preset: localStorage.getItem('download_preset') || 'AUTO',
           hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE',
-          customPath: localStorage.getItem('customPath') || ''
+          customPath: localStorage.getItem('customPath') || '',
+          prependNumbers: prependNumbers.toString()
         });
         if (scope === 'playlist') {
           queryParams.append('selectedItems', Array.from(selectedTracks).sort((a, b) => a - b).join(','));
@@ -1041,6 +1048,23 @@ const YoutubeDownloader = ({ activeJobId }) => {
                             ))
                           )}
                         </div>
+
+                        {pendingScope === 'playlist' && (
+                          <div className="ytdl-setting-group" style={{ marginTop: '1rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#cbd5e1', fontSize: '0.9rem' }}>
+                              <input
+                                type="checkbox"
+                                checked={prependNumbers}
+                                onChange={(e) => {
+                                  setPrependNumbers(e.target.checked);
+                                  localStorage.setItem('ytdl_prepend_numbers', JSON.stringify(e.target.checked));
+                                }}
+                                style={{ accentColor: 'var(--theme-primary)', width: '16px', height: '16px' }}
+                              />
+                              Adaugă numărul piesei în numele fișierului (ex: 001 - Nume Piesă)
+                            </label>
+                          </div>
+                        )}
 
                         {pendingScope === 'playlist' && info?.playlist && (
                           <div className="ytdl-track-selection-section">
