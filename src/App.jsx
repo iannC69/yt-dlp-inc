@@ -379,7 +379,7 @@ export default function App() {
       if (e.key === 'Escape') {
         if (showLibrary) setShowLibrary(false);
         if (showQueueModal) setShowQueueModal(false);
-        if (showSettings) setShowSettings(false);
+        if (showSettingsModal) setShowSettingsModal(false);
         if (showUpdateOverlay) setShowUpdateOverlay(false);
       }
       
@@ -391,7 +391,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showLibrary, showQueueModal, showSettings, showUpdateOverlay]);
+  }, [showLibrary, showQueueModal, showSettingsModal, showUpdateOverlay]);
 
   if (!setupDone) {
     return <SetupWizard onComplete={handleSetupComplete} />;
