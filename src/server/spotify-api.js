@@ -211,13 +211,23 @@ async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
 }
 
 // ── Pagination Helper ────────────────────────────────────────────────────────
+const PLAYLIST_TRACK_FIELDS = 'next,total,items(track(id,name,duration_ms,type,is_local,artists(id,name),album(id,name,release_date,images,total_tracks),track_number))'
+
 async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
   const expectedTotal = firstPage?.total ?? null
   const allItems = [...(firstPage?.items || [])]
   let nextUrl = firstPage?.next || null
+  let pageNum = 1
 
   while (nextUrl) {
-    const nextPath = nextUrl.replace('https://api.spotify.com', '')
+    pageNum++
+    let nextPath = nextUrl.replace('https://api.spotify.com', '')
+    // Ensure album images field is always included (Spotify may strip fields from next URL)
+    if (!nextPath.includes('fields=') && nextPath.includes('/playlists/') && nextPath.includes('/tracks')) {
+      const sep = nextPath.includes('?') ? '&' : '?'
+      nextPath += `${sep}fields=${encodeURIComponent(PLAYLIST_TRACK_FIELDS)}`
+    }
+    console.log(`[spotify-api] Fetching page ${pageNum} (${allItems.length} items so far)...`)
     const page = await fetchWithRetry(nextPath, clientId, clientSecret, accessToken)
     if (page?.items?.length) allItems.push(...page.items)
     nextUrl = page?.next || null
@@ -278,23 +288,27 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
 
   const cacheKey = `${match[1]}_${match[2]}`
   const cache = loadCache()
-  // Force bust cache once to clear corrupted embed data
-  if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < -1) {
+  // Cache TTL: 4 hours for playlists (content changes), 24 hours for tracks/albums
+  const CACHE_TTL_PLAYLIST = 4 * 60 * 60 * 1000
+  const CACHE_TTL_STATIC   = 24 * 60 * 60 * 1000
+  if (cache[cacheKey] && cache[cacheKey].timestamp) {
     const cachedData = cache[cacheKey].data;
-    // Bust cache if we don't have artistThumbnail (added recently)
-    if (cachedData && (cachedData.type === 'track' || cachedData.type === 'album') && cachedData.artistThumbnail === undefined) {
-      console.log(`[spotify-api] Cache BUST for ${cacheKey} due to missing artistThumbnail`);
-    // Bust cache if playlist trackCount < totalTracks (stale partial fetch)
-    } else if (cachedData && cachedData.type === 'playlist' && cachedData.trackCount < cachedData.totalTracks) {
-      console.log(`[spotify-api] Cache BUST for ${cacheKey}: cached ${cachedData.trackCount} tracks but totalTracks=${cachedData.totalTracks} — partial fetch stored`)
-    } else {
-      console.log(`[spotify-api] Smart Caching HIT for ${cacheKey}`)
+    const age = Date.now() - cache[cacheKey].timestamp;
+    const ttl = (cachedData?.type === 'playlist') ? CACHE_TTL_PLAYLIST : CACHE_TTL_STATIC;
+    // Bust cache if playlist trackCount < totalTracks (incomplete fetch stored previously)
+    const isPartial = cachedData?.type === 'playlist' && typeof cachedData.trackCount === 'number' && typeof cachedData.totalTracks === 'number' && cachedData.trackCount < cachedData.totalTracks;
+    if (isPartial) {
+      console.log(`[spotify-api] Cache BUST for ${cacheKey}: cached ${cachedData.trackCount} tracks but totalTracks=${cachedData.totalTracks} — forcing full re-fetch`);
+    } else if (age < ttl) {
+      console.log(`[spotify-api] Cache HIT for ${cacheKey} (age: ${Math.round(age/60000)}min, ttl: ${Math.round(ttl/60000)}min)`);
       console.log('[spotify-api] Cached data:', JSON.stringify({
         type: cachedData?.type,
         title: cachedData?.title,
         trackCount: cachedData?.trackCount
       }))
       return cachedData
+    } else {
+      console.log(`[spotify-api] Cache EXPIRED for ${cacheKey} (age: ${Math.round(age/60000)}min) — re-fetching`);
     }
   }
 
@@ -433,7 +447,7 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
     )
 
     const firstPage = await fetchWithRetry(
-      `/v1/playlists/${id}/tracks?limit=100${market}`,
+      `/v1/playlists/${id}/tracks?limit=100&fields=next,total,items(track(id,name,duration_ms,type,is_local,artists(id,name),album(id,name,release_date,images,total_tracks),track_number))${market}`,
       clientId, clientSecret, accessToken
     )
 

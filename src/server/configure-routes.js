@@ -710,10 +710,10 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
             const SPOTDL_LIMIT = 100;
             const isWin = process.platform === 'win32';
-            const safeLimit = limit || 8;
+            const safeLimit = Math.max(3, limit || 3); // minimum 3 concurrent tracks for speed
 
             // ── Helper: fetch cover buffer from Spotify album art ──────────────────
-            const fetchCoverBuffer = async (coverUrl, retries = 2) => {
+            const fetchCoverBuffer = async (coverUrl, retries = 3) => {
               if (!coverUrl) return null;
               try {
                 const buff = await new Promise((resolveImg, rejectImg) => {
@@ -761,7 +761,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--audio', provider,
                 '--format', 'mp3',
                 '--bitrate', '320k',
-                '--threads', '4',
+                '--threads', '8',
                 '--overwrite', 'skip',
                 '--add-unavailable'
               ];
@@ -871,22 +871,25 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
               const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
               
-              const buildYtSearchQuery = (artist, title, attempt) => {
-                let q = `${artist} ${title} audio`;
-                if (attempt <= 2) {
-                   q = `${artist} ${title} official audio`;
-                   const lower = q.toLowerCase();
-                   if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
-                      q += ' -remix -acoustic -live';
-                   }
-                } else if (attempt > 3) {
-                   q = `${artist} ${title}`;
-                }
-                return `ytsearch1:${q}`;
+              const buildYtSearchQuery = (artist, title, attempt, durationMs) => {
+                // Strategy 1 & 2: search YouTube Music Topic channel (exact studio version)
+                // Strategy 3+: broader search without audio suffix (avoids radio edits)
+                // NEVER use "official audio" — it returns radio/clean edits on YT Music
+                if (attempt === 1) return `ytsearch5:${artist} - ${title}`;
+                if (attempt === 2) return `ytsearch5:${artist} ${title}`;
+                if (attempt === 3) return `ytsearch10:${title} ${artist}`;
+                return `ytsearch15:${title} ${artist}`; // broadest fallback
               };
               
-              const searchQuery = track.spotifyUrl 
-                 ? buildYtSearchQuery(track.artist, track.title, currentAttempt)
+              // Build duration match-filter: ±10s window to pick exact studio version
+              // This eliminates radio edits, live versions, extended mixes, etc.
+              const durationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
+              const durationFilter = durationSec > 30
+                ? `!is_live & duration>${Math.max(30, durationSec - 10)} & duration<${durationSec + 10}`
+                : '!is_live & duration>30';
+              
+              const searchQuery = track.spotifyUrl
+                 ? buildYtSearchQuery(track.artist, track.title, currentAttempt, track.durationMs)
                  : (track.url && !track.url.startsWith('ytsearch') && !track.url.startsWith('http') ? `ytsearch1:${track.url}` : track.url);
               const poToken = getConfig().youtubePoToken || '';
               const extractorArgs = poToken 
@@ -898,13 +901,17 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
               const ytDlpArgs = [
                 searchQuery,
+                // Duration filter — only when we have Spotify duration (prevents picking radio edits)
+                ...(durationFilter && track.spotifyUrl ? ['--match-filter', durationFilter] : []),
                 '--extract-audio',
                 '--audio-format', 'mp3',
                 '--audio-quality', '0',
                 '--geo-bypass',
                 '--no-playlist',
+                '--playlist-items', '1',
                 '--extractor-retries', '5',
                 '--fragment-retries', '10',
+                '-N', '8',
                 '--retry-sleep', 'linear=1::2',
                 '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
                 '--add-header', 'Accept-Language:en-US,en;q=0.9',
@@ -999,6 +1006,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const track = tracks[i];
               const trackIndex = i;
               const useSpotdl = (trackIndex < SPOTDL_LIMIT) && !!track.spotifyUrl;
+              // Reset attempt counter for each track
+              let currentAttemptForTrack = 1;
 
               const downloadTask = (async () => {
                 send({
@@ -1024,10 +1033,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                       result = await downloadViaSpotdl(track, trackIndex, 0, 'youtube-music', embedLyrics);
                       if (result.error && !dlState.cancelled) {
                         console.warn(`[spotdl] Falling back to yt-dlp for: ${track.title} — ${result.error}`);
-                        result = await downloadViaYtdlp(track, trackIndex);
+                        result = await downloadViaYtdlp(track, trackIndex, currentAttemptForTrack);
+                        if (result.error) currentAttemptForTrack++;
                       }
                     } else {
-                      result = await downloadViaYtdlp(track, trackIndex);
+                      result = await downloadViaYtdlp(track, trackIndex, currentAttemptForTrack);
+                      if (result.error) currentAttemptForTrack++;
                     }
 
                     if (!result.error && !result.skipped) {
@@ -1056,11 +1067,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                       if (!coverBuffer && result.coverFile && fs.existsSync(result.coverFile)) {
                           coverBuffer = fs.readFileSync(result.coverFile);
                       }
+                      // Note: if coverBuffer is still null, writeAndVerifyTags will preserve
+                      // any cover already embedded by spotdl — no need for explicit fallback here.
                       
-                      // Fallback for missing artist/album
+                      // Fix album: never fall back to track title — leave it as empty string
                       const tagTrack = { ...track };
-                      if (!tagTrack.artist) tagTrack.artist = tagTrack.title;
-                      if (!tagTrack.album) tagTrack.album = tagTrack.title; // Fallback so it doesn't show unknown album
+                      if (!tagTrack.artist) tagTrack.artist = 'Unknown Artist';
+                      // tagTrack.album left as-is (may be empty, that's fine)
                       
                       const tagResult = await writeAndVerifyTags(filePath, tagTrack, coverBuffer);
                       

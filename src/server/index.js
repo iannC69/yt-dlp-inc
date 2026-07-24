@@ -498,18 +498,17 @@ export function configureNewBackend(server) {
            }
            log('INFO', 'yt-dlp', `Downloading via yt-dlp: ${track.artist} - ${track.title}`);
            const buildYtSearchQuery = (artist, title, attempt) => {
-              let q = `${artist} ${title} audio`;
-              if (attempt <= 2) {
-                  q = `${artist} ${title} official audio`;
-                  const lower = q.toLowerCase();
-                  if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
-                     q += ' -remix -acoustic -live';
-                  }
-              } else if (attempt > 3) {
-                  q = `${artist} ${title}`;
-              }
-              return `ytsearch1:${q}`;
+              // NEVER use "official audio" — it returns radio/clean edits
+              if (attempt === 1) return `ytsearch5:${artist} - ${title}`;
+              if (attempt === 2) return `ytsearch5:${artist} ${title}`;
+              if (attempt === 3) return `ytsearch10:${title} ${artist}`;
+              return `ytsearch15:${title} ${artist}`;
            };
+           // Duration filter: ±10s window to avoid radio edits / remixes / acoustics
+           const trackDurationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
+           const durationFilter = trackDurationSec > 30
+             ? `!is_live & duration>${Math.max(30, trackDurationSec - 10)} & duration<${trackDurationSec + 10}`
+             : '!is_live & duration>30';
 
            const outputName = `${String(i + 1).padStart(4, '0')} - ${safeArtist} - ${safeTitle}.%(ext)s`;
            const cookiesPath = path.resolve(ROOT_DIR, 'cookies.txt');
@@ -527,12 +526,16 @@ export function configureNewBackend(server) {
 
                const args = [
                   query,
+                  // Apply duration filter when we have Spotify duration data
+                  ...(durationFilter && track.spotifyUrl ? ['--match-filter', durationFilter] : []),
                   '--format', 'bestaudio[ext=m4a]/bestaudio/best',
                   '--extract-audio',
                   '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
                   '--audio-quality', '0',
                   '--geo-bypass',
                   '--no-playlist',
+                  '--playlist-items', '1',
+                  '-N', '8',
                   '--extractor-retries', '5',
                   '--fragment-retries', '10',
                   '--retry-sleep', 'linear=1::2',
@@ -641,11 +644,11 @@ export function configureNewBackend(server) {
                    }
                 }
                 
-                try {
-                   // Fallback for missing artist/album
+                 try {
+                   // Fix album: never fall back to track title — leave empty if missing
                    const tagTrack = { ...track, trackNumber: track.trackNumber || String(i + 1) };
-                   if (!tagTrack.artist) tagTrack.artist = tagTrack.title;
-                   if (!tagTrack.album) tagTrack.album = tagTrack.title;
+                   if (!tagTrack.artist) tagTrack.artist = 'Unknown Artist';
+                   // tagTrack.album left as-is (may be empty, that’s fine)
 
                    const tagResult = await writeAndVerifyTags(srcPath, tagTrack, coverBuffer);
                    if (tagResult.success) {
