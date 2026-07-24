@@ -378,7 +378,7 @@ export default function App() {
       // Escape closes modals
       if (e.key === 'Escape') {
         if (showLibrary) setShowLibrary(false);
-        if (showQueue) setShowQueue(false);
+        if (showQueueModal) setShowQueueModal(false);
         if (showSettings) setShowSettings(false);
         if (showUpdateOverlay) setShowUpdateOverlay(false);
       }
@@ -391,7 +391,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showLibrary, showQueue, showSettings, showUpdateOverlay]);
+  }, [showLibrary, showQueueModal, showSettings, showUpdateOverlay]);
 
   if (!setupDone) {
     return <SetupWizard onComplete={handleSetupComplete} />;
