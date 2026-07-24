@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 import { resolveSpotifyMetadata } from './spotify-api.js'
 import { getBatchPerformanceProfile } from './batch-engine.js'
 import https from 'https'
+import NodeID3 from 'node-id3'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = process.env.MEDIADL_APP_DIR || path.resolve(__dirname, '../../')
@@ -512,7 +513,6 @@ export function configureNewBackend(server) {
                 '--extract-audio',
                 '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
                 '--audio-quality', '0',
-                '--embed-thumbnail',
                 '--embed-metadata',
                 '--add-metadata',
                 '--geo-bypass',
@@ -551,17 +551,37 @@ export function configureNewBackend(server) {
            
            if (downloadedOk && (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) === 'mp3') {
               try {
-                // simple tagging for yt-dlp fallback
                 const files = fs.readdirSync(trackDir).filter(f => f.endsWith('.mp3'));
                 if (files[0]) {
                   const fp = path.join(trackDir, files[0]);
-                  NodeID3.update({
+                  let coverBuffer = null;
+                  if (track.coverUrl) {
+                    try {
+                      coverBuffer = await new Promise((resImg, rejImg) => {
+                        https.get(track.coverUrl, rImg => {
+                          if (rImg.statusCode === 200) {
+                            const ch = []; rImg.on('data', c => ch.push(c)); rImg.on('end', () => resImg(Buffer.concat(ch)));
+                          } else rejImg(new Error(String(rImg.statusCode)));
+                        }).on('error', rejImg);
+                      });
+                    } catch (e) {}
+                  }
+                  const tags = {
                     title: track.title,
                     artist: track.artist,
                     trackNumber: `${i + 1}`
-                  }, fp);
+                  };
+                  if (coverBuffer) {
+                    tags.image = {
+                      mime: 'image/jpeg',
+                      type: { id: 3, name: 'Front Cover' },
+                      description: 'Cover',
+                      imageBuffer: coverBuffer
+                    };
+                  }
+                  NodeID3.write(tags, fp);
                 }
-              } catch (e) { }
+              } catch (e) { console.error('Tagging error:', e); }
            }
         }
 

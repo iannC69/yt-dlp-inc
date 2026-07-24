@@ -1028,21 +1028,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     const finalFilename = result.filename.endsWith('.mp3') ? result.filename : `${result.filename}.mp3`;
                     const filePath = path.resolve(outputDir, finalFilename);
                     
-                    if (result.provider === 'spotdl') {
-                      try {
-                        const tags = NodeID3.read(filePath);
-                        if (tags) {
-                          delete tags.comment;
-                          delete tags.userDefinedUrl;
-                          delete tags.description;
-                          NodeID3.write(tags, filePath);
-                        }
-                      } catch (e) {
-                        console.error(`[tags] Failed to clean spotdl tags for ${track.title}:`, e.message);
-                      }
-                    } else {
+                    try {
                       const coverBuffer = await fetchCoverBuffer(track.coverUrl);
                       writeTrackTags(filePath, track, coverBuffer);
+                    } catch (e) {
+                      console.error(`[tags] Failed to write tags for ${track.title}:`, e.message);
                     }
 
                     completedTracks.push(finalFilename);
