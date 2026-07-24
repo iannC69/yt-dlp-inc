@@ -898,7 +898,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
               {info && (
                 <>
                   <div className="ytdl-preview-section">
-                    <div className="ytdl-thumbnail-wrapper">
+                    <div className={"ytdl-thumbnail-wrapper" + ((info.contentType === 'track' || info.contentType === 'album') ? " ytdl-thumbnail-square" : "")}>
                       <img src={info.thumbnail} alt="thumbnail" className="ytdl-thumbnail" />
                       <span className="ytdl-duration-badge">{formatDuration(info.duration)}</span>
                     </div>
