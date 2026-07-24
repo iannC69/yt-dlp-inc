@@ -703,14 +703,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
 
           } else {
-            // ── Hybrid download engine ──────────────────────────────────────────────
-            // Tracks 1-100   → spotdl per-track (audio-only, Spotify/YTM source)
-            // Tracks 101+    → yt-dlp with --format bestaudio (pure audio, never video)
-            // Cover art      → always from track.coverUrl (Spotify album art), written via NodeID3
+            // ── yt-dlp download engine ─────────────────────────────────────────────────
+            // All tracks → yt-dlp searching YouTube Music (ytmsearch) for exact studio version
+            // Cover art  → always from track.coverUrl (Spotify album art), written via NodeID3
 
-            const SPOTDL_LIMIT = 100;
+            const SPOTDL_LIMIT = 0; // spotdl disabled — yt-dlp with YouTube Music search for all tracks
             const isWin = process.platform === 'win32';
-            const safeLimit = Math.max(3, limit || 3); // minimum 3 concurrent tracks for speed
+            const safeLimit = Math.max(3, limit || 3); // minimum 3 concurrent tracks
 
             // ── Helper: fetch cover buffer from Spotify album art ──────────────────
             const fetchCoverBuffer = async (coverUrl, retries = 3) => {
@@ -872,21 +871,20 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
               
               const buildYtSearchQuery = (artist, title, attempt, durationMs) => {
-                // Strategy 1 & 2: search YouTube Music Topic channel (exact studio version)
-                // Strategy 3+: broader search without audio suffix (avoids radio edits)
-                // NEVER use "official audio" — it returns radio/clean edits on YT Music
-                if (attempt === 1) return `ytsearch5:${artist} - ${title}`;
-                if (attempt === 2) return `ytsearch5:${artist} ${title}`;
-                if (attempt === 3) return `ytsearch10:${title} ${artist}`;
-                return `ytsearch15:${title} ${artist}`; // broadest fallback
+                // YouTube Music search (ytmsearch) — finds official audio from Topic channels
+                // Falls back to regular YouTube on attempt 3-4
+                if (attempt === 1) return `ytmsearch5:${artist} - ${title}`;
+                if (attempt === 2) return `ytmsearch5:${artist} ${title}`;
+                if (attempt === 3) return `ytsearch5:${artist} ${title}`;
+                return `ytsearch10:${title} ${artist}`;
               };
               
-              // Build duration match-filter: ±10s window to pick exact studio version
-              // This eliminates radio edits, live versions, extended mixes, etc.
+              // Build duration match-filter: ±20s window to pick studio version (wider = fewer misses)
+              // This eliminates obvious radio edits, live versions, extended mixes, etc.
               const durationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
               const durationFilter = durationSec > 30
-                ? `!is_live & duration>${Math.max(30, durationSec - 10)} & duration<${durationSec + 10}`
-                : '!is_live & duration>30';
+                ? `!is_live & duration>${Math.max(20, durationSec - 20)} & duration<${durationSec + 20}`
+                : '!is_live & duration>20';
               
               const searchQuery = track.spotifyUrl
                  ? buildYtSearchQuery(track.artist, track.title, currentAttempt, track.durationMs)
@@ -901,8 +899,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
               const ytDlpArgs = [
                 searchQuery,
-                // Duration filter — only when we have Spotify duration (prevents picking radio edits)
-                ...(durationFilter && track.spotifyUrl ? ['--match-filter', durationFilter] : []),
+                // Duration filter — only on first 2 attempts; attempts 3+ search without restriction
+                ...(durationFilter && track.spotifyUrl && currentAttempt <= 2 ? ['--match-filter', durationFilter] : []),
                 '--extract-audio',
                 '--audio-format', 'mp3',
                 '--audio-quality', '0',
@@ -1005,13 +1003,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
               const track = tracks[i];
               const trackIndex = i;
-              const useSpotdl = (trackIndex < SPOTDL_LIMIT) && !!track.spotifyUrl;
-              // Reset attempt counter for each track
+              const useSpotdl = false; // spotdl disabled
               let currentAttemptForTrack = 1;
 
               const downloadTask = (async () => {
                 send({
-                  status: `Downloading: ${track.title} — ${track.artist} ${useSpotdl ? '(Spotify)' : '(YouTube Audio)'}`,
+                  status: `Downloading: ${track.title} — ${track.artist} (YouTube Music)`,
                   progress: Math.round(5 + ((completedTracks.length + failedTracks.length) / totalTracks) * 85),
                   currentTrack: trackIndex + 1,
                   totalTracks,
@@ -1029,17 +1026,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     if (dlState.cancelled) break;
                     attempts++;
                     
-                    if (useSpotdl) {
-                      result = await downloadViaSpotdl(track, trackIndex, 0, 'youtube-music', embedLyrics);
-                      if (result.error && !dlState.cancelled) {
-                        console.warn(`[spotdl] Falling back to yt-dlp for: ${track.title} — ${result.error}`);
-                        result = await downloadViaYtdlp(track, trackIndex, currentAttemptForTrack);
-                        if (result.error) currentAttemptForTrack++;
-                      }
-                    } else {
-                      result = await downloadViaYtdlp(track, trackIndex, currentAttemptForTrack);
-                      if (result.error) currentAttemptForTrack++;
-                    }
+                    // Always use yt-dlp with YouTube Music search
+                    result = await downloadViaYtdlp(track, trackIndex, currentAttemptForTrack);
+                    if (result.error) currentAttemptForTrack++;
 
                     if (!result.error && !result.skipped) {
                       break; // Success!
