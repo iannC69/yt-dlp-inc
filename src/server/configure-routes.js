@@ -33,7 +33,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   function parseYtDlpError(s) {
     if (!s) return null
     if (s.includes('HTTP Error 429') || s.includes('Too Many Requests')) return 'YouTube Rate Limit. Încearcă mai târziu sau folosește un VPN.'
-    if (s.includes("Sign in to confirm") || s.includes('bot protection')) return 'YouTube a blocat cererea (Anti-Bot). Folosește un VPN sau actualizează cookie-urile.'
+    if (s.includes("Sign in to confirm") || s.includes('bot protection')) return 'YouTube a limitat temporar adresa ta IP (Rate Limit / Anti-Bot). Folosește setarea PO Token (din System & Engine) sau actualizează cookie-urile.'
     if (s.includes('No space left')) return 'Nu mai este spațiu pe disc!'
     if (s.includes('Video unavailable') || s.includes('Private video')) return 'Videoclipul nu este disponibil sau este privat.'
     if (s.includes('members on level')) return 'Disponibil doar pentru membrii canalului.'

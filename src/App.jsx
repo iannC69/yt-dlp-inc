@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import SetupWizard from './SetupWizard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot, Scissors, Layers, SlidersHorizontal, Cpu, Music2, Filter, Terminal, LayoutGrid, Globe, Check, Music, Folder, Link, Link2 } from 'lucide-react';
+import { Play, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot, Scissors, Layers, SlidersHorizontal, Cpu, Music2, Filter, Terminal, LayoutGrid, Globe, Check, Music, Folder, Link, Link2, Download, Upload } from 'lucide-react';
 import YoutubeDownloader from './YoutubeDownloader';
 import SpotifyDownloader from './SpotifyDownloader';
 import AudioCutter from './AudioCutter';
@@ -842,10 +842,51 @@ export default function App() {
                           renderCPicker("acText", "Text color")
                         ])}
 
-                        <button className="settings-reset-btn" style={{ marginTop: '8px' }}
-                          onClick={() => setCustomTheme(DEFAULTS)}>
-                          <RefreshCw size={13} /> Reset All to Default
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                          <button className="settings-reset-btn" style={{ flex: 1 }}
+                            onClick={() => setCustomTheme(DEFAULTS)}>
+                            <RefreshCw size={13} /> Reset All
+                          </button>
+                          <button className="settings-reset-btn" style={{ flex: 1, backgroundColor: 'var(--panel-color)' }}
+                            onClick={() => {
+                              const data = JSON.stringify(customTheme, null, 2);
+                              const blob = new Blob([data], { type: 'application/json' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `ytdl-theme-${Date.now()}.json`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            }}>
+                            <Download size={13} /> Export
+                          </button>
+                          <button className="settings-reset-btn" style={{ flex: 1, backgroundColor: 'var(--panel-color)' }}
+                            onClick={() => {
+                              const input = document.createElement('input');
+                              input.type = 'file';
+                              input.accept = 'application/json';
+                              input.onchange = e => {
+                                const file = e.target.files[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onload = ev => {
+                                  try {
+                                    const parsed = JSON.parse(ev.target.result);
+                                    setCustomTheme(prev => ({...prev, ...parsed}));
+                                    toast.success("Theme imported!");
+                                  } catch (err) {
+                                    alert("Invalid JSON file.");
+                                  }
+                                };
+                                reader.readAsText(file);
+                              };
+                              input.click();
+                            }}>
+                            <Upload size={13} /> Import
+                          </button>
+                        </div>
                       </div>
                     )
                   })()}
