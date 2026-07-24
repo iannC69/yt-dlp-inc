@@ -466,9 +466,11 @@ export function configureNewBackend(server) {
              const args = [
                 query,
                 ...(durationFilter && track.spotifyUrl && attempt <= 2 ? ['--match-filter', durationFilter] : []),
+                '--format', 'bestaudio',
                 '--extract-audio',
                 '--audio-format', 'mp3',
                 '--audio-quality', '0',
+                '--write-thumbnail',
                 '--geo-bypass',
                 '--no-playlist',
                 '--playlist-items', '1',

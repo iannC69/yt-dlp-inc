@@ -901,9 +901,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 searchQuery,
                 // Duration filter — only on first 2 attempts; attempts 3+ search without restriction
                 ...(durationFilter && track.spotifyUrl && currentAttempt <= 2 ? ['--match-filter', durationFilter] : []),
+                '--format', 'bestaudio',
                 '--extract-audio',
                 '--audio-format', 'mp3',
                 '--audio-quality', '0',
+                '--write-thumbnail',
                 '--geo-bypass',
                 '--no-playlist',
                 '--playlist-items', '1',
@@ -977,7 +979,34 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 
                 if (!resolvedFilename) return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title });
                 
-                resolve({ filename: resolvedFilename, provider: 'yt-dlp', coverFile: null });
+                // Find thumbnail fallback (yt-dlp generates .webp or .jpg)
+                let coverFile = null;
+                try {
+                  const baseName = finalOutputName.replace(/\.mp3$/, '');
+                  const files = fs.readdirSync(outputDir);
+                  const thumbFile = files.find(f => f.startsWith(baseName) && (f.endsWith('.webp') || f.endsWith('.jpg') || f.endsWith('.png')));
+                  
+                  if (thumbFile) {
+                    const thumbPath = path.join(outputDir, thumbFile);
+                    const croppedThumb = path.join(outputDir, `${baseName}-cropped.jpg`);
+                    
+                    // Crop YouTube 16:9 thumbnail to 1:1 square for ID3 tags
+                    spawnSync(path.join(ffmpegDir, 'ffmpeg' + (isWin ? '.exe' : '')), [
+                      '-i', thumbPath,
+                      '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)',
+                      '-frames:v', '1',
+                      '-y', croppedThumb
+                    ], { windowsHide: true });
+                    
+                    if (fs.existsSync(croppedThumb)) {
+                      coverFile = croppedThumb;
+                    }
+                  }
+                } catch (e) {
+                  console.error(`[thumbnail] Failed to process thumbnail for ${track.title}: ${e.message}`);
+                }
+                
+                resolve({ filename: resolvedFilename, provider: 'yt-dlp', coverFile });
               });
               proc.on('error', err => { dlState.procs.delete(proc); resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title })});
             });
