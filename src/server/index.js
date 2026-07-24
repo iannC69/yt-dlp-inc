@@ -497,58 +497,87 @@ export function configureNewBackend(server) {
              await new Promise(r => setTimeout(r, ytDelay * 1000));
            }
            log('INFO', 'yt-dlp', `Downloading via yt-dlp: ${track.artist} - ${track.title}`);
+           const buildYtSearchQuery = (artist, title) => {
+              let q = `${artist} ${title} official audio`;
+              const lower = q.toLowerCase();
+              if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
+                 q += ' -remix -acoustic -live';
+              }
+              return `ytsearch1:${q}`;
+           };
+
            const query = track.spotifyUrl && !useSpotDl 
-              ? `ytsearch1:${track.artist} ${track.title} official audio`
+              ? buildYtSearchQuery(track.artist, track.title)
               : (track.url && !track.url.startsWith('ytsearch') && !track.url.startsWith('http') ? `ytsearch1:${track.url}` : track.url);
               
            const outputName = `${String(i + 1).padStart(4, '0')} - ${safeArtist} - ${safeTitle}.%(ext)s`;
            const cookiesPath = path.resolve(ROOT_DIR, 'cookies.txt');
            const hasCookies = fs.existsSync(cookiesPath);
-           downloadedOk = await new Promise(resolve => {
-             const poToken = cfg.youtubePoToken || '';
-             const extractorArgs = poToken 
-                ? `youtube:player_client=android,web;po_token=${poToken}` 
-                : 'youtube:player_client=android,web';
+           for (let attempt = 1; attempt <= 2; attempt++) {
+             downloadedOk = await new Promise(resolve => {
+               const poToken = cfg.youtubePoToken || '';
+               const extractorArgs = poToken 
+                  ? `youtube:player_client=android,web;po_token=${poToken}` 
+                  : 'youtube:player_client=android,web';
 
-             const args = [
-                query,
-                '--format', 'bestaudio[ext=m4a]/bestaudio/best',
-                '--extract-audio',
-                '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
-                '--audio-quality', '0',
-                '--geo-bypass',
-                '--no-playlist',
-                '--extractor-retries', '5',
-                '--fragment-retries', '10',
-                '--retry-sleep', 'linear=1::2',
-                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                '--add-header', 'Accept-Language:en-US,en;q=0.9',
-                '--extractor-args', extractorArgs,
-                '--js-runtimes', `node:${process.execPath}`,
-                '-o', path.join(trackDir, outputName),
-                '--ffmpeg-location', getFfmpegDir()
-             ];
-             if (hasCookies) {
-               args.push('--cookies', cookiesPath);
-             }
-             const isWin = process.platform === 'win32';
-             try {
-                const ariaCheck = require('child_process').spawnSync(isWin ? 'where' : 'which', ['aria2c']);
-                if (ariaCheck.status === 0) {
-                   args.push('--downloader', 'aria2c', '--downloader-args', 'aria2c:-x 16 -s 16 -k 1M');
-                }
-             } catch (e) {}
-             const proc = spawn(ytDlpPath, args, { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-             activeProcs.add(proc);
-             dlState.procs.add(proc);
-             
-             proc.on('close', code => {
-               activeProcs.delete(proc);
-               dlState.procs.delete(proc);
-               resolve(code === 0);
+               const args = [
+                  query,
+                  '--format', 'bestaudio[ext=m4a]/bestaudio/best',
+                  '--extract-audio',
+                  '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
+                  '--audio-quality', '0',
+                  '--geo-bypass',
+                  '--no-playlist',
+                  '--write-thumbnail',
+                  '--extractor-retries', '5',
+                  '--fragment-retries', '10',
+                  '--retry-sleep', 'linear=1::2',
+                  '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                  '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                  '--extractor-args', extractorArgs,
+                  '--js-runtimes', `node:${process.execPath}`,
+                  '-o', path.join(trackDir, outputName),
+                  '--ffmpeg-location', getFfmpegDir()
+               ];
+               if (hasCookies) {
+                 args.push('--cookies', cookiesPath);
+               }
+               const isWin = process.platform === 'win32';
+               try {
+                  const ariaCheck = require('child_process').spawnSync(isWin ? 'where' : 'which', ['aria2c']);
+                  if (ariaCheck.status === 0) {
+                     args.push('--downloader', 'aria2c', '--downloader-args', 'aria2c:-x 16 -s 16 -k 1M');
+                  }
+               } catch (e) {}
+               const proc = spawn(ytDlpPath, args, { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+               activeProcs.add(proc);
+               dlState.procs.add(proc);
+               
+               let errOutput = '';
+               proc.stderr.on('data', data => {
+                 errOutput += data.toString();
+               });
+               
+               proc.on('close', code => {
+                 activeProcs.delete(proc);
+                 dlState.procs.delete(proc);
+                 if (code === 0) {
+                   resolve(true);
+                 } else {
+                   log('ERROR', 'yt-dlp', `Fallback failed on attempt ${attempt} for ${track.title}. Error: ${errOutput.slice(0, 300)}`);
+                   resolve(false);
+                 }
+               });
+               proc.on('error', (e) => {
+                 log('ERROR', 'yt-dlp', `Spawn error on attempt ${attempt}: ${e.message}`);
+                 resolve(false);
+               });
              });
-             proc.on('error', () => resolve(false));
-           });
+             
+             if (downloadedOk) break;
+             if (dlState.cancelled) break;
+             if (attempt === 1) await new Promise(r => setTimeout(r, 2000)); // Wait before retry
+           }
            
            // Tagging logic has been moved out of this block to apply to all downloads
         }
@@ -584,6 +613,28 @@ export function configureNewBackend(server) {
                       await new Promise(r => setTimeout(r, 1000));
                     }
                   }
+                }
+                
+                // Fallback to YouTube thumbnail and crop 1:1 if Spotify cover failed or is missing
+                if (!coverBuffer || coverBuffer.length < 1000) {
+                   const thumbFile = files.find(f => f.endsWith('.jpg') || f.endsWith('.webp') || f.endsWith('.png'));
+                   if (thumbFile) {
+                      const thumbPath = path.join(trackDir, thumbFile);
+                      const outThumb = path.join(trackDir, 'cropped.jpg');
+                      await new Promise(r => {
+                         const isWin = process.platform === 'win32';
+                         const ff = spawn(path.join(getFfmpegDir(), 'ffmpeg' + (isWin ? '.exe' : '')), [
+                            '-i', thumbPath,
+                            '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)',
+                            '-frames:v', '1',
+                            '-y', outThumb
+                         ]);
+                         ff.on('close', r);
+                      });
+                      if (fs.existsSync(outThumb)) {
+                         coverBuffer = fs.readFileSync(outThumb);
+                      }
+                   }
                 }
                 
                 try {

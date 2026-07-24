@@ -245,7 +245,7 @@ export default function App() {
         if (name === 'update-available') {
           setUpdateNotice('available');
           if (data) setUpdateInfo(data);
-          toast.info(`Update v${data?.version} available — click to download`);
+          toast.info(`Update v${data?.version} available — click to download`, { toastId: 'update-available' });
         }
         if (name === 'download-progress') {
           setUpdateNotice(null);
@@ -261,7 +261,7 @@ export default function App() {
           setUpdateState('downloaded');
           setShowUpdateOverlay(true);
           if (data) setUpdateInfo(data);
-          toast.success(`v${data?.version} downloaded — restart to install!`, 8000);
+          toast.success(`v${data?.version} downloaded — restart to install!`, { autoClose: 8000, toastId: 'update-downloaded' });
         }
       });
       // Check for updates quietly in background on startup

@@ -871,8 +871,18 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
               const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
               
-              // Direct ytsearch1 query per user request
-              const searchQuery = `ytsearch1:${track.title} ${track.artist} audio`;
+              const buildYtSearchQuery = (artist, title) => {
+                let q = `${artist} ${title} official audio`;
+                const lower = q.toLowerCase();
+                if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
+                   q += ' -remix -acoustic -live';
+                }
+                return `ytsearch1:${q}`;
+              };
+              
+              const searchQuery = track.spotifyUrl 
+                 ? buildYtSearchQuery(track.artist, track.title)
+                 : (track.url && !track.url.startsWith('ytsearch') && !track.url.startsWith('http') ? `ytsearch1:${track.url}` : track.url);
               const poToken = getConfig().youtubePoToken || '';
               const extractorArgs = poToken 
                 ? `youtube:player_client=android,web;po_token=${poToken}` 
@@ -888,6 +898,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--audio-quality', '0',
                 '--geo-bypass',
                 '--no-playlist',
+                '--write-thumbnail',
                 '--extractor-retries', '5',
                 '--fragment-retries', '10',
                 '--retry-sleep', 'linear=1::2',
@@ -954,9 +965,30 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     }
                   } catch { }
                 }
+                
+                let croppedThumbPath = null;
+                try {
+                  const outFiles = fs.readdirSync(outputDir);
+                  const thumbFile = outFiles.find(f => f.startsWith(resolvedFilename.replace(/\.[a-zA-Z0-9]+$/, '')) && (f.endsWith('.jpg') || f.endsWith('.webp') || f.endsWith('.png')));
+                  if (thumbFile) {
+                    const thumbPath = path.join(outputDir, thumbFile);
+                    croppedThumbPath = path.join(outputDir, `${resolvedFilename}_cropped.jpg`);
+                    const isWin = process.platform === 'win32';
+                    const ff = spawnSync(path.join(ffmpegDir, 'ffmpeg' + (isWin ? '.exe' : '')), [
+                        '-i', thumbPath,
+                        '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)',
+                        '-frames:v', '1',
+                        '-y', croppedThumbPath
+                    ]);
+                    if (!fs.existsSync(croppedThumbPath)) croppedThumbPath = null;
+                  }
+                } catch (e) {
+                   console.error('Failed to crop thumbnail:', e);
+                }
+                
                 if (!resolvedFilename) return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title });
                 
-                resolve({ filename: resolvedFilename });
+                resolve({ filename: resolvedFilename, coverFile: croppedThumbPath });
               });
               proc.on('error', err => { dlState.procs.delete(proc); resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title })});
             });
@@ -1046,8 +1078,17 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     const filePath = path.resolve(outputDir, finalFilename);
                     
                     try {
-                      const coverBuffer = await fetchCoverBuffer(track.coverUrl);
-                      const tagResult = await writeAndVerifyTags(filePath, track, coverBuffer);
+                      let coverBuffer = await fetchCoverBuffer(track.coverUrl);
+                      if (!coverBuffer && result.coverFile && fs.existsSync(result.coverFile)) {
+                          coverBuffer = fs.readFileSync(result.coverFile);
+                      }
+                      
+                      // Fallback for missing artist/album
+                      const tagTrack = { ...track };
+                      if (!tagTrack.artist) tagTrack.artist = tagTrack.title;
+                      if (!tagTrack.album) tagTrack.album = tagTrack.title; // Fallback so it doesn't show unknown album
+                      
+                      const tagResult = await writeAndVerifyTags(filePath, tagTrack, coverBuffer);
                       
                       if (tagResult.success) {
                         successfulTags++;
