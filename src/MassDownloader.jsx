@@ -250,7 +250,16 @@ export default function MassDownloader() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Fetch failed');
-      setSpotResult(data);
+      
+      const sanitizedData = { ...data };
+      if (sanitizedData.tracks) {
+        sanitizedData.tracks = sanitizedData.tracks.map(t => ({
+            ...t,
+            album: t.album || ''
+        }));
+      }
+      
+      setSpotResult(sanitizedData);
       setFolderName(data.playlistName || 'Spotify Playlist');
     } catch (e) {
       setSpotError(e.message);

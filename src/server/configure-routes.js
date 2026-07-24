@@ -865,23 +865,28 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             });
 
             // ── Helper: download one track via yt-dlp with bestaudio ───────────────
-            const downloadViaYtdlp = (track, trackIndex) => new Promise((resolve) => {
+            const downloadViaYtdlp = (track, trackIndex, currentAttempt = 1) => new Promise((resolve) => {
               if (dlState.cancelled) return resolve({ skipped: true });
               const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
               const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
               const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
               
-              const buildYtSearchQuery = (artist, title) => {
-                let q = `${artist} ${title} official audio`;
-                const lower = q.toLowerCase();
-                if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
-                   q += ' -remix -acoustic -live';
+              const buildYtSearchQuery = (artist, title, attempt) => {
+                let q = `${artist} ${title} audio`;
+                if (attempt <= 2) {
+                   q = `${artist} ${title} official audio`;
+                   const lower = q.toLowerCase();
+                   if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
+                      q += ' -remix -acoustic -live';
+                   }
+                } else if (attempt > 3) {
+                   q = `${artist} ${title}`;
                 }
                 return `ytsearch1:${q}`;
               };
               
               const searchQuery = track.spotifyUrl 
-                 ? buildYtSearchQuery(track.artist, track.title)
+                 ? buildYtSearchQuery(track.artist, track.title, currentAttempt)
                  : (track.url && !track.url.startsWith('ytsearch') && !track.url.startsWith('http') ? `ytsearch1:${track.url}` : track.url);
               const poToken = getConfig().youtubePoToken || '';
               const extractorArgs = poToken 
@@ -898,7 +903,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--audio-quality', '0',
                 '--geo-bypass',
                 '--no-playlist',
-                '--write-thumbnail',
                 '--extractor-retries', '5',
                 '--fragment-retries', '10',
                 '--retry-sleep', 'linear=1::2',
@@ -950,8 +954,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   console.error(`[yt-dlp] Failed with code ${code} for ${track.title}. stderr: ${stderr}`);
                   return resolve({ error: `yt-dlp failed (${code}): ${stderr.slice(-300)}`, trackTitle: track.title });
                 }
-                let resolvedFilename = '';
                 const outputPath = path.join(outputDir, finalOutputName);
+                let resolvedFilename = '';
                 if (fs.existsSync(outputPath)) {
                   resolvedFilename = finalOutputName;
                 } else {
@@ -966,29 +970,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   } catch { }
                 }
                 
-                let croppedThumbPath = null;
-                try {
-                  const outFiles = fs.readdirSync(outputDir);
-                  const thumbFile = outFiles.find(f => f.startsWith(resolvedFilename.replace(/\.[a-zA-Z0-9]+$/, '')) && (f.endsWith('.jpg') || f.endsWith('.webp') || f.endsWith('.png')));
-                  if (thumbFile) {
-                    const thumbPath = path.join(outputDir, thumbFile);
-                    croppedThumbPath = path.join(outputDir, `${resolvedFilename}_cropped.jpg`);
-                    const isWin = process.platform === 'win32';
-                    const ff = spawnSync(path.join(ffmpegDir, 'ffmpeg' + (isWin ? '.exe' : '')), [
-                        '-i', thumbPath,
-                        '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)',
-                        '-frames:v', '1',
-                        '-y', croppedThumbPath
-                    ]);
-                    if (!fs.existsSync(croppedThumbPath)) croppedThumbPath = null;
-                  }
-                } catch (e) {
-                   console.error('Failed to crop thumbnail:', e);
-                }
-                
                 if (!resolvedFilename) return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title });
                 
-                resolve({ filename: resolvedFilename, coverFile: croppedThumbPath });
+                resolve({ filename: resolvedFilename, provider: 'yt-dlp', coverFile: null });
               });
               proc.on('error', err => { dlState.procs.delete(proc); resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title })});
             });
@@ -1028,19 +1012,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 });
 
                 try {
-                  const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
-                  const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
-                  const expectedName = `${safeArtist} - ${safeTitle}.mp3`;
-                  
-                  if (fs.existsSync(path.join(outputDir, expectedName))) {
-                    console.log(`[skip] Already downloaded: ${expectedName}`);
-                    completedTracks.push({ ...track, filename: expectedName });
-                    return; // Skip download block completely
-                  }
-
                   let result = { error: 'Init' };
                   let attempts = 0;
-                  const maxAttempts = 2;
+                  const maxAttempts = 4;
 
                   while (attempts < maxAttempts) {
                     if (dlState.cancelled) break;
@@ -1095,9 +1069,15 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                         console.log(`[tags] ✓ Verified Spotify tags for: ${track.artist} - ${track.title}`);
                       } else {
                         tagFailedTracks.push({ title: track.title, filePath });
+                        if (result.coverFile && fs.existsSync(result.coverFile)) {
+                          try { fs.unlinkSync(result.coverFile); } catch(e){} // Cleanup cropped thumbnail
+                        }
                       }
                     } catch (tagErr) {
-                      tagFailedTracks.push({ title: track.title, filePath, error: tagErr.message });
+                        tagFailedTracks.push({ title: track.title, filePath, error: tagErr.message });
+                        if (result.coverFile && fs.existsSync(result.coverFile)) {
+                          try { fs.unlinkSync(result.coverFile); } catch(e){} 
+                        }
                     }
 
                     completedTracks.push(finalFilename);

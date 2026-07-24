@@ -497,23 +497,28 @@ export function configureNewBackend(server) {
              await new Promise(r => setTimeout(r, ytDelay * 1000));
            }
            log('INFO', 'yt-dlp', `Downloading via yt-dlp: ${track.artist} - ${track.title}`);
-           const buildYtSearchQuery = (artist, title) => {
-              let q = `${artist} ${title} official audio`;
-              const lower = q.toLowerCase();
-              if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
-                 q += ' -remix -acoustic -live';
+           const buildYtSearchQuery = (artist, title, attempt) => {
+              let q = `${artist} ${title} audio`;
+              if (attempt <= 2) {
+                  q = `${artist} ${title} official audio`;
+                  const lower = q.toLowerCase();
+                  if (!lower.includes('remix') && !lower.includes('acoustic') && !lower.includes('live')) {
+                     q += ' -remix -acoustic -live';
+                  }
+              } else if (attempt > 3) {
+                  q = `${artist} ${title}`;
               }
               return `ytsearch1:${q}`;
            };
 
-           const query = track.spotifyUrl && !useSpotDl 
-              ? buildYtSearchQuery(track.artist, track.title)
-              : (track.url && !track.url.startsWith('ytsearch') && !track.url.startsWith('http') ? `ytsearch1:${track.url}` : track.url);
-              
            const outputName = `${String(i + 1).padStart(4, '0')} - ${safeArtist} - ${safeTitle}.%(ext)s`;
            const cookiesPath = path.resolve(ROOT_DIR, 'cookies.txt');
            const hasCookies = fs.existsSync(cookiesPath);
-           for (let attempt = 1; attempt <= 2; attempt++) {
+           for (let attempt = 1; attempt <= 4; attempt++) {
+             const query = track.spotifyUrl && !useSpotDl 
+                ? buildYtSearchQuery(track.artist, track.title, attempt)
+                : (track.url && !track.url.startsWith('ytsearch') && !track.url.startsWith('http') ? `ytsearch1:${track.url}` : track.url);
+
              downloadedOk = await new Promise(resolve => {
                const poToken = cfg.youtubePoToken || '';
                const extractorArgs = poToken 
@@ -528,7 +533,6 @@ export function configureNewBackend(server) {
                   '--audio-quality', '0',
                   '--geo-bypass',
                   '--no-playlist',
-                  '--write-thumbnail',
                   '--extractor-retries', '5',
                   '--fragment-retries', '10',
                   '--retry-sleep', 'linear=1::2',
@@ -638,9 +642,12 @@ export function configureNewBackend(server) {
                 }
                 
                 try {
-                   // Ensure we pass the 1-based index via trackNumber if missing
-                   const trackMeta = { ...track, trackNumber: track.trackNumber || String(i + 1) };
-                   const tagResult = await writeAndVerifyTags(srcPath, trackMeta, coverBuffer);
+                   // Fallback for missing artist/album
+                   const tagTrack = { ...track, trackNumber: track.trackNumber || String(i + 1) };
+                   if (!tagTrack.artist) tagTrack.artist = tagTrack.title;
+                   if (!tagTrack.album) tagTrack.album = tagTrack.title;
+
+                   const tagResult = await writeAndVerifyTags(srcPath, tagTrack, coverBuffer);
                    if (tagResult.success) {
                      successfulTags++;
                    } else {
