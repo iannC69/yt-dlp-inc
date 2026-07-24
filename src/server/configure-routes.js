@@ -684,10 +684,10 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             const safeLimit = limit || 8;
 
             // ── Helper: fetch cover buffer from Spotify album art ──────────────────
-            const fetchCoverBuffer = async (coverUrl) => {
+            const fetchCoverBuffer = async (coverUrl, retries = 2) => {
               if (!coverUrl) return null;
               try {
-                return await new Promise((resolveImg, rejectImg) => {
+                const buff = await new Promise((resolveImg, rejectImg) => {
                   const fetchImage = (url) => {
                     https.get(url, (resImg) => {
                       if (resImg.statusCode >= 300 && resImg.statusCode < 400 && resImg.headers.location) {
@@ -703,7 +703,15 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   };
                   fetchImage(coverUrl);
                 });
-              } catch { return null; }
+                if (buff && buff.length > 1000) return buff;
+                throw new Error('Invalid or empty image');
+              } catch (e) { 
+                if (retries > 0) {
+                  await new Promise(r => setTimeout(r, 1000));
+                  return fetchCoverBuffer(coverUrl, retries - 1);
+                }
+                return null; 
+              }
             };
 
             // ── Helper: write ID3 tags (FULL REWRITE — guarantees Spotify album art replaces anything spotdl embedded) ──
@@ -713,17 +721,19 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 const existing = NodeID3.read(filePath) || {};
                 const tags = {
                   ...existing,
-                  title: track.title,
-                  artist: track.allArtists || track.artist,
-                  album: track.album,
+                  title: track.title || existing.title,
+                  artist: track.allArtists || track.artist || existing.artist,
+                  album: track.album || existing.album,
                   year: track.year ? String(track.year) : existing.year,
-                  trackNumber: `${track.trackNumber}/${track.totalTracks}`
+                  trackNumber: (track.trackNumber && track.totalTracks) 
+                    ? `${track.trackNumber}/${track.totalTracks}` 
+                    : existing.trackNumber
                 };
                 delete tags.comment;
                 delete tags.userDefinedUrl;
                 delete tags.description;
                 
-                if (coverBuffer) {
+                if (coverBuffer && coverBuffer.length > 1000) {
                   // Overwrite with the track’s own album art from Spotify
                   tags.image = {
                     mime: 'image/jpeg',

@@ -513,8 +513,6 @@ export function configureNewBackend(server) {
                 '--extract-audio',
                 '--audio-format', (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) || 'mp3',
                 '--audio-quality', '0',
-                '--embed-metadata',
-                '--add-metadata',
                 '--geo-bypass',
                 '--no-playlist',
                 '--extractor-retries', '5',
@@ -556,22 +554,36 @@ export function configureNewBackend(server) {
                   const fp = path.join(trackDir, files[0]);
                   let coverBuffer = null;
                   if (track.coverUrl) {
-                    try {
-                      coverBuffer = await new Promise((resImg, rejImg) => {
-                        https.get(track.coverUrl, rImg => {
-                          if (rImg.statusCode === 200) {
-                            const ch = []; rImg.on('data', c => ch.push(c)); rImg.on('end', () => resImg(Buffer.concat(ch)));
-                          } else rejImg(new Error(String(rImg.statusCode)));
-                        }).on('error', rejImg);
-                      });
-                    } catch (e) {}
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                      try {
+                        coverBuffer = await new Promise((resImg, rejImg) => {
+                          const fetchUrl = (url) => {
+                            https.get(url, rImg => {
+                              if (rImg.statusCode >= 300 && rImg.statusCode < 400 && rImg.headers.location) {
+                                fetchUrl(rImg.headers.location);
+                              } else if (rImg.statusCode === 200) {
+                                const ch = []; rImg.on('data', c => ch.push(c)); rImg.on('end', () => resImg(Buffer.concat(ch)));
+                              } else rejImg(new Error(String(rImg.statusCode)));
+                            }).on('error', rejImg);
+                          };
+                          fetchUrl(track.coverUrl);
+                        });
+                        if (coverBuffer && coverBuffer.length > 1000) break;
+                      } catch (e) {
+                        await new Promise(r => setTimeout(r, 1000));
+                      }
+                    }
                   }
+                  const existing = NodeID3.read(fp) || {};
                   const tags = {
-                    title: track.title,
-                    artist: track.artist,
+                    ...existing,
+                    title: track.title || existing.title,
+                    artist: track.artist || existing.artist,
+                    album: track.album || existing.album,
+                    year: track.year || existing.year,
                     trackNumber: `${i + 1}`
                   };
-                  if (coverBuffer) {
+                  if (coverBuffer && coverBuffer.length > 1000) {
                     tags.image = {
                       mime: 'image/jpeg',
                       type: { id: 3, name: 'Front Cover' },
