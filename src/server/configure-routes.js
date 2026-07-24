@@ -115,16 +115,38 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         if(!dlf.length){try{fs.rmSync(job.collectionDir,{recursive:true,force:true})}catch{};finishJob(jobId,{error:'Nu s-a descărcat niciun fișier.'});return}
         broadcast(jobId,{progress:96,status:'Se configurează folderul...'})
         if(job.state.thumbnail){try{
-          const cb=Buffer.from(await(await fetch(job.state.thumbnail)).arrayBuffer()); const jp=path.join(job.collectionDir,'folder.jpg'); fs.writeFileSync(jp,cb)
+          const cb=Buffer.from(await(await fetch(job.state.thumbnail)).arrayBuffer()); 
+          const metaDir = path.join(job.collectionDir, '.metadata')
+          if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir)
+          
+          const jp=path.join(metaDir,'folder.jpg'); fs.writeFileSync(jp,cb)
+          
+          const mp3s = fs.readdirSync(job.collectionDir).filter(f => f.endsWith('.mp3'))
+          for (const mp3 of mp3s) {
+            const fp = path.join(job.collectionDir, mp3)
+            try {
+              const currentTags = NodeID3.read(fp) || {}
+              const newTags = {
+                ...currentTags,
+                album: job.state.title || path.basename(job.collectionDir),
+                image: { mime: 'image/jpeg', type: { id: 3, name: 'front cover' }, imageBuffer: cb }
+              }
+              NodeID3.write(newTags, fp)
+            } catch (e) { console.error('Tag write error', e) }
+          }
+
           if(process.platform==='win32'){
-            const ip=path.join(job.collectionDir,'album.ico')
-            await new Promise(r=>{spawn(ffmpegBin,['-y','-i',jp,'-vf','scale=256:256',ip]).on('close',r)})
+            const ip=path.join(metaDir,'album.ico')
+            await new Promise(r=>{spawn(ffmpegBin,['-y','-i',jp,'-vf','scale=256:256',ip],{windowsHide:true}).on('close',r)})
             if(fs.existsSync(ip)){
-              fs.writeFileSync(path.join(job.collectionDir,'desktop.ini'),"[.ShellClassInfo]\r\nIconResource=album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n")
-              await new Promise(r=>spawn('attrib',['+s',job.collectionDir]).on('close',r))
-              await new Promise(r=>spawn('attrib',['+s','+h',path.join(job.collectionDir,'desktop.ini')]).on('close',r))
+              fs.writeFileSync(path.join(job.collectionDir,'desktop.ini'),"[.ShellClassInfo]\r\nIconResource=.metadata\\album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n")
+              
+              await new Promise(r=>{spawn('attrib',['+s',`"${job.collectionDir}"`],{shell:true}).on('close',r)})
+              await new Promise(r=>{spawn('attrib',['+s','+h',`"${path.join(job.collectionDir,'desktop.ini')}"`],{shell:true}).on('close',r)})
+              await new Promise(r=>{spawn('attrib',['+h',`"${metaDir}"`],{shell:true}).on('close',r)})
+              
               spawn('ie4uinit.exe',['-show']); spawn('powershell',['-Command','$shell=New-Object -ComObject Shell.Application;$shell.Windows()|ForEach-Object{$_.Refresh()}'])
-              fs.writeFileSync(path.join(job.collectionDir,'ApplyFolderIcon.bat'),`@echo off\r\nattrib +s "%~dp0."\r\nattrib +s +h "%~dp0desktop.ini"\r\nie4uinit.exe -show\r\npause\r\n`)
+              fs.writeFileSync(path.join(job.collectionDir,'ApplyFolderIcon.bat'),`@echo off\r\nattrib +s "%~dp0."\r\nattrib +s +h "%~dp0desktop.ini"\r\nattrib +h "%~dp0.metadata"\r\nie4uinit.exe -show\r\npause\r\n`)
             }
           }
         }catch(e){console.error('Thumbnail error:',e)}}
@@ -869,6 +891,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
               const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
               const finalOutputName = `${safeArtist} - ${safeTitle}.mp3`;
+              const outputTemplate = `${safeArtist} - ${safeTitle}.%(ext)s`;
               
               const buildYtSearchQuery = (artist, title, attempt, durationMs) => {
                 // YouTube Music search (ytmsearch) — finds official audio from Topic channels
@@ -918,7 +941,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--extractor-args', extractorArgs,
                 '--js-runtimes', `node:${process.execPath}`,
                 '--ffmpeg-location', ffmpegDir,
-                '-o', path.join(outputDir, finalOutputName)
+                '-o', path.join(outputDir, outputTemplate)
               ];
 
               if (hasCookies) {

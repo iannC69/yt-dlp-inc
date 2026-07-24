@@ -1,17 +1,11 @@
 ; MediaDL custom NSIS hooks
-
-; On every (re)install: wipe app-data so Electron's localStorage is cleared.
-; localStorage stores setup_complete — clearing it forces the wizard to show again.
-; For a brand-new install to a different folder this is a no-op (folder doesn't exist).
+; Previously this wiped app-data which caused freezing and lost settings
 !macro customInstall
-  RMDir /r "$INSTDIR\app-data"
+  ; No-op to prevent installer freezing
 !macroend
 
-; On uninstall: remove all user-created folders so nothing is left behind.
 !macro customUnInstall
-  RMDir /r "$INSTDIR\app-data"
-  RMDir /r "$INSTDIR\downloads"
+  ; Cleanup only what's necessary, avoid massive synchronous deletes that freeze the uninstaller
   Delete "$INSTDIR\config.json"
   Delete "$INSTDIR\scheduled.json"
-  ; We no longer wipe AppData on uninstall to preserve user settings across updates
 !macroend
