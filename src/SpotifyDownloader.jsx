@@ -300,7 +300,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           setHasCookies(data.hasCookies);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const saveToHistory = (newUrl, title, thumbnail, artist, artistThumbnail) => {
@@ -455,14 +455,13 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
   // Handle global shortcuts and paste
   useEffect(() => {
-    if (appMode !== 'single') return;
     const handlePaste = (e) => {
       setUrl(e.detail);
       setInfo(null);
       setError(null);
     };
     const handleDownloadShortcut = () => {
-      if (info && !downloadState.active) handleDownload();
+      if (info && !downloadState?.active) handleDownload();
     };
     window.addEventListener('app:paste-url', handlePaste);
     window.addEventListener('app:global-download', handleDownloadShortcut);
@@ -470,7 +469,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       window.removeEventListener('app:paste-url', handlePaste);
       window.removeEventListener('app:global-download', handleDownloadShortcut);
     };
-  }, [info, downloadState.active, appMode]);
+  }, [info, downloadState?.active]);
 
   const fetchMyPlaylists = useCallback(async () => {
     if (!accessToken) return;
@@ -697,9 +696,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
   const retryFailedTracks = () => {
     if (!downloadState || !downloadState.failedTracksData || downloadState.failedTracksData.length === 0) return;
-    
+
     const failedData = downloadState.failedTracksData;
-    
+
     const retryInfo = {
       type: 'album',
       title: `Retry: ${downloadState.collectionTitle}`,
@@ -714,13 +713,13 @@ export default function SpotifyDownloader({ activeDownloadId }) {
         spotifyUrl: t.spotifyUrl || null
       }))
     };
-    
+
     setInfo(retryInfo);
     setUrl('bulk://meta');
     setBulkMeta(JSON.stringify(retryInfo));
     setDownloadState(null);
     setTrackStatuses({});
-    
+
     setSelectedTracks(new Set(retryInfo.tracks.map(t => t.trackNumber)));
     setShowDownloadModal(true);
   };
@@ -956,20 +955,20 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                     if (!clientId) return alert('Developer: Please set VITE_SPOTIFY_CLIENT_ID in the .env file before building!');
 
                     const redirectUri = 'http://127.0.0.1:5174/api/spotify-callback';
-                    const scope   = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+                    const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
                     const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true`;
 
                     if (window.electronAPI?.openExternal) {
                       window.electronAPI.openExternal(authUrl);
-                      
+
                       const pollInterval = setInterval(async () => {
                         try {
                           const res = await fetch('/api/spotify-status');
                           const data = await res.json();
                           if (data.success && data.data.access_token) {
                             clearInterval(pollInterval);
-                            storage.setItem('spotify_access_token',  data.data.access_token);
-                            storage.setItem('spotify_expires_at',    String(Date.now() + data.data.expires_in * 1000));
+                            storage.setItem('spotify_access_token', data.data.access_token);
+                            storage.setItem('spotify_expires_at', String(Date.now() + data.data.expires_in * 1000));
                             if (data.data.refresh_token) storage.setItem('spotify_refresh_token', data.data.refresh_token);
                             setAccessToken(data.data.access_token);
                           }
@@ -1184,7 +1183,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                       <div className="sp-playlist-panel-top">
                         <div className="sp-playlist-panel-icon"><ListVideo size={20} /></div>
                         <div>
-                          <span className="sp-eyebrow">PLAYLIST GÄ‚SIT</span>
+                          <span className="sp-eyebrow">PLAYLIST GASIT</span>
                           <strong>{info.title}</strong>
                         </div>
                         <div className="sp-playlist-count">

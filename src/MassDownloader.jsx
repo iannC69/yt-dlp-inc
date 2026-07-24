@@ -209,7 +209,6 @@ export default function MassDownloader() {
 
   // Handle global shortcuts and paste
   useEffect(() => {
-    if (appMode !== 'mass') return;
     const handlePaste = (e) => {
       const url = e.detail;
       if (url.includes('spotify.com')) {
@@ -228,7 +227,7 @@ export default function MassDownloader() {
       window.removeEventListener('app:paste-url', handlePaste);
       window.removeEventListener('app:global-download', handleDownloadShortcut);
     };
-  }, [allItems, dlState?.active, appMode]);
+  }, [allItems, dlState?.active]);
 
   // ── Naming preview ───────────────────────────────────────────
   const namingPreview = useMemo(() => {

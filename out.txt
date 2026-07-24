@@ -1,9 +1,0 @@
-+--------------------- Traceback (most recent call last) ---------------------+
-| in <module>:9                                                               |
-|                                                                             |
-| in console_entry_point:53                                                   |
-|                                                                             |
-| in entry_point:93                                                           |
-+-----------------------------------------------------------------------------+
-FFmpegError: FFmpeg is not installed. Please run `spotdl --download-ffmpeg` to 
-install it, or `spotdl --ffmpeg /path/to/ffmpeg` to specify the path to ffmpeg.

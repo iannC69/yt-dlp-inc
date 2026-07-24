@@ -132,6 +132,7 @@ export default function App() {
   const [ytFilenameTemplate, setYtFilenameTemplate] = useState(() => storage.getItem('yt_filename_template') || '%(title)s');
   const [ytWriteThumbnail, setYtWriteThumbnail] = useState(() => storage.getItem('yt_write_thumbnail') === 'true');
   const [youtubePoToken, setYoutubePoToken] = useState('');
+  const [cookiesFromBrowser, setCookiesFromBrowser] = useState('');
 
   // Spotify extra settings
   const [spotDlLyrics, setSpotDlLyrics] = useState(() => storage.getItem('spotdl_lyrics') === 'true');
@@ -213,6 +214,7 @@ export default function App() {
       if (data.spotifyThreshold !== undefined) setSpotifyThreshold(data.spotifyThreshold);
       if (data.ytDlpFallbackEnabled !== undefined) setYtDlpFallbackEnabled(data.ytDlpFallbackEnabled);
       if (data.youtubePoToken !== undefined) setYoutubePoToken(data.youtubePoToken);
+      if (data.cookiesFromBrowser !== undefined) setCookiesFromBrowser(data.cookiesFromBrowser);
     }).catch(() => { });
 
     const savedTheme = storage.getItem('global_theme');
@@ -978,6 +980,28 @@ export default function App() {
                           placeholder="PO_TOKEN"
                         />
                         <p className="settings-hint">Passes the Proof of Origin token to bypass bot detection on some connections.</p>
+                      </div>
+
+                      <div className="settings-field">
+                        <label className="settings-label-row">Browser Cookies (Anti-Bot Bypass)</label>
+                        <select
+                          className="settings-input"
+                          value={cookiesFromBrowser}
+                          onChange={e => {
+                            setCookiesFromBrowser(e.target.value);
+                            saveConfigToBackend({ cookiesFromBrowser: e.target.value });
+                          }}
+                        >
+                          <option value="">None (Use cookies.txt if exists)</option>
+                          <option value="chrome">Google Chrome</option>
+                          <option value="edge">Microsoft Edge</option>
+                          <option value="brave">Brave</option>
+                          <option value="firefox">Firefox</option>
+                          <option value="opera">Opera</option>
+                          <option value="vivaldi">Vivaldi</option>
+                          <option value="safari">Safari</option>
+                        </select>
+                        <p className="settings-hint">Automatically extract your active YouTube login session from your browser to completely bypass bot protection blocks. Must have logged into YouTube in that browser.</p>
                       </div>
                       <div className="settings-field" style={{ marginTop: '20px' }}>
                         <label className="settings-label-row">Browser Cookies</label>

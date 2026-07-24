@@ -5,6 +5,7 @@ import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 import { resolveSpotifyMetadata } from './spotify-api.js'
 import { getBatchPerformanceProfile } from './batch-engine.js'
+import { writeAndVerifyTags } from './tag-utils.js'
 import https from 'https'
 import NodeID3 from 'node-id3'
 
@@ -399,6 +400,8 @@ export function configureNewBackend(server) {
 
       let completedCount = 0;
       let failedCount = 0;
+      let successfulTags = 0;
+      const tagFailedTracks = [];
       const activeProcs = new Set();
       const requestedConcurrency = Math.min(24, Math.max(1, parseInt(urlObj.searchParams.get('concurrency') || '3', 10)));
       const speedMode = urlObj.searchParams.get('speedMode') === 'MAXIMUM' ? 'MAXIMUM' : 'BALANCED';
@@ -547,54 +550,7 @@ export function configureNewBackend(server) {
              proc.on('error', () => resolve(false));
            });
            
-           if (downloadedOk && (typeof urlObj !== 'undefined' && urlObj.searchParams && urlObj.searchParams.get('audioFormat') ? urlObj.searchParams.get('audioFormat') : cfg.audioFormat) === 'mp3') {
-              try {
-                const files = fs.readdirSync(trackDir).filter(f => f.endsWith('.mp3'));
-                if (files[0]) {
-                  const fp = path.join(trackDir, files[0]);
-                  let coverBuffer = null;
-                  if (track.coverUrl) {
-                    for (let attempt = 0; attempt < 3; attempt++) {
-                      try {
-                        coverBuffer = await new Promise((resImg, rejImg) => {
-                          const fetchUrl = (url) => {
-                            https.get(url, rImg => {
-                              if (rImg.statusCode >= 300 && rImg.statusCode < 400 && rImg.headers.location) {
-                                fetchUrl(rImg.headers.location);
-                              } else if (rImg.statusCode === 200) {
-                                const ch = []; rImg.on('data', c => ch.push(c)); rImg.on('end', () => resImg(Buffer.concat(ch)));
-                              } else rejImg(new Error(String(rImg.statusCode)));
-                            }).on('error', rejImg);
-                          };
-                          fetchUrl(track.coverUrl);
-                        });
-                        if (coverBuffer && coverBuffer.length > 1000) break;
-                      } catch (e) {
-                        await new Promise(r => setTimeout(r, 1000));
-                      }
-                    }
-                  }
-                  const existing = NodeID3.read(fp) || {};
-                  const tags = {
-                    ...existing,
-                    title: track.title || existing.title,
-                    artist: track.artist || existing.artist,
-                    album: track.album || existing.album,
-                    year: track.year || existing.year,
-                    trackNumber: `${i + 1}`
-                  };
-                  if (coverBuffer && coverBuffer.length > 1000) {
-                    tags.image = {
-                      mime: 'image/jpeg',
-                      type: { id: 3, name: 'Front Cover' },
-                      description: 'Cover',
-                      imageBuffer: coverBuffer
-                    };
-                  }
-                  NodeID3.write(tags, fp);
-                }
-              } catch (e) { console.error('Tagging error:', e); }
-           }
+           // Tagging logic has been moved out of this block to apply to all downloads
         }
 
         if (dlState.cancelled) return;
@@ -604,7 +560,47 @@ export function configureNewBackend(server) {
           if (downloadedOk && files.length > 0) {
             const finalFile = files.find(f => ['.mp3','.m4a','.flac','.opus','.wav','.ogg'].some(ext => f.endsWith(ext)));
             if (finalFile) {
-              fs.renameSync(path.join(trackDir, finalFile), path.join(tempDir, finalFile));
+              const srcPath = path.join(trackDir, finalFile);
+              
+              if (finalFile.endsWith('.mp3')) {
+                let coverBuffer = null;
+                if (track.coverUrl) {
+                  for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                      coverBuffer = await new Promise((resImg, rejImg) => {
+                        const fetchUrl = (url) => {
+                          https.get(url, rImg => {
+                            if (rImg.statusCode >= 300 && rImg.statusCode < 400 && rImg.headers.location) {
+                              fetchUrl(rImg.headers.location);
+                            } else if (rImg.statusCode === 200) {
+                              const ch = []; rImg.on('data', c => ch.push(c)); rImg.on('end', () => resImg(Buffer.concat(ch)));
+                            } else rejImg(new Error(String(rImg.statusCode)));
+                          }).on('error', rejImg);
+                        };
+                        fetchUrl(track.coverUrl);
+                      });
+                      if (coverBuffer && coverBuffer.length > 1000) break;
+                    } catch (e) {
+                      await new Promise(r => setTimeout(r, 1000));
+                    }
+                  }
+                }
+                
+                try {
+                   // Ensure we pass the 1-based index via trackNumber if missing
+                   const trackMeta = { ...track, trackNumber: track.trackNumber || String(i + 1) };
+                   const tagResult = await writeAndVerifyTags(srcPath, trackMeta, coverBuffer);
+                   if (tagResult.success) {
+                     successfulTags++;
+                   } else {
+                     tagFailedTracks.push({ title: track.title, filePath: srcPath });
+                   }
+                } catch (tagErr) {
+                   tagFailedTracks.push({ title: track.title, filePath: srcPath, error: tagErr.message });
+                }
+              }
+
+              fs.renameSync(srcPath, path.join(tempDir, finalFile));
               completedCount++;
               log('SUCCESS', useSpotDl ? 'spotdl' : 'yt-dlp', `Finished ${track.title}`);
             } else {
@@ -630,6 +626,15 @@ export function configureNewBackend(server) {
       
       await Promise.all(Array.from({ length: MASS_CONCURRENCY }, () => runConcurrent()));
       activeMassDownloads.delete(downloadId);
+
+      log('INFO', 'system', `\n=== TAGGING SUMMARY ===`);
+      log('INFO', 'system', `Total tracks processed: ${tracks.length}`);
+      log('INFO', 'system', `Successfully tagged: ${successfulTags}`);
+      if (tagFailedTracks.length > 0) {
+        log('WARN', 'system', `⚠️ ${tagFailedTracks.length} track${tagFailedTracks.length > 1 ? 's' : ''} fără tag-uri corecte:`);
+        tagFailedTracks.forEach(t => log('WARN', 'system', `  - ${t.title} (${t.filePath}) ${t.error ? 'Error: ' + t.error : ''}`));
+      }
+      log('INFO', 'system', `=======================\n`);
 
       if (dlState.cancelled) {
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch { }
