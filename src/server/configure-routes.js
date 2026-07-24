@@ -327,7 +327,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/spotify-info',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const su=u.searchParams.get('url');const cid=req.headers['x-spotify-client-id'];const cs=req.headers['x-spotify-client-secret'];const at=req.headers['x-spotify-access-token'];if(!su){res.statusCode=400;return res.end(JSON.stringify({error:'Missing url'}))};try{res.setHeader('Content-Type','application/json');let md;try{md=await resolveSpotifyMetadata(su,cid,cs,at)}catch(e){if(/^(SPOTIFY_(401|403|404)|Spotify auth failed|Missing SPOTIFY)/.test(e.message||''))throw e;console.log(`resolveSpotifyMetadata failed (${e.message}), fallback…`);try{md=await resolveSpotifyFallback(su)}catch(fe){throw new Error(e.message)}};return res.end(JSON.stringify(md))}catch(e){console.error('Spotify info error:',e);res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})
 
-  middlewares.use('/api/spotdl-extract',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const su=u.searchParams.get('url');if(!su){res.statusCode=400;return res.end(JSON.stringify({error:'Missing url'}))};res.setHeader('Content-Type','application/json');const tf=path.join(os.tmpdir(),`spotdl_extract_${Date.now()}.spotdl`);const spotdlCmd=process.platform==='win32'?'cmd.exe':spotdlBin;const spotdlArgs=process.platform==='win32'?['/c','chcp','65001','>','nul','&','call',spotdlBin,'save',su,'--save-file',tf,'--ffmpeg',ffmpegBin]:['save',su,'--save-file',tf,'--ffmpeg',ffmpegBin];const p=spawn(spotdlCmd,spotdlArgs,{env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONUTF8:'1',PATH:`${binDir}${path.delimiter}${process.env.PATH}`}});p.stdout.on('data',()=>{});p.stderr.on('data',()=>{});p.on('close',code=>{if(fs.existsSync(tf)){try{const tracks=JSON.parse(fs.readFileSync(tf,'utf8'));fs.unlinkSync(tf);res.end(JSON.stringify({type:'playlist',title:tracks[0]?.list_name||'Spotify Playlist',trackCount:tracks.length,totalTracks:tracks.length,totalDurationMs:0,tracks:tracks.map((t,i)=>({trackNumber:i+1,title:t.name,artist:t.artist,allArtists:t.artists.join(', '),durationMs:t.duration*1000,spotifyUrl:t.url,coverUrl:t.cover_url}))}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}}else{res.statusCode=500;res.end(JSON.stringify({error:'spotdl failed'}))}})})
+  middlewares.use('/api/spotdl-extract',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const su=u.searchParams.get('url');if(!su){res.statusCode=400;return res.end(JSON.stringify({error:'Missing url'}))};res.setHeader('Content-Type','application/json');const tf=path.join(os.tmpdir(),`spotdl_extract_${Date.now()}.spotdl`);const spotdlCmd=process.platform==='win32'?'cmd.exe':spotdlBin;const spotdlArgs=process.platform==='win32'?['/c','chcp','65001','>','nul','&','call',spotdlBin,'save',su,'--save-file',tf]:['save',su,'--save-file',tf];const p=spawn(spotdlCmd,spotdlArgs,{env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONUTF8:'1',PATH:`${binDir}${path.delimiter}${process.env.PATH}`}});p.stdout.on('data',()=>{});p.stderr.on('data',()=>{});p.on('close',code=>{if(fs.existsSync(tf)){try{const tracks=JSON.parse(fs.readFileSync(tf,'utf8'));fs.unlinkSync(tf);res.end(JSON.stringify({type:'playlist',title:tracks[0]?.list_name||'Spotify Playlist',trackCount:tracks.length,totalTracks:tracks.length,totalDurationMs:0,tracks:tracks.map((t,i)=>({trackNumber:i+1,title:t.name,artist:t.artist,allArtists:t.artists.join(', '),durationMs:t.duration*1000,spotifyUrl:t.url,coverUrl:t.cover_url}))}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}}else{res.statusCode=500;res.end(JSON.stringify({error:'spotdl failed'}))}})})
 
   
 // ── Spotify Download (SSE, Multi-Track) ──
@@ -446,7 +446,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               else if (hwaccel === 'QSV') spFfmpegArgs = `-hwaccel qsv ` + spFfmpegArgs
               spotdlArgs.push('--ffmpeg-args', spFfmpegArgs)
             }
-            spotdlArgs.push('--ffmpeg', ffmpegBin);
 
             const result = await new Promise((resolve) => {
               if (dlState.cancelled) return resolve({ skipped: true })
@@ -806,7 +805,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--bitrate', '320k',
                 '--threads', '4',
                 '--overwrite', 'skip',
-                '--ffmpeg', ffmpegBin,
                 '--add-unavailable'
               ];
               if (embedLyrics) {
