@@ -28,7 +28,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   const activeMassYtdlDownloads = new Map()
   const spotifyActiveDownloads  = new Map()
 
-  function isYouTubeUrl(url) { return /^(https?:\/\/)?(www\.|music\.)?(youtube\.com|youtu\.be)\/.+/.test(url) }
+  function isYouTubeUrl(url) { return /^(https?:\/\/)?(www\.|music\.)?(youtube\.com|youtu\.be|soundcloud\.com)\/.+/.test(url) }
   function parseYtDlpError(s) {
     if (!s) return null
     if (s.includes('HTTP Error 429') || s.includes('Too Many Requests')) return 'YouTube Rate Limit. Încearcă mai târziu sau folosește un VPN.'
@@ -190,6 +190,37 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/ytdl/job-status',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const j=activeJobs.get(u.searchParams.get('jobId'));res.setHeader('Content-Type','text/event-stream');res.setHeader('Cache-Control','no-cache');res.setHeader('Connection','keep-alive');if(!j){sendSse(res,{error:'Job not found or expired'});return res.end()};j.clients.add(res);sendSse(res,j.state);req.on('close',()=>j.clients.delete(res))})
 
+  // yt-dlp Auto-update (weekly background check + manual trigger)
+  const performYtdlpUpdate = () => new Promise((resolve) => {
+    const isWin = process.platform === 'win32';
+    const ytDlpPath = path.join(appDir, 'bin', isWin ? 'yt-dlp.exe' : 'yt-dlp');
+    if (!fs.existsSync(ytDlpPath)) return resolve(false);
+    const p = spawn(ytDlpPath, ['-U'], { windowsHide: true });
+    p.on('close', (code) => resolve(code === 0));
+    p.on('error', () => resolve(false));
+  });
+
+  // Weekly background check (runs every 7 days)
+  setInterval(() => {
+    console.log('[system] Running weekly background yt-dlp update check...');
+    performYtdlpUpdate().then(success => {
+      if (success) console.log('[system] yt-dlp auto-update successful.');
+    });
+  }, 7 * 24 * 60 * 60 * 1000);
+
+  middlewares.use('/api/ytdl/update', async (req, res, next) => {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    if (u.pathname !== '/') return next();
+    res.setHeader('Content-Type', 'application/json');
+    const success = await performYtdlpUpdate();
+    if (success) {
+      res.end(JSON.stringify({ success: true }));
+    } else {
+      res.end(JSON.stringify({ success: false, error: 'Update failed or yt-dlp not found' }));
+    }
+  });
+
+
   middlewares.use('/api/ytdl/job-action',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const j=activeJobs.get(u.searchParams.get('jobId'));const a=u.searchParams.get('action');if(!j){res.statusCode=404;return res.end(JSON.stringify({error:'Job not found'}))};if(a==='pause'){if(!j.isPaused&&!j.state.done&&j.process){j.isPaused=true;j.process.kill();broadcast(u.searchParams.get('jobId'),{isPaused:true,status:'Pauză.'})}}else if(a==='resume'){if(j.isPaused&&!j.state.done){j.isPaused=false;broadcast(u.searchParams.get('jobId'),{isPaused:false,status:'Se reia...'});spawnYtDlp(u.searchParams.get('jobId'))}}else if(a==='cancel'){j.isCancelled=true;if(j.process)j.process.kill();if(j.collectionDir){try{fs.rmSync(j.collectionDir,{recursive:true,force:true})}catch{}};finishJob(u.searchParams.get('jobId'),{error:'Anulat.'});activeJobs.delete(u.searchParams.get('jobId'))}else{res.statusCode=400;return res.end(JSON.stringify({error:'Invalid action'}))};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true}))})
 
   middlewares.use('/api/ytdl/info',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const vid=u.searchParams.get('url');if(!vid){res.statusCode=400;return res.end(JSON.stringify({error:'No URL'}))};if(!fs.existsSync(binPath)){res.statusCode=500;return res.end(JSON.stringify({error:'yt-dlp not found.'}))};const poToken=getConfig().youtubePoToken||'';const extArgs=poToken?`youtube:player_client=android,web;po_token=${poToken}`:'youtube:player_client=android,web';let args=['--dump-json','--no-playlist','--playlist-items','1','--extractor-args',extArgs,vid];const cp=path.resolve(appDir,'cookies.txt');if(fs.existsSync(cp))args.splice(args.length-1,0,'--cookies',cp);const child=spawn(binPath,args);let ds='',es='';child.stdout.on('data',c=>ds+=c);child.stderr.on('data',c=>es+=c);const kt=setTimeout(()=>{try{child.kill()}catch{};if(!res.headersSent){res.statusCode=500;res.end(JSON.stringify({error:'Timeout.'}))}},30000);child.on('close',async code=>{clearTimeout(kt);if(res.headersSent)return;if(code!==0){res.statusCode=500;return res.end(JSON.stringify({error:parseYtDlpError(es)||'yt-dlp failed.',details:es}))};try{const info=JSON.parse(ds);const ah=new Set();(info.formats||[]).forEach(f=>{if(f.height&&f.height>=360)ah.add(f.height)});let at=info.channel_thumbnail||info.uploader_thumbnail||null;if(!at&&(info.channel_url||info.uploader_url)){try{const cr=await fetch(info.channel_url||info.uploader_url,{headers:{'User-Agent':'Mozilla/5.0'}});const ch=await cr.text();const am=ch.match(/"avatar"\s*:\s*\{\s*"thumbnails"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)"/i)||ch.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);at=am?.[1]?.replace(/\\u0026/g,'&').replace(/&amp;/g,'&')||null}catch{}}; const isM=/music\.youtube\.com/i.test(vid)||/youtube:music|music/i.test(info.extractor_key||'');const hasC=Boolean(info.playlist_count||info.n_entries||info._type==='playlist'||info.playlist_id);const isP=/[?&]list=/i.test(vid);const ct=hasC||(isM&&(hasC||isP))?(isM?'album':'playlist'):(isM?'track':'video');res.setHeader('Content-Type','application/json');res.end(JSON.stringify({title:info.title,thumbnail:info.thumbnail,duration:info.duration,uploader:info.uploader||info.channel||null,artistThumbnail:at,contentType:ct,platform:isM?'youtube_music':'youtube',album:info.album||info.playlist_title||null,albumArtist:info.album_artist||info.artist||info.uploader||info.channel||null,trackNumber:Number(info.track_number||info.playlist_index)||null,trackCount:Number(info.playlist_count||info.n_entries)||null,releaseYear:info.release_year||(info.release_date?String(info.release_date).slice(0,4):null),viewCount:info.view_count||null,uploadDate:info.upload_date||null,availableHeights:Array.from(ah).sort((a,b)=>b-a)}))}catch{res.statusCode=500;res.end(JSON.stringify({error:'Parse error'}))}})})
@@ -309,6 +340,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         const presetStr = urlObj.searchParams.get('preset')
         const preset = presetStr === 'AUTO' ? null : presetStr
         const hwaccel = urlObj.searchParams.get('hwaccel') || 'NONE'
+        const embedLyrics = urlObj.searchParams.get('embedLyrics') === 'true'
         const clientId = req.headers['x-spotify-client-id']
         const clientSecret = req.headers['x-spotify-client-secret']
         const accessToken = req.headers['x-spotify-access-token']
@@ -757,7 +789,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             };
 
             // ── Helper: download one track via spotdl (per-track, not playlist) ──
-            const downloadViaSpotdl = (track, trackIndex, retryCount = 0, provider = 'youtube-music') => new Promise((resolve) => {
+            const downloadViaSpotdl = (track, trackIndex, retryCount = 0, provider = 'youtube-music', embedLyrics = true) => new Promise((resolve) => {
               if (dlState.cancelled) return resolve({ skipped: true });
               const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
               const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
@@ -767,18 +799,19 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const hasCookies = fs.existsSync(cookiesPath);
 
               const baseArgs = [
-                `${track.artist} - ${track.title}`,
+                track.spotifyUrl || `${track.artist} - ${track.title}`,
                 '--output', path.join(outputDir, '{artists} - {title}.{output-ext}'),
                 '--audio', provider,
-                '--lyrics', 'genius',
                 '--format', 'mp3',
                 '--bitrate', '320k',
                 '--threads', '4',
                 '--overwrite', 'skip',
-                '--skip-album-art',  // We write Spotify cover ourselves via NodeID3
                 '--ffmpeg', ffmpegBin,
                 '--add-unavailable'
               ];
+              if (embedLyrics) {
+                baseArgs.push('--lyrics', 'genius');
+              }
               if (hasCookies) {
                 baseArgs.push('--cookie-file', cookiesPath);
                 baseArgs.push('--yt-dlp-args', `--cookies "${cookiesPath}" --geo-bypass --no-check-certificates`);
@@ -1005,6 +1038,16 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 });
 
                 try {
+                  const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
+                  const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_');
+                  const expectedName = `${safeArtist} - ${safeTitle}.mp3`;
+                  
+                  if (fs.existsSync(path.join(outputDir, expectedName))) {
+                    console.log(`[skip] Already downloaded: ${expectedName}`);
+                    completedTracks.push({ ...track, filename: expectedName });
+                    return; // Skip download block completely
+                  }
+
                   let result = { error: 'Init' };
                   let attempts = 0;
                   const maxAttempts = 2;
@@ -1014,7 +1057,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     attempts++;
                     
                     if (useSpotdl) {
-                      result = await downloadViaSpotdl(track, trackIndex);
+                      result = await downloadViaSpotdl(track, trackIndex, 0, 'youtube-music', embedLyrics);
                       if (result.error && !dlState.cancelled) {
                         console.warn(`[spotdl] Falling back to yt-dlp for: ${track.title} — ${result.error}`);
                         result = await downloadViaYtdlp(track, trackIndex);
@@ -1044,9 +1087,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     const finalFilename = result.filename.endsWith('.mp3') ? result.filename : `${result.filename}.mp3`;
                     const filePath = path.resolve(outputDir, finalFilename);
                     
-                    // Fetch Spotify cover art (up to 2 retries already built into fetchCoverBuffer)
-                    const coverBuffer = await fetchCoverBuffer(track.coverUrl);
-                    writeTrackTags(filePath, track, coverBuffer);
+                    // Fetch Spotify cover art if we fell back to yt-dlp (spotdl does this natively)
+                    if (result.provider !== 'spotdl') {
+                      const coverBuffer = await fetchCoverBuffer(track.coverUrl);
+                      writeTrackTags(filePath, track, coverBuffer);
+                    }
 
                     completedTracks.push(finalFilename);
                     // Use real array lengths for progress — no race condition with concurrent downloads

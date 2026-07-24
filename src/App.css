@@ -1204,3 +1204,38 @@
 
 .settings-scroll-content { overflow-y: auto; flex: 1; padding-bottom: 80px; }
 
+/* ── Drag & Drop overlay ── */
+.app-drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999998;
+  background: rgba(6, 6, 16, 0.88);
+  backdrop-filter: blur(24px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  pointer-events: none;
+  border: 3px dashed rgba(99, 102, 241, 0.5);
+}
+
+.app-root--drag { outline: 2px solid rgba(99,102,241,0.4); }
+
+.app-drag-icon {
+  font-size: 4rem;
+  filter: drop-shadow(0 0 20px rgba(99,102,241,0.7));
+  animation: drag-pulse 0.8s ease infinite alternate;
+}
+
+@keyframes drag-pulse {
+  from { transform: scale(1); }
+  to   { transform: scale(1.12); }
+}
+
+.app-drag-label {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #c7d2fe;
+  letter-spacing: -0.01em;
+}

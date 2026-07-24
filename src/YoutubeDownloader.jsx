@@ -73,6 +73,10 @@ function formatDuration(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function isYouTubeUrl(url) {
+  return /^(https?:\/\/)?(www\.|music\.)?(youtube\.com|youtu\.be|soundcloud\.com)\/.+/.test(url);
+}
+
 function isPlaylistUrl(value) {
   try {
     const parsed = new URL(value);
@@ -225,7 +229,24 @@ const YoutubeDownloader = ({ activeJobId }) => {
     }));
   }, [downloading, progress, downloadStatus]);
 
-
+  // Handle global shortcuts and paste
+  useEffect(() => {
+    if (appMode !== 'single') return;
+    const handlePaste = (e) => {
+      setUrl(e.detail);
+      setInfo(null);
+      setError(null);
+    };
+    const handleDownload = () => {
+      if (info && !downloading) handleDownloadClick();
+    };
+    window.addEventListener('app:paste-url', handlePaste);
+    window.addEventListener('app:global-download', handleDownload);
+    return () => {
+      window.removeEventListener('app:paste-url', handlePaste);
+      window.removeEventListener('app:global-download', handleDownload);
+    };
+  }, [info, downloading, appMode]);
 
   const handleOpenFolder = async (target = '') => {
     try {

@@ -207,6 +207,29 @@ export default function MassDownloader() {
     if (allItems.length > 500) setSplitEnabled(true);
   }, [allItems.length]);
 
+  // Handle global shortcuts and paste
+  useEffect(() => {
+    if (appMode !== 'mass') return;
+    const handlePaste = (e) => {
+      const url = e.detail;
+      if (url.includes('spotify.com')) {
+        setSpotUrl(url);
+        // We could auto-fetch, but let's just populate the input
+      } else {
+        setYtUrl(url);
+      }
+    };
+    const handleDownloadShortcut = () => {
+      if (allItems.length > 0 && !dlState?.active) startDownload();
+    };
+    window.addEventListener('app:paste-url', handlePaste);
+    window.addEventListener('app:global-download', handleDownloadShortcut);
+    return () => {
+      window.removeEventListener('app:paste-url', handlePaste);
+      window.removeEventListener('app:global-download', handleDownloadShortcut);
+    };
+  }, [allItems, dlState?.active, appMode]);
+
   // ── Naming preview ───────────────────────────────────────────
   const namingPreview = useMemo(() => {
     const sample = allItems[0] || { title: 'Song Title', artist: 'Artist', channel: 'Channel', year: '2024', album: 'Album' };
@@ -345,7 +368,8 @@ export default function MassDownloader() {
         splitEvery: splitEnabled ? String(splitEvery) : '0',
         customPath: localStorage.getItem('customPath') || '',
         audioFormat: localStorage.getItem('audioFormat') || 'mp3',
-        audioQuality: localStorage.getItem('audioQuality') || '320k'
+        audioQuality: localStorage.getItem('audioQuality') || '320k',
+        embedLyrics: localStorage.getItem('spotdl_lyrics') === 'true' ? 'true' : 'false'
       });
       endpoint = `/api/mass/start-ytdl?${params}`;
       bodyPayload = {

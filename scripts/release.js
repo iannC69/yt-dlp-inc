@@ -116,7 +116,14 @@ if (bumpType || shouldPublish) {
   step('Committing and pushing to GitHub')
   try {
     run('git add package.json package-lock.json')
-    run(`git commit -m "chore: release v${version}"`)
+    // Only commit if there's actually something staged
+    const statusResult = spawnSync('git', ['diff', '--staged', '--quiet'], { cwd: ROOT })
+    if (statusResult.status !== 0) {
+      // status !== 0 means there ARE staged changes — safe to commit
+      run(`git commit -m "chore: release v${version}"`)
+    } else {
+      warn('Nothing to commit — version already up to date in git.')
+    }
     run('git push')
     ok('Git push complete')
   } catch (e) {

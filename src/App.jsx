@@ -11,6 +11,7 @@ import QueueModal from './QueueModal';
 import LogsTab from './LogsTab';
 import UpdatesTab from './UpdatesTab';
 import UpdateOverlay from './UpdateOverlay';
+import ToastSystem, { toast } from './ToastSystem';
 import './App.css';
 import { storage } from './storage';
 
@@ -68,8 +69,11 @@ export default function App() {
   const [updateState, setUpdateState] = useState('idle');
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateSpeed, setUpdateSpeed] = useState(0);
+  const [updateTransferred, setUpdateTransferred] = useState(0);
+  const [updateTotal, setUpdateTotal] = useState(0);
   const [updateInfo, setUpdateInfo] = useState({});
   const [historyData, setHistoryData] = useState([]);
+  const [dragOver, setDragOver] = useState(false);
   const overlayMouseDownRef = useRef(false);
   const colorPickerActiveRef = useRef(false);
   const colorPickerTimerRef = useRef(null);
@@ -188,10 +192,10 @@ export default function App() {
     try {
       const res = await fetch('/api/ytdl/update');
       const data = await res.json();
-      if (data.success) alert('Engine-ul yt-dlp a fost actualizat cu succes!');
-      else alert('Eroare la actualizare: ' + data.error);
+      if (data.success) toast.success('yt-dlp engine updated successfully!');
+      else toast.error('Update failed: ' + data.error);
     } catch (err) {
-      alert('Eroare de rețea la actualizare.');
+      toast.error('Network error while updating engine.');
     }
   };
 
@@ -239,18 +243,23 @@ export default function App() {
         if (name === 'update-available') {
           setUpdateNotice('available');
           if (data) setUpdateInfo(data);
+          toast.info(`Update v${data?.version} available — click to download`);
         }
         if (name === 'download-progress') {
           setUpdateNotice(null);
           setShowUpdateOverlay(true);
           setUpdateState('downloading');
-          if (data && data.percent) setUpdateProgress(data.percent);
-          if (data && data.bytesPerSecond) setUpdateSpeed(data.bytesPerSecond);
+          if (data?.percent !== undefined) setUpdateProgress(data.percent);
+          if (data?.bytesPerSecond) setUpdateSpeed(data.bytesPerSecond);
+          if (data?.transferred) setUpdateTransferred(data.transferred);
+          if (data?.total) setUpdateTotal(data.total);
         }
         if (name === 'update-downloaded') {
           setUpdateNotice('downloaded');
           setUpdateState('downloaded');
+          setShowUpdateOverlay(true);
           if (data) setUpdateInfo(data);
+          toast.success(`v${data?.version} downloaded — restart to install!`, 8000);
         }
       });
       // Check for updates quietly in background on startup
@@ -340,12 +349,76 @@ export default function App() {
     setActiveIdx(idx);
   };
 
+  // ── Drag & Drop URL detection ──────────────────────────────────────────
+  const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
+  const handleDragLeave = () => setDragOver(false);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list') || '';
+    const url = text.trim();
+    if (!url) return;
+    if (url.includes('spotify.com')) {
+      switchTo(1);
+      window.dispatchEvent(new CustomEvent('app:paste-url', { detail: url }));
+      toast.info('Spotify URL detected — switching to Spotify downloader');
+    } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      switchTo(0);
+      window.dispatchEvent(new CustomEvent('app:paste-url', { detail: url }));
+      toast.info('YouTube URL detected — switching to YouTube downloader');
+    } else {
+      window.dispatchEvent(new CustomEvent('app:paste-url', { detail: url }));
+      toast.info('URL pasted!');
+    }
+  };
+
+  // ── Global Keyboard Shortcuts ───────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Escape closes modals
+      if (e.key === 'Escape') {
+        if (showLibrary) setShowLibrary(false);
+        if (showQueue) setShowQueue(false);
+        if (showSettings) setShowSettings(false);
+        if (showUpdateOverlay) setShowUpdateOverlay(false);
+      }
+      
+      // Ctrl+D triggers global download
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('app:global-download'));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showLibrary, showQueue, showSettings, showUpdateOverlay]);
+
   if (!setupDone) {
     return <SetupWizard onComplete={handleSetupComplete} />;
   }
 
   return (
-    <div className="app-root">
+    <div
+      className={`app-root${dragOver ? ' app-root--drag' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag-over overlay */}
+      <AnimatePresence>
+        {dragOver && (
+          <motion.div
+            className="app-drag-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="app-drag-icon">🔗</div>
+            <div className="app-drag-label">Drop URL to download</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Platform Switcher Bar */}
       <div className="platform-bar">
         <div className="platform-bar-inner">
@@ -1128,12 +1201,18 @@ export default function App() {
             status={updateState}
             progress={updateProgress}
             speed={updateSpeed}
+            transferred={updateTransferred}
+            total={updateTotal}
             info={updateInfo}
-            onInstall={() => window.electronAPI.updater.installUpdate()}
+            onInstall={() => window.electronAPI?.updater?.installUpdate()}
             onDismiss={() => setShowUpdateOverlay(false)}
+            onLater={() => setShowUpdateOverlay(false)}
           />
         )}
       </AnimatePresence>
+
+      {/* Global Toast System */}
+      <ToastSystem />
 
     </div>
   );

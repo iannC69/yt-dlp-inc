@@ -453,6 +453,25 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     }
   }, [accessToken]);
 
+  // Handle global shortcuts and paste
+  useEffect(() => {
+    if (appMode !== 'single') return;
+    const handlePaste = (e) => {
+      setUrl(e.detail);
+      setInfo(null);
+      setError(null);
+    };
+    const handleDownloadShortcut = () => {
+      if (info && !downloadState.active) handleDownload();
+    };
+    window.addEventListener('app:paste-url', handlePaste);
+    window.addEventListener('app:global-download', handleDownloadShortcut);
+    return () => {
+      window.removeEventListener('app:paste-url', handlePaste);
+      window.removeEventListener('app:global-download', handleDownloadShortcut);
+    };
+  }, [info, downloadState.active, appMode]);
+
   const fetchMyPlaylists = useCallback(async () => {
     if (!accessToken) return;
     setShowPlaylists(true);
@@ -748,6 +767,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       downloadId: dlId,
       preset: localStorage.getItem('download_preset') || 'AUTO',
       hwaccel: localStorage.getItem('hardware_acceleration') || 'NONE',
+      embedLyrics: localStorage.getItem('spotdl_lyrics') === 'true' ? 'true' : 'false',
       overrides: JSON.stringify(trackOverrides)
     });
 

@@ -1,8 +1,9 @@
-const { app, BrowserWindow, shell, ipcMain, session } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, session, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 
 const PORT = 5174;
 let mainWindow;
+let tray = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -13,9 +14,59 @@ if (!gotTheLock) {
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
     mainWindow.focus();
   }
 });
+
+function createTray() {
+  // Build a 16x16 icon from a tiny inline PNG (fallback if no icon file)
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.ico')
+    : path.join(app.getAppPath(), 'public', 'icon.ico');
+
+  let trayIcon;
+  try {
+    trayIcon = nativeImage.createFromPath(iconPath);
+  } catch {
+    trayIcon = nativeImage.createEmpty();
+  }
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('MediaDL');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open MediaDL',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }
+    },
+    {
+      label: 'Open Downloads Folder',
+      click: async () => {
+        try {
+          const res = await fetch(`http://127.0.0.1:${PORT}/api/ytdl/get-config`);
+          const cfg = await res.json();
+          const folder = cfg.customPath || app.getPath('downloads');
+          shell.openPath(folder);
+        } catch {
+          shell.openPath(app.getPath('downloads'));
+        }
+      }
+    },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { app.isQuiting = true; app.quit(); } }
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.on('double-click', () => {
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -55,10 +106,24 @@ function createWindow() {
   });
 
   // Guard the main window: block any navigation away from the local server.
-  // This still allows http://127.0.0.1:5174/* (e.g. route changes, hot reload).
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
     if (!navigationUrl.startsWith(`http://127.0.0.1:${PORT}`)) {
       event.preventDefault();
+    }
+  });
+
+  // Minimize to tray instead of closing
+  mainWindow.on('close', (event) => {
+    if (!app.isQuiting) {
+      event.preventDefault();
+      mainWindow.hide();
+      if (tray) {
+        tray.displayBalloon && tray.displayBalloon({
+          iconType: 'info',
+          title: 'MediaDL',
+          content: 'MediaDL is still running in the background.'
+        });
+      }
     }
   });
 }
@@ -112,6 +177,8 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+  createTray();
+
   if (!serverOk) {
     const { dialog } = require('electron');
     const isPortBusy = (serverError && (serverError.code === 'EADDRINUSE' || String(serverError.message).includes('EADDRINUSE')));
@@ -124,10 +191,23 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('window-all-closed', () => app.quit());
+// Only actually quit when explicitly requested (tray menu or IPC)
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    // Don't quit — keep running in tray
+  }
+});
+
+app.on('before-quit', () => {
+  app.isQuiting = true;
+  if (tray) { tray.destroy(); tray = null; }
+});
 
 // ── Spotify OAuth is now handled natively via the browser and Vite/Express proxy ──
 ipcMain.handle('open-external', (_event, url) => shell.openExternal(url));
+
+// IPC: Explicit quit from renderer
+ipcMain.handle('quit-app', () => { app.isQuiting = true; app.quit(); });
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('context-menu', event => event.preventDefault());
@@ -159,7 +239,9 @@ ipcMain.on('store-delete', (event, key) => {
 // ── IPC: Auto Updater ────────────────────────────────────────────────────────
 const { autoUpdater } = require('electron-updater');
 
+// Prevent the default NSIS popup — we handle all update UI in React
 autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
 
 function sendUpdateEvent(name, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -172,7 +254,11 @@ autoUpdater.on('update-available', (info) => sendUpdateEvent('update-available',
 autoUpdater.on('update-not-available', (info) => sendUpdateEvent('update-not-available', info));
 autoUpdater.on('error', (err) => sendUpdateEvent('error', err.message));
 autoUpdater.on('download-progress', (progressObj) => sendUpdateEvent('download-progress', progressObj));
-autoUpdater.on('update-downloaded', (info) => sendUpdateEvent('update-downloaded', info));
+autoUpdater.on('update-downloaded', (info) => {
+  sendUpdateEvent('update-downloaded', info);
+  // Update tray tooltip to indicate update is ready
+  if (tray) tray.setToolTip('MediaDL — Update Ready!');
+});
 
 ipcMain.handle('check-for-updates', () => {
   if (!app.isPackaged) {
@@ -182,5 +268,8 @@ ipcMain.handle('check-for-updates', () => {
   return autoUpdater.checkForUpdates();
 });
 ipcMain.handle('download-update', () => autoUpdater.downloadUpdate());
-ipcMain.handle('install-update', () => autoUpdater.quitAndInstall(false, true));
+ipcMain.handle('install-update', () => {
+  app.isQuiting = true;
+  autoUpdater.quitAndInstall(false, true);
+});
 ipcMain.handle('get-app-version', () => app.getVersion());
