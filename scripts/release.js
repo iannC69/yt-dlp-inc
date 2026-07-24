@@ -97,6 +97,21 @@ ok(`Frontend built → dist-fe/`)
 
 // ── Step 4: Package Electron ─────────────────────────────────────────────────
 step('Packaging Electron app with electron-builder')
+
+// Clean up old artifacts to prevent massive SSD memory leaks
+const oldBuildDirs = ['release-build', 'dist_electron', 'dist']
+for (const d of oldBuildDirs) {
+  const dp = path.join(ROOT, d)
+  if (fs.existsSync(dp)) {
+    try {
+      fs.rmSync(dp, { recursive: true, force: true })
+      ok(`Cleaned up old build directory: ${d}/`)
+    } catch (e) {
+      warn(`Failed to clean up ${d}/: ${e.message}`)
+    }
+  }
+}
+
 let builderTarget = ''
 if (portableOnly)       builderTarget = '--win portable'
 else if (installerOnly) builderTarget = '--win nsis'
