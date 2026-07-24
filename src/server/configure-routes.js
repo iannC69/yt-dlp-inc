@@ -390,7 +390,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
           const limit = aiConfig.concurrentTracks || 1;
           const activePromises = new Set();
-          let tracksProcessed = 0;
           const isNativePlaylist = urlObj.searchParams.get('nativePlaylist') === 'true';
 
           if (false /* disabled due to spotdl playlist parsing bug */) {
@@ -623,29 +622,27 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                            });
                         }
                         
-                        // Write ID3 tags
+                        // Write full Spotify ID3 tags (cover + all text fields)
                         try {
+                          const coverBuf = await fetchCoverBuffer(track.coverUrl);
+                          const existing = NodeID3.read(finalOutputPath) || {};
                           const tags = {
-                            title: track.title,
-                            artist: track.allArtists || track.artist,
-                            album: track.album,
-                            year: track.year,
-                            trackNumber: `${track.trackNumber}/${track.totalTracks}`
+                            title: track.title || existing.title || '',
+                            artist: track.allArtists || track.artist || existing.artist || '',
+                            album: track.album || existing.album || '',
+                            year: track.year ? String(track.year) : (existing.year || ''),
+                            trackNumber: (track.trackNumber && track.totalTracks)
+                              ? `${track.trackNumber}/${track.totalTracks}`
+                              : (existing.trackNumber || ''),
+                            performerInfo: track.allArtists || track.artist || ''
                           };
-                          if (track.coverUrl) {
-                            try {
-                              const coverBuf = await new Promise((r2, j2) => {
-                                https.get(track.coverUrl, rImg => {
-                                  if (rImg.statusCode === 200) {
-                                    const ch = []; rImg.on('data', c => ch.push(c)); rImg.on('end', () => r2(Buffer.concat(ch)));
-                                  } else j2(new Error(`${rImg.statusCode}`));
-                                }).on('error', j2);
-                              });
-                              tags.image = { mime: 'image/jpeg', type: { id: 3, name: 'Front Cover' }, description: 'Cover', imageBuffer: coverBuf };
-                            } catch {}
+                          if (coverBuf && coverBuf.length > 1000) {
+                            tags.image = { mime: 'image/jpeg', type: { id: 3, name: 'Front Cover' }, description: 'Cover', imageBuffer: coverBuf };
+                          } else if (existing.image) {
+                            tags.image = existing.image;
                           }
-                          NodeID3.update(tags, finalOutputPath);
-                        } catch {}
+                          NodeID3.write(tags, finalOutputPath);
+                        } catch (e) { console.error('[rescue-tags]', e.message); }
                       } else {
                         console.log(`[spotdl-rescue] ✗ Strategy failed: "${track.title}" | query: ${query.substring(0, 60)}`);
                         if (!ok) await new Promise(r => setTimeout(r, 800));
@@ -714,36 +711,46 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               }
             };
 
-            // ── Helper: write ID3 tags (FULL REWRITE — guarantees Spotify album art replaces anything spotdl embedded) ──
+            // ── Helper: write ID3 tags ─────────────────────────────────────────────
+            // Uses Spotify metadata exclusively. If cover fetch fails, preserves existing
+            // image (from whatever was already in the file) instead of blanking it.
             const writeTrackTags = (filePath, track, coverBuffer) => {
               try {
-                // Read existing tags first so we don’t lose anything we didn’t set
+                // Read existing tags so we can preserve the image if our fetch failed
                 const existing = NodeID3.read(filePath) || {};
+
+                // Build the full Spotify text tags
                 const tags = {
-                  ...existing,
-                  title: track.title || existing.title,
-                  artist: track.allArtists || track.artist || existing.artist,
-                  album: track.album || existing.album,
-                  year: track.year ? String(track.year) : existing.year,
-                  trackNumber: (track.trackNumber && track.totalTracks) 
-                    ? `${track.trackNumber}/${track.totalTracks}` 
-                    : existing.trackNumber
+                  title: track.title || existing.title || '',
+                  artist: track.allArtists || track.artist || existing.artist || '',
+                  album: track.album || existing.album || '',
+                  year: track.year ? String(track.year) : (existing.year || ''),
+                  trackNumber: (track.trackNumber && track.totalTracks)
+                    ? `${track.trackNumber}/${track.totalTracks}`
+                    : (existing.trackNumber || ''),
+                  performerInfo: track.allArtists || track.artist || existing.performerInfo || ''
                 };
-                delete tags.comment;
-                delete tags.userDefinedUrl;
-                delete tags.description;
-                
+
+                // Cover art: use the freshly-fetched Spotify buffer;
+                // fall back to preserving whatever was already embedded (could be nothing)
                 if (coverBuffer && coverBuffer.length > 1000) {
-                  // Overwrite with the track’s own album art from Spotify
                   tags.image = {
                     mime: 'image/jpeg',
                     type: { id: 3, name: 'Front Cover' },
                     description: 'Cover',
                     imageBuffer: coverBuffer
                   };
+                } else if (existing.image) {
+                  // Preserve existing image rather than blanking it
+                  tags.image = existing.image;
+                  console.warn(`[tags] Using existing embedded image for ${track.title} (Spotify CDN fetch failed)`);
+                } else {
+                  console.warn(`[tags] No cover art available for ${track.title}`);
                 }
-                // NodeID3.write = full tag block rewrite, NOT just update specific frames
+
+                // Full ID3 block rewrite with correct Spotify metadata
                 NodeID3.write(tags, filePath);
+                console.log(`[tags] ✓ Wrote Spotify tags for: ${track.artist} - ${track.title}`);
               } catch (err) {
                 console.error(`[tags] Error writing tags for ${track.title}:`, err.message);
               }
@@ -768,6 +775,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 '--bitrate', '320k',
                 '--threads', '4',
                 '--overwrite', 'skip',
+                '--skip-album-art',  // We write Spotify cover ourselves via NodeID3
                 '--ffmpeg', ffmpegBin,
                 '--add-unavailable'
               ];
@@ -988,7 +996,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const downloadTask = (async () => {
                 send({
                   status: `Downloading: ${track.title} — ${track.artist} ${useSpotdl ? '(Spotify)' : '(YouTube Audio)'}`,
-                  progress: Math.round(5 + (tracksProcessed / totalTracks) * 85),
+                  progress: Math.round(5 + ((completedTracks.length + failedTracks.length) / totalTracks) * 85),
                   currentTrack: trackIndex + 1,
                   totalTracks,
                   trackTitle: track.title,
@@ -1026,38 +1034,38 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     }
                   }
 
-                  tracksProcessed++;
-                  const overallProgress = Math.round(5 + (tracksProcessed / totalTracks) * 85);
-
                   if (result.skipped) return;
                   if (result.error) {
                     console.error(`[Download Error] Track failed completely: ${track.title} - ${result.error}`);
                     failedTracks.push({ ...track, error: result.error });
-                    send({ trackError: result.error, currentTrack: trackIndex + 1, trackTitle: track.title, progress: overallProgress });
+                    const failProgress = Math.round(5 + ((completedTracks.length + failedTracks.length) / totalTracks) * 85);
+                    send({ trackError: result.error, currentTrack: trackIndex + 1, trackTitle: track.title, progress: failProgress });
                   } else {
                     const finalFilename = result.filename.endsWith('.mp3') ? result.filename : `${result.filename}.mp3`;
                     const filePath = path.resolve(outputDir, finalFilename);
                     
-                    try {
-                      const coverBuffer = await fetchCoverBuffer(track.coverUrl);
-                      writeTrackTags(filePath, track, coverBuffer);
-                    } catch (e) {
-                      console.error(`[tags] Failed to write tags for ${track.title}:`, e.message);
-                    }
+                    // Fetch Spotify cover art (up to 2 retries already built into fetchCoverBuffer)
+                    const coverBuffer = await fetchCoverBuffer(track.coverUrl);
+                    writeTrackTags(filePath, track, coverBuffer);
 
                     completedTracks.push(finalFilename);
+                    // Use real array lengths for progress — no race condition with concurrent downloads
+                    const doneProgress = Math.round(5 + ((completedTracks.length + failedTracks.length) / totalTracks) * 85);
                     send({
                       trackDone: true,
                       currentTrack: trackIndex + 1,
                       totalTracks,
                       trackTitle: track.title,
-                      progress: overallProgress,
+                      trackArtist: track.artist,
+                      trackAlbum: track.album,
+                      coverUrl: track.coverUrl,
+                      progress: doneProgress,
                     });
                   }
                 } catch (e) {
-                  tracksProcessed++;
                   failedTracks.push({ ...track, error: e.message });
-                  send({ trackError: e.message, currentTrack: trackIndex + 1, trackTitle: track.title, progress: Math.round(5 + (tracksProcessed / totalTracks) * 85) });
+                  const catchProgress = Math.round(5 + ((completedTracks.length + failedTracks.length) / totalTracks) * 85);
+                  send({ trackError: e.message, currentTrack: trackIndex + 1, trackTitle: track.title, progress: catchProgress });
                 }
               })();
 
