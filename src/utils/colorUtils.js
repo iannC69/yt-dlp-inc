@@ -1,11 +1,19 @@
 export async function getAverageColor(src) {
   return new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = "Anonymous"; // Try to avoid CORS issues
+    const isYoutube = src.includes('ytimg.com');
+    
+    // YouTube blocks CORS for canvas, so don't request Anonymous to avoid ugly console errors
+    if (!isYoutube) {
+      img.crossOrigin = "Anonymous";
+    }
+    
     img.src = src;
 
     img.onload = () => {
       try {
+        if (isYoutube) throw new Error("CORS fallback for YouTube");
+        
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         canvas.width = img.width;
@@ -39,11 +47,18 @@ export async function getAverageColor(src) {
 
         resolve(`rgb(${Math.floor(boostedRgb.r)}, ${Math.floor(boostedRgb.g)}, ${Math.floor(boostedRgb.b)})`);
       } catch (e) {
-        // If canvas is tainted by CORS, default to green
-        resolve('rgb(29, 185, 84)');
+        // Fallback colors if tainted by CORS
+        if (isYoutube) {
+          resolve('rgb(25, 25, 35)'); // Dark neutral for YouTube
+        } else {
+          resolve('rgb(29, 185, 84)'); // Spotify green fallback
+        }
       }
     };
-    img.onerror = () => resolve('rgb(29, 185, 84)');
+    img.onerror = () => {
+      if (isYoutube) resolve('rgb(25, 25, 35)');
+      else resolve('rgb(29, 185, 84)');
+    };
   });
 }
 

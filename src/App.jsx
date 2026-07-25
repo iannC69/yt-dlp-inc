@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, lazy } from 'react';
 import SetupWizard from './SetupWizard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot, Scissors, Layers, SlidersHorizontal, Cpu, Music2, Filter, Terminal, LayoutGrid, Globe, Check, Music, Folder, Link, Link2, Download, Upload } from 'lucide-react';
@@ -11,7 +11,9 @@ import QueueModal from './QueueModal';
 import LogsTab from './LogsTab';
 import UpdatesTab from './UpdatesTab';
 import UpdateOverlay from './UpdateOverlay';
+import SplashScreen from './SplashScreen';
 import ToastSystem, { toast } from './ToastSystem';
+import AuroraBackground from './AuroraBackground';
 import './App.css';
 import { storage } from './storage';
 
@@ -57,6 +59,7 @@ const slideVariants = {
 };
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [setupDone, setSetupDone] = useState(() => storage.getItem('setup_complete') === '1');
   const [activeIdx, setActiveIdx] = useState(0);
   const [direction, setDirection] = useState(1);
@@ -99,6 +102,7 @@ export default function App() {
     ytBg:        '#080a0f',
     ytAccent:    '#ef4444',
     ytSecondary: '#3b82f6',
+    ytMusic:     '#8b5cf6',
     ytText:      '#f1f5f9',
     // Spotify panel
     spBg:        '#060a06',
@@ -117,6 +121,7 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
   const [activeSpotifyJob, setActiveSpotifyJob] = useState(null);
+  const [liveBackground, setLiveBackground] = useState(() => storage.getItem('live_background') !== 'false');
 
   // Backend Config State
   const [audioFormat, setAudioFormat] = useState(() => storage.getItem('audioFormat') || 'mp3');
@@ -299,6 +304,10 @@ export default function App() {
     root.style.setProperty('--theme-bg',      customTheme.ytBg     || '#080a0f');
     root.style.setProperty('--theme-primary', customTheme.ytAccent || '#ef4444');
     root.style.setProperty('--theme-secondary', customTheme.ytSecondary || '#3b82f6');
+    root.style.setProperty('--theme-music',   customTheme.ytMusic  || '#8b5cf6');
+    root.style.setProperty('--theme-music-bg', customTheme.ytMusicBg || '#120a1f');
+    root.style.setProperty('--theme-music-text', customTheme.ytMusicText || '#f5f3ff');
+    root.style.setProperty('--theme-music-secondary', customTheme.ytMusicSecondary || '#c084fc');
     root.style.setProperty('--yt-text',       customTheme.ytText   || '#f1f5f9');
     // Spotify
     root.style.setProperty('--sp-bg',         customTheme.spBg     || '#060a06');
@@ -406,6 +415,11 @@ export default function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Splash Screen */}
+      <AnimatePresence>
+        {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+      </AnimatePresence>
+
       {/* Drag-over overlay */}
       <AnimatePresence>
         {dragOver && (
@@ -415,8 +429,15 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="app-drag-icon">🔗</div>
-            <div className="app-drag-label">Drop URL to download</div>
+            <div className="app-drag-glass-card">
+              <div className="app-drag-icon-wrapper">
+                <Link2 size={48} strokeWidth={1.5} className="app-drag-lucide" />
+              </div>
+              <div className="app-drag-text">
+                <div className="app-drag-label">Drop URL to download</div>
+                <div className="app-drag-sublabel">Release to instantly fetch media</div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -816,11 +837,39 @@ export default function App() {
                           renderCPicker("borderColor", "Borders & Glow")
                         ])}
 
+                        <div className="cp-panel-section">
+                          <div className="cp-panel-section-title">
+                            <Zap size={11} />
+                            Effects
+                          </div>
+                          <div className="cp-color-row">
+                            <span className="cp-color-label" style={{ flex: 1, minWidth: 'auto' }}>Live Aurora Background</span>
+                            <button
+                              className={`settings-hw-btn ${liveBackground ? 'active' : ''}`}
+                              onClick={() => {
+                                const newVal = !liveBackground;
+                                setLiveBackground(newVal);
+                                storage.setItem('live_background', newVal.toString());
+                              }}
+                              style={{ width: 'auto', padding: '4px 12px' }}
+                            >
+                              {liveBackground ? 'Enabled' : 'Disabled'}
+                            </button>
+                          </div>
+                        </div>
+
                         {renderPanelSection("YouTube Panel", <Play size={11}/>, [
                           renderCPicker("ytBg", "Background"),
-                          renderCPicker("ytAccent", "Accent color"),
+                          renderCPicker("ytAccent", "Video Accent"),
                           renderCPicker("ytSecondary", "Secondary color"),
                           renderCPicker("ytText", "Text color")
+                        ])}
+
+                        {renderPanelSection("YouTube Music", <Music size={11}/>, [
+                          renderCPicker("ytMusicBg", "Background"),
+                          renderCPicker("ytMusic", "Music Accent"),
+                          renderCPicker("ytMusicSecondary", "Secondary color"),
+                          renderCPicker("ytMusicText", "Text color")
                         ])}
 
                         {renderPanelSection("Spotify Panel", <Music2 size={11}/>, [
@@ -1280,6 +1329,10 @@ export default function App() {
       {/* Global Toast System */}
       <ToastSystem />
 
+      {/* Background Layer */}
+      {liveBackground && (
+        <AuroraBackground activeColor={PLATFORMS[activeIdx]?.color} />
+      )}
     </div>
   );
 }

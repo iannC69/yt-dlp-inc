@@ -1,0 +1,88 @@
+/* AuroraBackground.css */
+.aurora-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  transition: background-color 0.5s ease;
+}
+
+.aurora-blur {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  filter: blur(100px);
+  transform: translateZ(0);
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  opacity: 0.6;
+  transition: background-color 1s ease;
+}
+
+.aurora-orb-1 {
+  width: 60vw;
+  height: 60vw;
+  top: -10vw;
+  left: -10vw;
+  background: radial-gradient(circle at center, var(--aurora-color-1), transparent 70%);
+  animation: float1 20s infinite alternate ease-in-out;
+}
+
+.aurora-orb-2 {
+  width: 70vw;
+  height: 70vw;
+  bottom: -20vw;
+  right: -10vw;
+  background: radial-gradient(circle at center, var(--aurora-color-2), transparent 70%);
+  animation: float2 25s infinite alternate-reverse ease-in-out;
+}
+
+.aurora-orb-3 {
+  width: 50vw;
+  height: 50vw;
+  top: 20vh;
+  left: 20vw;
+  background: radial-gradient(circle at center, var(--aurora-color-3), transparent 70%);
+  animation: float3 22s infinite alternate ease-in-out;
+}
+
+@keyframes float1 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(10vw, 15vh) scale(1.1); }
+  100% { transform: translate(20vw, 5vh) scale(0.9); }
+}
+
+@keyframes float2 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-15vw, -10vh) scale(1.2); }
+  100% { transform: translate(-5vw, -25vh) scale(1); }
+}
+
+@keyframes float3 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-20vw, 20vh) scale(0.8); }
+  100% { transform: translate(10vw, -15vh) scale(1.1); }
+}
+
+.aurora-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}

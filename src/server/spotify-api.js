@@ -360,13 +360,21 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
     const track = await fetchWithRetry(`/v1/tracks/${id}`, clientId, clientSecret, accessToken)
     const artist = track.artists?.[0]?.name
     const artistId = track.artists?.[0]?.id
-    let artistThumbnail = null
-    if (artistId) {
-      try {
-        const artistData = await fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken)
-        artistThumbnail = artistData.images?.[0]?.url || null
-      } catch(e) {}
-    }
+    const albumId = track.album?.id
+
+    let artistData = null;
+    let albumData = null;
+
+    try {
+      const promises = [];
+      if (artistId) promises.push(fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken).then(d => artistData = d).catch(() => {}));
+      if (albumId) promises.push(fetchWithRetry(`/v1/albums/${albumId}`, clientId, clientSecret, accessToken).then(d => albumData = d).catch(() => {}));
+      await Promise.all(promises);
+    } catch(e) {}
+
+    let artistThumbnail = artistData?.images?.[0]?.url || null;
+    let genre = artistData?.genres?.join(', ') || '';
+    
     if (!artist) throw new Error(`Could not resolve artist for track: ${id}`)
     return {
       type: 'track',
@@ -375,8 +383,16 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       allArtists: track.artists.map(a => a.name).join(', '),
       album: track.album.name,
       year: track.album.release_date?.substring(0, 4) || '',
+      releaseDate: track.album.release_date || '',
       trackNumber: track.track_number,
       totalTracks: track.album.total_tracks,
+      discNumber: track.disc_number,
+      totalDiscs: albumData?.tracks?.items ? Math.max(...albumData.tracks.items.map(t => t.disc_number)) : 1,
+      isrc: track.external_ids?.isrc || '',
+      label: albumData?.label || '',
+      copyright: albumData?.copyrights?.[0]?.text || '',
+      explicit: track.explicit || false,
+      genre,
       coverUrl: track.album.images?.[0]?.url || null,
       spotifyId: track.id,
       spotifyUrl: `https://open.spotify.com/track/${track.id}`,
@@ -391,10 +407,12 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
     const album = await fetchWithRetry(`/v1/albums/${id}${market}`, clientId, clientSecret, accessToken)
     const artist = album.artists?.[0]?.name
     const artistId = album.artists?.[0]?.id
-    let artistThumbnail = null
+    
+    let artistData = null;
+    let artistThumbnail = null;
     if (artistId) {
       try {
-        const artistData = await fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken)
+        artistData = await fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken)
         artistThumbnail = artistData.images?.[0]?.url || null
       } catch(e) {}
     }
@@ -403,8 +421,13 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
     const albumCover = album.images?.[0]?.url || null
     const albumYear = album.release_date?.substring(0, 4) || ''
     const totalTracks = album.total_tracks
+    const genre = artistData?.genres?.join(', ') || ''
+    const label = album.label || ''
+    const copyright = album.copyrights?.[0]?.text || ''
+    const releaseDate = album.release_date || ''
 
     const allTracks = await fetchAllPages(album.tracks, clientId, clientSecret, accessToken)
+    const totalDiscs = Math.max(1, ...allTracks.map(t => t.disc_number || 1))
 
     if (allTracks.length !== totalTracks) {
       console.warn(`[spotify-api] Album mismatch: expected ${totalTracks}, got ${allTracks.length}`)
@@ -428,6 +451,15 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
         allArtists: track.artists?.map(a => a.name).join(', ') || artist,
         album: album.name,
         year: albumYear,
+        releaseDate,
+        totalTracks,
+        discNumber: track.disc_number,
+        totalDiscs,
+        isrc: track.external_ids?.isrc || '',
+        label,
+        copyright,
+        explicit: track.explicit || false,
+        genre,
         coverUrl: albumCover,
         spotifyId: track.id,
         spotifyUrl: `https://open.spotify.com/track/${track.id}`,
@@ -730,4 +762,14 @@ export async function resolveSpotifyFallback(url) {
   } finally {
     if (browser) await browser.close()
   }
+}
+
+export async function searchSpotifyAPI(query, clientId, clientSecret, accessToken = null) {
+  const market = accessToken ? "market=from_token" : "market=US";
+  const q = encodeURIComponent(query);
+  const res = await fetchWithRetry(`/v1/search?q=${q}&type=track&limit=1&${market}`, clientId, clientSecret, accessToken);
+  if (res && res.tracks && res.tracks.items && res.tracks.items.length > 0) {
+    return _resolveSpotifyMetadata(`https://open.spotify.com/track/${res.tracks.items[0].id}`, clientId, clientSecret, accessToken);
+  }
+  return null;
 }

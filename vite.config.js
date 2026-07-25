@@ -657,9 +657,13 @@ function youtubeDownloaderPlugin() {
             const hasCollection = Boolean(info.playlist_count || info.n_entries || info._type === 'playlist' || info.playlist_id)
             const isBrowseUrl = /\/browse\//i.test(videoUrl);
             const isPlaylistUrl = /[?&]list=/i.test(videoUrl);
+            // User playlists on YouTube Music have list=PL... (user-created) or list=RD... (radio)
+            // Real albums use /browse/ URLs without a PL list parameter
+            const isUserPlaylistUrl = isPlaylistUrl && /[?&]list=PL/i.test(videoUrl);
+            const isRealAlbum = isMusic && hasCollection && !isUserPlaylistUrl && (isBrowseUrl || Boolean(info.album && !isPlaylistUrl));
             const musicCollection = isMusic && (isBrowseUrl || hasCollection || isPlaylistUrl);
             const contentType = hasCollection || musicCollection
-              ? (isMusic ? 'album' : 'playlist')
+              ? (isRealAlbum ? 'album' : 'playlist')
               : (isMusic ? 'track' : 'video')
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify({

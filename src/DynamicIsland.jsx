@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, Download, Music } from 'lucide-react';
+import { CheckCircle2, Download, Music, X, Activity } from 'lucide-react';
 import './DynamicIsland.css';
 
 export default function DynamicIsland() {
   const [state, setState] = useState('idle');
   const [downloadData, setDownloadData] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const doneTimerRef = useRef(null);
 
   useEffect(() => {
@@ -84,34 +85,63 @@ export default function DynamicIsland() {
         ) : (
           <motion.div
             key="active"
-            className="di-capsule di-capsule--active"
+            className={`di-capsule di-capsule--active ${isExpanded ? 'di-expanded' : ''}`}
             layout
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
+            initial={{ scale: 0.8, opacity: 0, borderRadius: 32 }}
+            animate={{ scale: 1, opacity: 1, borderRadius: isExpanded ? 24 : 32 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 280, damping: 26 }}
+            onMouseEnter={() => setIsExpanded(true)}
+            onMouseLeave={() => setIsExpanded(false)}
           >
-            {downloadData?.thumbnail ? (
-              <img src={downloadData.thumbnail} alt="" className="di-thumb" />
+            {isExpanded ? (
+              <div className="di-expanded-layout">
+                <div className="di-expanded-header">
+                  <div className="di-expanded-thumb">
+                    {downloadData?.thumbnail ? (
+                      <img src={downloadData.thumbnail} alt="" />
+                    ) : (
+                      <div className="di-thumb-fallback">
+                        {downloadData?.source === 'spotify' ? <Music size={24} /> : <Download size={24} />}
+                      </div>
+                    )}
+                  </div>
+                  <div className="di-expanded-info">
+                    <span className="di-expanded-title">{downloadData?.title || 'Downloading...'}</span>
+                    <span className="di-expanded-status">{downloadData?.status}</span>
+                  </div>
+                </div>
+                
+                <div className="di-expanded-waveform-container">
+                  <div className="di-progress-track">
+                    <motion.div
+                      className="di-progress-fill"
+                      animate={{ width: `${downloadData?.progress ?? 0}%` }}
+                      transition={{ ease: 'easeOut', duration: 0.4 }}
+                    />
+                  </div>
+                  <span className="di-expanded-pct">{Math.round(downloadData?.progress ?? 0)}%</span>
+                </div>
+                
+                <div className="di-expanded-actions">
+                  <button 
+                    className="di-action-btn di-cancel-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.dispatchEvent(new CustomEvent('app:global-cancel'));
+                      setState('idle');
+                    }}
+                  >
+                    <X size={14} /> Cancel
+                  </button>
+                </div>
+              </div>
             ) : (
-              <div className="di-thumb di-thumb--fallback">
-                {downloadData?.source === 'spotify' ? <Music size={12} /> : <Download size={12} />}
+              <div className="di-collapsed-layout">
+                <Activity size={14} className="di-waveform-icon-collapsed" style={{ animation: 'pulse-wave 1.5s infinite ease-in-out', color: '#10b981' }} />
+                <div className="di-pct">{Math.round(downloadData?.progress ?? 0)}%</div>
               </div>
             )}
-
-            <div className="di-info">
-              <span className="di-title">{downloadData?.title || 'Downloading...'}</span>
-              <div className="di-progress-track">
-                <motion.div
-                  className="di-progress-fill"
-                  animate={{ width: `${downloadData?.progress ?? 0}%` }}
-                  transition={{ ease: 'easeOut', duration: 0.4 }}
-                />
-              </div>
-              <span className="di-status">{downloadData?.status}</span>
-            </div>
-
-            <div className="di-pct">{Math.round(downloadData?.progress ?? 0)}%</div>
           </motion.div>
         )}
       </AnimatePresence>

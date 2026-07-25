@@ -4,7 +4,7 @@ import { spawn, spawnSync } from 'child_process'
 import os from 'os'
 import https from 'https'
 import NodeID3 from 'node-id3'
-import { resolveSpotifyMetadata, resolveSpotifyFallback, parseSpotifyEmbed, getAnonymousSpotifyToken } from './spotify-api.js'
+import { resolveSpotifyMetadata, resolveSpotifyFallback, parseSpotifyEmbed, getAnonymousSpotifyToken, searchSpotifyAPI } from './spotify-api.js'
 import { writeAndVerifyTags } from './tag-utils.js'
 import { getOptimalDownloadConfig } from './smart-optimizer.js'
 import { createBatchEngine, getBatchPerformanceProfile } from './batch-engine.js'
@@ -109,7 +109,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       if(code!==0){const ke=parseYtDlpError(fullStderr);if(ke){if(job.collectionDir){try{fs.rmSync(job.collectionDir,{recursive:true,force:true})}catch{}}return finishJob(jobId,{error:ke})}}
       if(job.type==='single') {
         if(code!==0) finishJob(jobId,{error:'Eroare la descărcare. Cod: '+code})
-        else { const fp=path.join(job.downloadsDir,finalFn); scheduleDownloadCleanup(fp); finishJob(jobId,{code,finalFilename:finalFn,downloadUrl:`/api/download-file?file=${encodeURIComponent(finalFn)}`}) }
+        else {
+          const fp=path.join(job.downloadsDir,finalFn);
+          if(fp.endsWith('.mp3')) { try { await augmentYtTags(fp); } catch(e) { console.error('[tags] single augment error:', e.message); } }
+          scheduleDownloadCleanup(fp); finishJob(jobId,{code,finalFilename:finalFn,downloadUrl:`/api/download-file?file=${encodeURIComponent(finalFn)}`})
+        }
       } else {
         const dlf=fs.existsSync(job.collectionDir)?fs.readdirSync(job.collectionDir):[]
         if(!dlf.length){try{fs.rmSync(job.collectionDir,{recursive:true,force:true})}catch{};finishJob(jobId,{error:'Nu s-a descărcat niciun fișier.'});return}
@@ -118,6 +122,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           const cb=Buffer.from(await(await fetch(job.state.thumbnail)).arrayBuffer()); 
           const metaDir = path.join(job.collectionDir, '.metadata')
           if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir)
+          if(os.platform() === 'win32') { try { spawnSync('attrib', ['+h', metaDir], { windowsHide: true }); } catch(e){} }
           
           const rawJp=path.join(metaDir,'raw_folder.jpg'); fs.writeFileSync(rawJp,cb)
           const jp=path.join(metaDir,'folder.jpg');
@@ -126,19 +131,18 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           let finalCb = cb;
           if(fs.existsSync(jp)){ finalCb = fs.readFileSync(jp); } else { fs.writeFileSync(jp, cb); }
           try{ fs.unlinkSync(rawJp); }catch(e){}
+          
+          // Also place folder.jpg in the root so music players recognize the folder cover
+          const rootJp=path.join(job.collectionDir,'folder.jpg');
+          if(fs.existsSync(jp)) { fs.copyFileSync(jp, rootJp); } else { fs.writeFileSync(rootJp, cb); }
+          if(os.platform() === 'win32') { try { spawnSync('attrib', ['+h', rootJp], { windowsHide: true }); } catch(e){} }
 
           const mp3s = fs.readdirSync(job.collectionDir).filter(f => f.endsWith('.mp3'))
-          for (const mp3 of mp3s) {
-            const fp = path.join(job.collectionDir, mp3)
-            try {
-              const currentTags = NodeID3.read(fp) || {}
-              const newTags = {
-                ...currentTags,
-                album: job.state.title || path.basename(job.collectionDir),
-                image: { mime: 'image/jpeg', type: { id: 3, name: 'front cover' }, imageBuffer: finalCb }
-              }
-              NodeID3.write(newTags, fp)
-            } catch (e) { console.error('Tag write error', e) }
+          mp3s.sort()
+          for (let i = 0; i < mp3s.length; i++) {
+            const fp = path.join(job.collectionDir, mp3s[i])
+            const plIdx = job.type === 'playlist' ? i + 1 : null
+            try { await augmentYtTags(fp, plIdx, mp3s.length, null); } catch(e) { console.error('[tags] collection augment error:', e.message); }
           }
 
           if(process.platform==='win32'){
@@ -156,7 +160,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
         }catch(e){console.error('Thumbnail error:',e)}}
-        finishJob(jobId,{progress:100,finalFilename:path.basename(job.collectionDir),isArchive:false,collectionTitle:job.state.title||path.basename(job.collectionDir)})
+        const failedIds = [...fullStderr.matchAll(/ERROR:\s*\[.*?\]\s*([\w-]+):/g)].map(m => m[1]);
+        const validDlf = fs.existsSync(job.collectionDir) ? fs.readdirSync(job.collectionDir).filter(f => !f.startsWith('.') && !f.endsWith('.bat') && !f.endsWith('.ini') && !f.endsWith('.jpg') && !f.endsWith('.ico')) : [];
+        finishJob(jobId,{progress:100,finalFilename:path.basename(job.collectionDir),isArchive:false,collectionTitle:job.state.title||path.basename(job.collectionDir),downloadedCount:validDlf.length,failedIds})
       }
     })
     job.process.on('error',err=>{runningJobsCount=Math.max(0,runningJobsCount-1);processQueue();if(settled)return;settled=true;job.process=null;if(job.isCancelled||job.isPaused)return;if(job.collectionDir){try{fs.rmSync(job.collectionDir,{recursive:true,force:true})}catch{}};finishJob(jobId,{error:err.message||'Eroare.'})})
@@ -209,11 +215,85 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/ytdl/get-config',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();res.setHeader('Content-Type','application/json');res.end(JSON.stringify(getConfig()))})
 
-  middlewares.use('/api/ytdl/select-folder',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const ps=`Add-Type -AssemblyName System.windows.forms\n$f=New-Object System.Windows.Forms.FolderBrowserDialog\n$f.Description='Select download folder'\n$f.ShowNewFolderButton=$true\nif($f.ShowDialog()-eq'OK'){Write-Output $f.SelectedPath}`;const c=spawn('powershell',['-NoProfile','-Command',ps]);let s='';c.stdout.on('data',d=>s+=d);c.on('close',()=>{const p=s.trim();if(p){saveConfig({customPath:p});res.end(JSON.stringify({success:true,path:p}))}else res.end(JSON.stringify({success:false}))})})
+  middlewares.use('/api/ytdl/select-folder',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const isTemp=u.searchParams.get('temp')==='true';const ps=`Add-Type -AssemblyName System.windows.forms\n$f=New-Object System.Windows.Forms.FolderBrowserDialog\n$f.Description='Select download folder'\n$f.ShowNewFolderButton=$true\nif($f.ShowDialog()-eq'OK'){Write-Output $f.SelectedPath}`;const c=spawn('powershell',['-NoProfile','-Command',ps]);let s='';c.stdout.on('data',d=>s+=d);c.on('close',()=>{const p=s.trim();if(p){if(!isTemp)saveConfig({customPath:p});res.end(JSON.stringify({success:true,path:p}))}else res.end(JSON.stringify({success:false}))})})
 
   middlewares.use('/api/ytdl/open-folder',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const t=u.searchParams.get('target');if(t){const dl=ensureDownloadsDir(u.searchParams.get('customPath'));let tp=path.join(dl,t);if(!fs.existsSync(tp)){const cl=t.replace(/[^a-zA-Z0-9]/g,'').toLowerCase();const fm=fs.readdirSync(dl).find(f=>f.replace(/[^a-zA-Z0-9]/g,'').toLowerCase()===cl);if(fm)tp=path.join(dl,fm);else{res.statusCode=404;return res.end(JSON.stringify({success:false,error:'File not found'}))}};spawn('explorer.exe',['/select,',tp])}else spawn('explorer.exe',[ensureDownloadsDir(u.searchParams.get('customPath'))]);res.end(JSON.stringify({success:true}))})
 
   middlewares.use('/api/ytdl/scheduled',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();res.setHeader('Content-Type','application/json');res.end(JSON.stringify(getScheduled().filter(j=>!j.started)))})
+  middlewares.use('/api/ytdl/batch-meta', async (req, res, next) => {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    if (u.pathname !== '/') return next();
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      return res.end('Method Not Allowed');
+    }
+    const b = await parseJsonBody(req);
+    if (!b.urls || !Array.isArray(b.urls)) {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ error: 'Missing urls array' }));
+    }
+    try {
+      const poToken = getConfig().youtubePoToken || '';
+      const extArgs = poToken ? `youtube:player_client=android,web;po_token=${poToken}` : 'youtube:player_client=android,web';
+      let args = ['--dump-json', '--no-playlist', '--extractor-args', extArgs, ...b.urls];
+      const cp = path.resolve(appDir, 'cookies.txt');
+      const cfb = getConfig().cookiesFromBrowser || '';
+      if (cfb) args.splice(args.length - b.urls.length, 0, '--cookies-from-browser', cfb);
+      else if (fs.existsSync(cp)) args.splice(args.length - b.urls.length, 0, '--cookies', cp);
+      
+      const c = spawn(binPath, args);
+      let so = '';
+      c.stdout.on('data', d => so += d);
+      
+      await new Promise((resolve) => {
+        c.on('close', resolve);
+        c.on('error', resolve);
+        setTimeout(() => { c.kill(); resolve(); }, 30000);
+      });
+      
+      const results = {};
+      const lines = so.split('\n').filter(Boolean);
+      const cfg = getConfig();
+      const cid = cfg.SPOTIFY_CLIENT_ID || process.env.VITE_SPOTIFY_CLIENT_ID || null;
+      const cs = cfg.SPOTIFY_CLIENT_SECRET || process.env.VITE_SPOTIFY_CLIENT_SECRET || null;
+      
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.id) {
+            let album = parsed.album || null;
+            let artistThumbnail = parsed.artist_thumbnail || parsed.artistThumbnail || null;
+            let thumbnail = (parsed.thumbnails && parsed.thumbnails.length > 0) ? parsed.thumbnails[parsed.thumbnails.length - 1].url : null;
+            
+            if (!album && cid && cs) {
+              try {
+                let qArtist = parsed.artist || parsed.creator || parsed.channel || parsed.uploader || '';
+                let qTitle = parsed.title || '';
+                qArtist = qArtist.replace(/VEVO/i, '').replace(/- Topic/i, '').trim();
+                qTitle = qTitle.replace(/\(official.*?\)/i, '').replace(/\[official.*?\]/i, '').replace(/\(lyric.*?\)/i, '').trim();
+                const q = `${qArtist} ${qTitle}`.trim();
+                
+                if (q) {
+                  const spotData = await searchSpotifyAPI(q, cid, cs, null);
+                  if (spotData && spotData.album) {
+                    album = spotData.album;
+                  }
+                }
+              } catch(e) {}
+            }
+            
+            results[parsed.id] = { album, artistThumbnail, thumbnail };
+          }
+        } catch(e) {}
+      }
+      
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, results }));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: e.message }));
+    }
+  });
 
   middlewares.use('/api/active-jobs',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const yt=Array.from(activeJobs.values()).map(j=>({id:j.id,title:j.state?.title||j.state?.status||'YouTube download',thumbnail:j.state?.thumbnail||null,filename:j.state?.finalFilename||null,format:j.state?.format||(j.type==='playlist'?'Playlist':'Video'),percent:Number(j.state?.progress||0),status:j.state?.done?(j.state?.error?'failed':'done'):(j.queueStatus==='queued'?'queued':'active'),error:j.state?.error||null}));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({youtube:yt,spotify:[]}))})
 
@@ -263,15 +343,32 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/ytdl/job-action',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const j=activeJobs.get(u.searchParams.get('jobId'));const a=u.searchParams.get('action');if(!j){res.statusCode=404;return res.end(JSON.stringify({error:'Job not found'}))};if(a==='pause'){if(!j.isPaused&&!j.state.done&&j.process){j.isPaused=true;killProcessTree(j.process);broadcast(u.searchParams.get('jobId'),{isPaused:true,status:'Pauză.'})}}else if(a==='resume'){if(j.isPaused&&!j.state.done){j.isPaused=false;broadcast(u.searchParams.get('jobId'),{isPaused:false,status:'Se reia...'});spawnYtDlp(u.searchParams.get('jobId'))}}else if(a==='cancel'){j.isCancelled=true;if(j.process)killProcessTree(j.process);if(j.collectionDir){try{fs.rmSync(j.collectionDir,{recursive:true,force:true})}catch{}};finishJob(u.searchParams.get('jobId'),{error:'Anulat.'});activeJobs.delete(u.searchParams.get('jobId'))}else{res.statusCode=400;return res.end(JSON.stringify({error:'Invalid action'}))};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true}))})
 
-  middlewares.use('/api/ytdl/info',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const vid=u.searchParams.get('url');if(!vid){res.statusCode=400;return res.end(JSON.stringify({error:'No URL'}))};if(!fs.existsSync(binPath)){res.statusCode=500;return res.end(JSON.stringify({error:'yt-dlp not found.'}))};const poToken=getConfig().youtubePoToken||'';const extArgs=poToken?`youtube:player_client=android,web;po_token=${poToken}`:'youtube:player_client=android,web';let args=['--dump-json','--no-playlist','--playlist-items','1','--extractor-args',extArgs,vid];const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.splice(args.length-1,0,'--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.splice(args.length-1,0,'--cookies',cp)};const child=spawn(binPath,args);let ds='',es='';child.stdout.on('data',c=>ds+=c);child.stderr.on('data',c=>es+=c);const kt=setTimeout(()=>{try{child.kill()}catch{};if(!res.headersSent){res.statusCode=500;res.end(JSON.stringify({error:'Timeout.'}))}},30000);child.on('close',async code=>{clearTimeout(kt);if(res.headersSent)return;if(code!==0){res.statusCode=500;return res.end(JSON.stringify({error:parseYtDlpError(es)||'yt-dlp failed.',details:es}))};try{const info=JSON.parse(ds);const ah=new Set();(info.formats||[]).forEach(f=>{if(f.height&&f.height>=360)ah.add(f.height)});let at=info.channel_thumbnail||info.uploader_thumbnail||null;if(!at&&(info.channel_url||info.uploader_url)){try{const cr=await fetch(info.channel_url||info.uploader_url,{headers:{'User-Agent':'Mozilla/5.0'}});const ch=await cr.text();const am=ch.match(/"avatar"\s*:\s*\{\s*"thumbnails"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)"/i)||ch.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);at=am?.[1]?.replace(/\\u0026/g,'&').replace(/&amp;/g,'&')||null}catch{}}; const isM=/music\.youtube\.com/i.test(vid)||/youtube:music|music/i.test(info.extractor_key||'');const hasC=Boolean(info.playlist_count||info.n_entries||info._type==='playlist'||info.playlist_id);const isP=/[?&]list=/i.test(vid);const ct=hasC||(isM&&(hasC||isP))?(isM?'album':'playlist'):(isM?'track':'video');const cleanPlaylistTitle=info.playlist_title?info.playlist_title.replace(/^(Album|EP|Single)\s*-\s*/i,''):null;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({title:(hasC||isP)&&cleanPlaylistTitle?cleanPlaylistTitle:info.title,thumbnail:info.thumbnail,duration:info.duration,uploader:info.uploader||info.channel||null,artistThumbnail:at,contentType:ct,platform:isM?'youtube_music':'youtube',album:info.album||cleanPlaylistTitle||null,albumArtist:info.album_artist||info.artist||info.uploader||info.channel||null,trackNumber:Number(info.track_number||info.playlist_index)||null,trackCount:Number(info.playlist_count||info.n_entries)||null,releaseYear:info.release_year||(info.release_date?String(info.release_date).slice(0,4):null),viewCount:info.view_count||null,uploadDate:info.upload_date||null,availableHeights:Array.from(ah).sort((a,b)=>b-a)}))}catch{res.statusCode=500;res.end(JSON.stringify({error:'Parse error'}))}})})
+  middlewares.use('/api/ytdl/info',async(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const vid=u.searchParams.get('url');if(!vid){res.statusCode=400;return res.end(JSON.stringify({error:'No URL'}))};if(!fs.existsSync(binPath)){res.statusCode=500;return res.end(JSON.stringify({error:'yt-dlp not found.'}))};const poToken=getConfig().youtubePoToken||'';const extArgs=poToken?`youtube:player_client=android,web;po_token=${poToken}`:'youtube:player_client=android,web';let args=['--dump-json','--no-playlist','--playlist-items','1','--extractor-args',extArgs,vid];const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.splice(args.length-1,0,'--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.splice(args.length-1,0,'--cookies',cp)};const child=spawn(binPath,args);let ds='',es='';child.stdout.on('data',c=>ds+=c);child.stderr.on('data',c=>es+=c);const kt=setTimeout(()=>{try{child.kill()}catch{};if(!res.headersSent){res.statusCode=500;res.end(JSON.stringify({error:'Timeout.'}))}},30000);child.on('close',async code=>{clearTimeout(kt);if(res.headersSent)return;if(code!==0){res.statusCode=500;return res.end(JSON.stringify({error:parseYtDlpError(es)||'yt-dlp failed.',details:es}))};try{const info=JSON.parse(ds);const ah=new Set();(info.formats||[]).forEach(f=>{if(f.height&&f.height>=360)ah.add(f.height)});let at=info.channel_thumbnail||info.uploader_thumbnail||null;if(!at&&(info.channel_url||info.uploader_url)){try{const cr=await fetch(info.channel_url||info.uploader_url,{headers:{'User-Agent':'Mozilla/5.0'}});const ch=await cr.text();const am=ch.match(/"avatar"\s*:\s*\{\s*"thumbnails"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)"/i)||ch.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);at=am?.[1]?.replace(/\\u0026/g,'&').replace(/&amp;/g,'&')||null}catch{}}; const isM=/music\.youtube\.com/i.test(vid)||/youtube:music|music/i.test(info.extractor_key||'');const hasC=Boolean(info.playlist_count||info.n_entries||info._type==='playlist'||info.playlist_id);const isP=/[?&]list=/i.test(vid);const isAlbum=isM&&info.playlist_id&&String(info.playlist_id).startsWith('OLAK5uy_');const ct=hasC||isP?(isAlbum?'album':'playlist'):(isM?'track':'video');const cleanPlaylistTitle=info.playlist_title?info.playlist_title.replace(/^(Album|EP|Single)\s*-\s*/i,''):null;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({title:(hasC||isP)&&cleanPlaylistTitle?cleanPlaylistTitle:info.title,thumbnail:info.thumbnail,duration:info.duration,uploader:(hasC||isP)?(info.playlist_uploader||info.playlist_channel||info.uploader||info.channel||null):(info.uploader||info.channel||null),artistThumbnail:at,contentType:ct,platform:isM?'youtube_music':'youtube',album:info.album||cleanPlaylistTitle||null,albumArtist:info.album_artist||info.artist||info.uploader||info.channel||null,trackNumber:Number(info.track_number||info.playlist_index)||null,trackCount:Number(info.playlist_count||info.n_entries)||null,releaseYear:info.release_year||(info.release_date?String(info.release_date).slice(0,4):null),viewCount:info.view_count||null,uploadDate:info.upload_date||null,availableHeights:Array.from(ah).sort((a,b)=>b-a)}))}catch{res.statusCode=500;res.end(JSON.stringify({error:'Parse error'}))}})})
 
-  middlewares.use('/api/ytdl/smart-download',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();if(req.method!=='POST'){res.statusCode=405;return res.end('Method Not Allowed')};let b='';req.on('data',c=>b+=c);req.on('end',()=>{try{const d=JSON.parse(b);const{items,format,scope,title,scheduleTime,formatStr,prependNumbers}=d;if(!items?.length){res.statusCode=400;return res.end(JSON.stringify({error:'No items'}))};if(scheduleTime){const[sh,sm]=scheduleTime.split(':').map(Number);let r=new Date();r.setHours(sh,sm,0,0);if(r<=new Date())r.setDate(r.getDate()+1);addScheduledJob({type:'single',items,format,scope,title,formatStr,runAt:r.toISOString()});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({scheduled:true,runAt:r.toISOString()}))};const jid=Date.now().toString();const dl=ensureDownloadsDir(u.searchParams.get('customPath'));const cd=path.join(dl, title ? sanitizeFilename(title) : `youtube-playlist-${jid}`);const td=scope==='playlist'?cd:dl;if(!fs.existsSync(td))fs.mkdirSync(td,{recursive:true});const bf=path.join(td,`batch-${jid}.txt`);fs.writeFileSync(bf,items.join('\n'),'utf8');const ot=path.join(td, scope==='playlist' && prependNumbers!==false ? '%(autonumber)03d - %(title)s.%(ext)s' : '%(title)s.%(ext)s');let args=format==='audio'?['-x','--audio-format','mp3','--audio-quality','0','-o',ot,'--ffmpeg-location',ffmpegDir]:['-f','bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best','--merge-output-format','mp4','-o',ot,'--ffmpeg-location',ffmpegDir];if(format==='audio')args.push('--ppa','ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)');args.push('-a',bf,'--newline','--embed-metadata','--embed-thumbnail','--extractor-args', getConfig().youtubePoToken ? `youtube:player_client=android,web;po_token=${getConfig().youtubePoToken}` : 'youtube:player_client=android,web','--extractor-retries','5','--fragment-retries','10','--retry-sleep','linear=1::2','--add-header','Accept-Language:en-US,en;q=0.9',);const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.push('--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.push('--cookies',cp)};activeJobs.set(jid,{id:jid,type:scope==='playlist'?'playlist':'single',args,downloadsDir:dl,collectionDir:scope==='playlist'?cd:undefined,batchFile:bf,clients:new Set(),isPaused:false,isCancelled:false,state:{progress:0,status:'Se pregătește...',done:false,isPaused:false,totalItems:items.length,title,thumbnail:d.thumbnail}});spawnYtDlp(jid);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({jobId:jid}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})})
+  middlewares.use('/api/ytdl/smart-download',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();if(req.method!=='POST'){res.statusCode=405;return res.end('Method Not Allowed')};let b='';req.on('data',c=>b+=c);req.on('end',()=>{try{const d=JSON.parse(b);const{items,format,scope,title,scheduleTime,formatStr,prependNumbers}=d;if(!items?.length){res.statusCode=400;return res.end(JSON.stringify({error:'No items'}))};if(scheduleTime){const[sh,sm]=scheduleTime.split(':').map(Number);let r=new Date();r.setHours(sh,sm,0,0);if(r<=new Date())r.setDate(r.getDate()+1);addScheduledJob({type:'single',items,format,scope,title,formatStr,runAt:r.toISOString()});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({scheduled:true,runAt:r.toISOString()}))};const jid=Date.now().toString();const dl=ensureDownloadsDir(u.searchParams.get('customPath'));const cd=path.join(dl, title ? sanitizeFilename(title) : `youtube-playlist-${jid}`);const td=scope==='playlist'?cd:dl;if(!fs.existsSync(td))fs.mkdirSync(td,{recursive:true});const bf=path.join(td,`batch-${jid}.txt`);fs.writeFileSync(bf,items.join('\n'),'utf8');const ot=path.join(td, scope==='playlist' && prependNumbers!==false ? '%(autonumber)03d - %(artist,uploader)s - %(title)s.%(ext)s' : '%(artist,uploader)s - %(title)s.%(ext)s');let args=format==='audio'?['-x','--audio-format','mp3','--audio-quality','0','-o',ot,'--ffmpeg-location',ffmpegDir]:['-f','bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best','--merge-output-format','mp4','-o',ot,'--ffmpeg-location',ffmpegDir];if(format==='audio')args.push('--ppa','ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)');args.push('-a',bf,'--newline','--embed-metadata','--embed-thumbnail','--extractor-args', getConfig().youtubePoToken ? `youtube:player_client=android,web;po_token=${getConfig().youtubePoToken}` : 'youtube:player_client=android,web','--extractor-retries','5','--fragment-retries','10','--retry-sleep','linear=1::2','--add-header','Accept-Language:en-US,en;q=0.9',);const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.push('--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.push('--cookies',cp)};activeJobs.set(jid,{id:jid,type:scope==='playlist'?'playlist':'single',args,downloadsDir:dl,collectionDir:scope==='playlist'?cd:undefined,batchFile:bf,clients:new Set(),isPaused:false,isCancelled:false,state:{progress:0,status:'Se pregătește...',done:false,isPaused:false,totalItems:items.length,title,thumbnail:d.thumbnail}});spawnYtDlp(jid);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({jobId:jid}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})})
 
-  middlewares.use('/api/ytdl/download',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const jid=u.searchParams.get('jobId');if(!jid){res.statusCode=400;return res.end('Missing jobId')};if(activeJobs.has(jid)){res.statusCode=400;return res.end('Job exists.')};const vid=u.searchParams.get('url');const fmt=u.searchParams.get('format')||'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';const sched=u.searchParams.get('scheduleTime');const title=u.searchParams.get('title')||'';const thumb=u.searchParams.get('thumbnail')||'';const preset=u.searchParams.get('preset');const hwaccel=u.searchParams.get('hwaccel')||'NONE';const lac=getOptimalDownloadConfig(preset==='AUTO'?null:preset);if(!vid){res.statusCode=400;return res.end('No URL')};if(sched){const[sh,sm]=sched.split(':').map(Number);let r=new Date();r.setHours(sh,sm,0,0);if(r<=new Date())r.setDate(r.getDate()+1);addScheduledJob({type:'single',url:vid,format:fmt,scheduleTime:sched,runAt:r.toISOString(),title,thumbnail:thumb});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({scheduled:true}))};res.setHeader('Content-Type','text/event-stream');res.setHeader('Cache-Control','no-cache');res.setHeader('Connection','keep-alive');const dl=ensureDownloadsDir(u.searchParams.get('customPath'));let args;if(fmt.startsWith('audio:')){const[,af,aq]=fmt.split(':');args=af==='wav'?['-x','--audio-format','wav','-o',path.join(dl,'%(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]:af==='vorbis'?['-x','--audio-format','vorbis','--audio-quality',aq||'0','-o',path.join(dl,'%(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]:['-x','--audio-format','mp3','--audio-quality',aq||'0','-o',path.join(dl,'%(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]}else if(fmt.startsWith('video:')){args=['-f',fmt.substring(6),'--merge-output-format','mp4','-o',path.join(dl,'%(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]}else{args=['-f','bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best','--merge-output-format','mp4','-o',path.join(dl,'%(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]};if(fmt.startsWith('audio:'))args.push('--ppa','ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)');args.push('--no-playlist','--newline','--embed-metadata','--embed-thumbnail','--extractor-args', getConfig().youtubePoToken ? `youtube:player_client=android,web;po_token=${getConfig().youtubePoToken}` : 'youtube:player_client=android,web','--extractor-retries','5','--fragment-retries','10','--retry-sleep','linear=1::2','--add-header','Accept-Language:en-US,en;q=0.9','-N',String(lac.ytdlpConcurrentFragments));let fa=`-threads ${lac.ffmpegThreads}`;if(hwaccel==='AUTO')fa='-hwaccel auto '+fa;else if(hwaccel==='CUDA')fa='-hwaccel cuda '+fa;else if(hwaccel==='AMF')fa='-hwaccel d3d11va '+fa;else if(hwaccel==='QSV')fa='-hwaccel qsv '+fa;args.push('--postprocessor-args',`ffmpeg:${fa}`);const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.push('--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.push('--cookies',cp)};activeJobs.set(jid,{id:jid,type:'single',args,downloadsDir:dl,clients:new Set([res]),isPaused:false,isCancelled:false,state:{progress:0,status:'Se pregătește...',done:false,isPaused:false,title,thumbnail:thumb}});spawnYtDlp(jid);req.on('close',()=>{const j=activeJobs.get(jid);if(j)j.clients.delete(res)})})
+  middlewares.use('/api/ytdl/download',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const jid=u.searchParams.get('jobId');if(!jid){res.statusCode=400;return res.end('Missing jobId')};if(activeJobs.has(jid)){res.statusCode=400;return res.end('Job exists.')};const vid=u.searchParams.get('url');const fmt=u.searchParams.get('format')||'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';const sched=u.searchParams.get('scheduleTime');const title=u.searchParams.get('title')||'';const thumb=u.searchParams.get('thumbnail')||'';const preset=u.searchParams.get('preset');const hwaccel=u.searchParams.get('hwaccel')||'NONE';const lac=getOptimalDownloadConfig(preset==='AUTO'?null:preset);if(!vid){res.statusCode=400;return res.end('No URL')};if(sched){const[sh,sm]=sched.split(':').map(Number);let r=new Date();r.setHours(sh,sm,0,0);if(r<=new Date())r.setDate(r.getDate()+1);addScheduledJob({type:'single',url:vid,format:fmt,scheduleTime:sched,runAt:r.toISOString(),title,thumbnail:thumb});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({scheduled:true}))};res.setHeader('Content-Type','text/event-stream');res.setHeader('Cache-Control','no-cache');res.setHeader('Connection','keep-alive');const dl=ensureDownloadsDir(u.searchParams.get('customPath'));let args;if(fmt.startsWith('audio:')){const[,af,aq]=fmt.split(':');args=af==='wav'?['-x','--audio-format','wav','-o',path.join(dl,'%(artist,uploader)s - %(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]:af==='vorbis'?['-x','--audio-format','vorbis','--audio-quality',aq||'0','-o',path.join(dl,'%(artist,uploader)s - %(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]:['-x','--audio-format','mp3','--audio-quality',aq||'0','-o',path.join(dl,'%(artist,uploader)s - %(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]}else if(fmt.startsWith('video:')){args=['-f',fmt.substring(6),'--merge-output-format','mp4','-o',path.join(dl,'%(artist,uploader)s - %(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]}else{args=['-f','bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best','--merge-output-format','mp4','-o',path.join(dl,'%(artist,uploader)s - %(title)s.%(ext)s'),'--ffmpeg-location',ffmpegDir,vid]};if(fmt.startsWith('audio:'))args.push('--ppa','ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)');args.push('--no-playlist','--newline','--embed-metadata','--embed-thumbnail','--extractor-args', getConfig().youtubePoToken ? `youtube:player_client=android,web;po_token=${getConfig().youtubePoToken}` : 'youtube:player_client=android,web','--extractor-retries','5','--fragment-retries','10','--retry-sleep','linear=1::2','--add-header','Accept-Language:en-US,en;q=0.9','-N',String(lac.ytdlpConcurrentFragments));let fa=`-threads ${lac.ffmpegThreads}`;if(hwaccel==='AUTO')fa='-hwaccel auto '+fa;else if(hwaccel==='CUDA')fa='-hwaccel cuda '+fa;else if(hwaccel==='AMF')fa='-hwaccel d3d11va '+fa;else if(hwaccel==='QSV')fa='-hwaccel qsv '+fa;args.push('--postprocessor-args',`ffmpeg:${fa}`);const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.push('--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.push('--cookies',cp)};activeJobs.set(jid,{id:jid,type:'single',args,downloadsDir:dl,clients:new Set([res]),isPaused:false,isCancelled:false,state:{progress:0,status:'Se pregătește...',done:false,isPaused:false,title,thumbnail:thumb}});spawnYtDlp(jid);req.on('close',()=>{const j=activeJobs.get(jid);if(j)j.clients.delete(res)})})
 
-  middlewares.use('/api/ytdl/collection-info',async(req,res,next)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname!=='/')return next();const vid=u.searchParams.get('url');if(!vid||!isYouTubeUrl(vid)){res.statusCode=400;return res.end(JSON.stringify({error:'Link YouTube invalid.'}))};try{const pl=await new Promise((resolve,reject)=>{const poToken=getConfig().youtubePoToken||'';const extArgs=poToken?`youtube:player_client=android,web;po_token=${poToken}`:'youtube:player_client=android,web';let args=['--dump-single-json','--flat-playlist','-i','--playlist-end',String(COLLECTION_LIMIT+1),'--extractor-args',extArgs,vid];const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.splice(args.length-1,0,'--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.splice(args.length-1,0,'--cookies',cp)};const c=spawn(binPath,args);let so='',se='',settled=false;const t=setTimeout(()=>{if(settled)return;settled=true;c.kill();reject(new Error('Timeout.'))},30000);c.stdout.on('data',d=>so+=d);c.stderr.on('data',d=>se+=d);c.on('error',e=>{if(!settled){settled=true;clearTimeout(t);reject(e)}});c.on('close',code=>{if(settled)return;settled=true;clearTimeout(t);if(code!==0&&!so.trim()){const ke=parseYtDlpError(se.trim());return reject(new Error(ke||se.trim()||'yt-dlp error'))};try{resolve(JSON.parse(so))}catch{reject(new Error('Parse error'))}})});const en=(pl.entries||[]).filter(Boolean);if(!en.length&&pl._type!=='playlist')throw new Error('No playlist found.');const cnt=Number(pl.playlist_count||pl.n_entries||en.length);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({title:pl.title||pl.playlist_title||'YouTube Playlist',count:cnt,downloadableCount:Math.min(cnt||en.length,COLLECTION_LIMIT),isTruncated:cnt>COLLECTION_LIMIT,entries:en.slice(0,COLLECTION_LIMIT).map((e,i)=>({id:e.id,index:i+1,title:e.title||'Video fără titlu',uploader:e.uploader||e.channel||null,duration:e.duration||null}))}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})
+  middlewares.use('/api/ytdl/collection-info',async(req,res,next)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname!=='/')return next();const vid=u.searchParams.get('url');if(!vid||!isYouTubeUrl(vid)){res.statusCode=400;return res.end(JSON.stringify({error:'Link YouTube invalid.'}))};try{const pl=await new Promise((resolve,reject)=>{const poToken=getConfig().youtubePoToken||'';const extArgs=poToken?`youtube:player_client=android,web;po_token=${poToken}`:'youtube:player_client=android,web';let args=['--dump-single-json','--flat-playlist','-i','--playlist-end',String(COLLECTION_LIMIT+1),'--extractor-args',extArgs,vid];const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.splice(args.length-1,0,'--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.splice(args.length-1,0,'--cookies',cp)};const c=spawn(binPath,args);let so='',se='',settled=false;const t=setTimeout(()=>{if(settled)return;settled=true;c.kill();reject(new Error('Timeout.'))},30000);c.stdout.on('data',d=>so+=d);c.stderr.on('data',d=>se+=d);c.on('error',e=>{if(!settled){settled=true;clearTimeout(t);reject(e)}});c.on('close',code=>{if(settled)return;settled=true;clearTimeout(t);if(code!==0&&!so.trim()){const ke=parseYtDlpError(se.trim());return reject(new Error(ke||se.trim()||'yt-dlp error'))};try{resolve(JSON.parse(so))}catch{reject(new Error('Parse error'))}})});const en=(pl.entries||[]).filter(Boolean);if(!en.length&&pl._type!=='playlist')throw new Error('No playlist found.');const cnt=Number(pl.playlist_count||pl.n_entries||en.length);
+const plTitle = pl.title||pl.playlist_title||'YouTube Playlist';
+let extractedAlbum = null;
+if (plTitle.startsWith('Album - ')) extractedAlbum = plTitle.substring(8);
+else if (plTitle.startsWith('EP - ')) extractedAlbum = plTitle.substring(5);
 
-  middlewares.use('/api/ytdl/collection-download',(req,res,next)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname!=='/')return next();const jid=u.searchParams.get('jobId');if(!jid){res.statusCode=400;return res.end('Missing jobId')};if(activeJobs.has(jid)){res.statusCode=400;return res.end('Job exists.')};const vid=u.searchParams.get('url');const fmt=u.searchParams.get('format')||'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';const sel=u.searchParams.get('selectedItems');const sched=u.searchParams.get('scheduleTime');const title=u.searchParams.get('title')||'';const thumb=u.searchParams.get('thumbnail')||'';const hwaccel=u.searchParams.get('hwaccel')||'NONE';const prependNumbers=u.searchParams.get('prependNumbers')!=='false';if(!vid||!isYouTubeUrl(vid)||!sel){res.statusCode=400;return res.end('Invalid.')};if(sched){const[sh,sm]=sched.split(':').map(Number);let r=new Date();r.setHours(sh,sm,0,0);if(r<=new Date())r.setDate(r.getDate()+1);addScheduledJob({type:'playlist',url:vid,format:fmt,selectedItems:sel,scheduleTime:sched,runAt:r.toISOString(),title,thumbnail:thumb});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({scheduled:true}))};res.setHeader('Content-Type','text/event-stream');res.setHeader('Cache-Control','no-cache');res.setHeader('Connection','keep-alive');const dl=ensureDownloadsDir(u.searchParams.get('customPath'));const cd=path.join(dl, title ? sanitizeFilename(title) : 'youtube-playlist-'+jid);fs.mkdirSync(cd,{recursive:true});const ot=path.join(cd, prependNumbers ? '%(playlist_index)03d - %(title)s.%(ext)s' : '%(title)s.%(ext)s');let args;if(fmt.startsWith('audio:')){const[,af,aq]=fmt.split(':');const vaf=['mp3','wav','vorbis'].includes(af)?af:'mp3';const vaq=/^\d+$/.test(aq||'')?aq:'0';args=['-x','--audio-format',vaf,'-o',ot,'--ffmpeg-location',ffmpegDir];if(vaf!=='wav')args.splice(3,0,'--audio-quality',vaq)}else{const vf=fmt.startsWith('video:')?fmt.substring(6):'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';args=['-f',vf,'--merge-output-format','mp4','-o',ot,'--ffmpeg-location',ffmpegDir]};if(fmt.startsWith('audio:'))args.push('--ppa','ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)');args.push('-i','--yes-playlist','--playlist-items',sel,'--restrict-filenames','--newline','--embed-metadata','--embed-thumbnail','--extractor-args', getConfig().youtubePoToken ? `youtube:player_client=android,web;po_token=${getConfig().youtubePoToken}` : 'youtube:player_client=android,web','--extractor-retries','5','--fragment-retries','10','--retry-sleep','linear=1::2','--add-header','Accept-Language:en-US,en;q=0.9','-N',String(aiConfig.ytdlpConcurrentFragments));let fa=`-threads ${aiConfig.ffmpegThreads}`;if(hwaccel==='AUTO')fa='-hwaccel auto '+fa;else if(hwaccel==='CUDA')fa='-hwaccel cuda '+fa;else if(hwaccel==='AMF')fa='-hwaccel d3d11va '+fa;else if(hwaccel==='QSV')fa='-hwaccel qsv '+fa;args.push('--postprocessor-args',`ffmpeg:${fa}`,vid);const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.splice(args.length-1,0,'--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.splice(args.length-1,0,'--cookies',cp)};activeJobs.set(jid,{id:jid,type:'playlist',args,downloadsDir:dl,collectionDir:cd,expectedCount:sel.split(',').length,clients:new Set([res]),isPaused:false,isCancelled:false,state:{progress:0,status:'Se pregătește playlistul...',done:false,isPaused:false,title,thumbnail:thumb}});spawnYtDlp(jid);req.on('close',()=>{const j=activeJobs.get(jid);if(j)j.clients.delete(res)})})
+let pt = null;
+// For auto-generated albums, pl.thumbnails is often a generic grey box placeholder.
+// We prioritize the first song's thumbnail (the real album cover) ONLY for true auto-generated albums/EPs.
+const isAutoGeneratedAlbum = vid.includes('OLAK5uy_');
+if (!isAutoGeneratedAlbum) {
+  pt = pl.thumbnails ? pl.thumbnails[pl.thumbnails.length-1]?.url : null;
+}
+if (!pt && en.length > 0) {
+  pt = en[0].thumbnails ? en[0].thumbnails[en[0].thumbnails.length-1]?.url : (en[0].thumbnail || null);
+}
+
+res.setHeader('Content-Type','application/json');res.end(JSON.stringify({title:plTitle,uploader:pl.uploader||pl.channel||null,thumbnail:pt,count:cnt,downloadableCount:Math.min(cnt||en.length,COLLECTION_LIMIT),isTruncated:cnt>COLLECTION_LIMIT,entries:en.slice(0,COLLECTION_LIMIT).map((e,i)=>({id:e.id,index:i+1,title:e.title||'Video fără titlu',uploader:e.uploader||e.channel||null,duration:e.duration||null,album:e.album||extractedAlbum||null,thumbnail:e.thumbnails?e.thumbnails[e.thumbnails.length-1]?.url:(e.thumbnail||null)}))}))}catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}))}})
+
+  middlewares.use('/api/ytdl/collection-download',(req,res,next)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname!=='/')return next();const jid=u.searchParams.get('jobId');if(!jid){res.statusCode=400;return res.end('Missing jobId')};if(activeJobs.has(jid)){res.statusCode=400;return res.end('Job exists.')};const vid=u.searchParams.get('url');const fmt=u.searchParams.get('format')||'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';const sel=u.searchParams.get('selectedItems');const sched=u.searchParams.get('scheduleTime');const title=u.searchParams.get('title')||'';const thumb=u.searchParams.get('thumbnail')||'';const hwaccel=u.searchParams.get('hwaccel')||'NONE';const prependNumbers=u.searchParams.get('prependNumbers')!=='false';if(!vid||!isYouTubeUrl(vid)||!sel){res.statusCode=400;return res.end('Invalid.')};if(sched){const[sh,sm]=sched.split(':').map(Number);let r=new Date();r.setHours(sh,sm,0,0);if(r<=new Date())r.setDate(r.getDate()+1);addScheduledJob({type:'playlist',url:vid,format:fmt,selectedItems:sel,scheduleTime:sched,runAt:r.toISOString(),title,thumbnail:thumb});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({scheduled:true}))};res.setHeader('Content-Type','text/event-stream');res.setHeader('Cache-Control','no-cache');res.setHeader('Connection','keep-alive');const dl=ensureDownloadsDir(u.searchParams.get('customPath'));const cd=path.join(dl, title ? sanitizeFilename(title) : 'youtube-playlist-'+jid);fs.mkdirSync(cd,{recursive:true});const ot=path.join(cd, prependNumbers ? '%(playlist_index)03d - %(artist,uploader)s - %(title)s.%(ext)s' : '%(artist,uploader)s - %(title)s.%(ext)s');let args;if(fmt.startsWith('audio:')){const[,af,aq]=fmt.split(':');const vaf=['mp3','wav','vorbis'].includes(af)?af:'mp3';const vaq=/^\d+$/.test(aq||'')?aq:'0';args=['-x','--audio-format',vaf,'-o',ot,'--ffmpeg-location',ffmpegDir];if(vaf!=='wav')args.splice(3,0,'--audio-quality',vaq)}else{const vf=fmt.startsWith('video:')?fmt.substring(6):'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';args=['-f',vf,'--merge-output-format','mp4','-o',ot,'--ffmpeg-location',ffmpegDir]};if(fmt.startsWith('audio:'))args.push('--ppa','ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)');args.push('-i','--yes-playlist','--playlist-items',sel,'--newline','--embed-metadata','--embed-thumbnail','--extractor-args', getConfig().youtubePoToken ? `youtube:player_client=android,web;po_token=${getConfig().youtubePoToken}` : 'youtube:player_client=android,web','--extractor-retries','5','--fragment-retries','10','--retry-sleep','linear=1::2','--add-header','Accept-Language:en-US,en;q=0.9','-N',String(aiConfig.ytdlpConcurrentFragments));let fa=`-threads ${aiConfig.ffmpegThreads}`;if(hwaccel==='AUTO')fa='-hwaccel auto '+fa;else if(hwaccel==='CUDA')fa='-hwaccel cuda '+fa;else if(hwaccel==='AMF')fa='-hwaccel d3d11va '+fa;else if(hwaccel==='QSV')fa='-hwaccel qsv '+fa;args.push('--postprocessor-args',`ffmpeg:${fa}`,vid);const cp=path.resolve(appDir,'cookies.txt');const cfb=getConfig().cookiesFromBrowser||'';if(cfb){args.splice(args.length-1,0,'--cookies-from-browser',cfb)}else if(fs.existsSync(cp)){args.splice(args.length-1,0,'--cookies',cp)};activeJobs.set(jid,{id:jid,type:'playlist',args,downloadsDir:dl,collectionDir:cd,expectedCount:sel.split(',').length,clients:new Set([res]),isPaused:false,isCancelled:false,state:{progress:0,status:'Se pregătește playlistul...',done:false,isPaused:false,title,thumbnail:thumb}});spawnYtDlp(jid);req.on('close',()=>{const j=activeJobs.get(jid);if(j)j.clients.delete(res)})})
 
   middlewares.use('/api/ytdl/local-thumbnail',(req,res,next)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname!=='/')return next();const file=u.searchParams.get('file');if(!file||file.includes('..')||file.includes('/')||file.includes('\\')){res.statusCode=400;return res.end('Invalid')};const fp=path.join(ensureDownloadsDir(u.searchParams.get('customPath')),file);const blank=Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64');if(!fs.existsSync(fp)){res.setHeader('Content-Type','image/gif');res.setHeader('Cache-Control','public, max-age=86400');return res.end(blank)};if(fs.statSync(fp).isDirectory()){const jp=path.join(fp,'folder.jpg');if(fs.existsSync(jp)){res.setHeader('Content-Type','image/jpeg');res.setHeader('Cache-Control','public, max-age=86400');return fs.createReadStream(jp).pipe(res)};res.setHeader('Content-Type','image/gif');res.setHeader('Cache-Control','public, max-age=86400');return res.end(blank)};const p=spawn(ffmpegBin,['-i',fp,'-map','0:v','-c:v','copy','-f','image2pipe','-']);let ho=false;p.stdout.on('data',c=>{if(!ho){res.setHeader('Content-Type','image/png');res.setHeader('Cache-Control','public, max-age=86400');ho=true};res.write(c)});p.on('close',()=>{if(!ho){res.setHeader('Content-Type','image/gif');res.setHeader('Cache-Control','public, max-age=86400');res.end(blank)}else res.end()});p.on('error',()=>{if(!ho){res.statusCode=500;res.end('Error')}})})
 
@@ -299,8 +396,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       return res.end('Missing code parameter');
     }
 
-    const cid = process.env.VITE_SPOTIFY_CLIENT_ID || '71eaf6d9db064a05a8600b17c310d31a';
-    const cs = process.env.VITE_SPOTIFY_CLIENT_SECRET || '3d8380457ea54ec3b98e4d8ffa08e5e7';
+    const cid = process.env.VITE_SPOTIFY_CLIENT_ID || null;
+    const cs = process.env.VITE_SPOTIFY_CLIENT_SECRET || null;
     const redirectUri = `http://127.0.0.1:5174/api/spotify-callback`;
 
     if (!cid || !cs) {
@@ -1309,6 +1406,83 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       })
 
 middlewares.use('/api/spotify-cancel',(req,res,next)=>{const u=new URL(req.url,`http://${req.headers.host}`);if(u.pathname!=='/')return next();const did=u.searchParams.get('downloadId');if(!did){res.statusCode=400;return res.end(JSON.stringify({error:'Missing downloadId'}))};const dl=spotifyActiveDownloads.get(did);if(dl){dl.cancelled=true;if(dl.procs){for(const p of dl.procs){try{if(process.platform==='win32'){require('child_process').spawnSync('taskkill',['/pid',p.pid,'/f','/t'])}else{p.kill('SIGKILL')}}catch{}}};if(dl.proc){try{dl.proc.kill()}catch{}};spotifyActiveDownloads.delete(did)};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true}))})
+
+  // ── Enrich tracks: instant Spotify lookup for playlist UI display ──────────
+  middlewares.use('/api/ytdl/enrich-tracks', (req, res, next) => {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    if (u.pathname !== '/') return next();
+    if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed'); }
+    let b = '';
+    req.on('data', c => (b += c));
+    req.on('end', async () => {
+      try {
+        const d = JSON.parse(b);
+        const { items } = d;
+        if (!items || !Array.isArray(items) || items.length === 0 || items.length > 20) {
+          res.statusCode = 400;
+          return res.end(JSON.stringify({ error: 'Invalid items array (max 20)' }));
+        }
+        const cfg = getConfig();
+        const cid = cfg.SPOTIFY_CLIENT_ID || process.env.VITE_SPOTIFY_CLIENT_ID || null;
+        const cs = cfg.SPOTIFY_CLIENT_SECRET || process.env.VITE_SPOTIFY_CLIENT_SECRET || null;
+        
+        let results = [];
+        if (cid && cs) {
+          let accessToken = null;
+          results = await Promise.all(items.map(async (item) => {
+            const q = `${item.uploader ? item.uploader + ' ' : ''}${item.title}`;
+            try {
+              const spotData = await searchSpotifyAPI(q, cid, cs, accessToken);
+              if (spotData) return { id: item.id, title: spotData.title, thumbnail: spotData.coverUrl, uploader: spotData.artist, album: spotData.album, artistThumbnail: spotData.artistThumbnail, enriched: true };
+            } catch(e) {}
+            return { id: item.id, enriched: false };
+          }));
+        } else {
+          results = items.map(item => ({ id: item.id, enriched: false }));
+        }
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, results: results.filter(r => r.enriched) }));
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Bad request' }));
+      }
+    });
+  });
+
+  // ── Tag augmentation: enrich MP3 with Spotify official metadata ───────────
+  async function augmentYtTags(filePath, playlistIndex = null, playlistLength = null, coverBuffer = null) {
+    try {
+      const existingTags = NodeID3.read(filePath) || {};
+      let title = existingTags.title;
+      let artist = existingTags.artist;
+      if (!title && !artist) {
+        const bn = path.basename(filePath, '.mp3');
+        const parts = bn.split(' - ');
+        if (parts.length >= 2) { artist = parts[0]; title = parts.slice(1).join(' - '); }
+        else { title = bn; }
+      }
+      const cfg = getConfig();
+      const cid = cfg.SPOTIFY_CLIENT_ID || process.env.VITE_SPOTIFY_CLIENT_ID || null;
+      const cs = cfg.SPOTIFY_CLIENT_SECRET || process.env.VITE_SPOTIFY_CLIENT_SECRET || null;
+
+      let spotMetadata = null;
+      if (cid && cs) {
+        try {
+          let accessToken = null;
+          const q = `${artist ? artist + ' ' : ''}${title}`;
+          spotMetadata = await searchSpotifyAPI(q, cid, cs, accessToken);
+        } catch(e) { console.log(`[tags] Spotify search failed for ${title}: ${e.message}`); }
+      }
+      
+      const tagTrack = spotMetadata || { title, artist: artist || 'Unknown Artist', album: existingTags.album || '', year: existingTags.year || '' };
+      const tagConfig = { playlistIndex, playlistLength, clearComments: true };
+      await writeAndVerifyTags(filePath, tagTrack, coverBuffer, tagConfig);
+      console.log(`[tags] Tagged: ${tagTrack.title || title} | Album: ${tagTrack.album || '(none)'} | Track: ${tagTrack.trackNumber || playlistIndex || '?'}`);
+    } catch(e) {
+      console.error(`[tags] Error augmenting ${filePath}: ${e.message}`);
+    }
+  }
+
 }
 
 
