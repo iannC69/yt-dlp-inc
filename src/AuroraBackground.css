@@ -57,6 +57,33 @@
   animation: float3 22s infinite alternate ease-in-out;
 }
 
+.aurora-orb-4 {
+  width: 55vw;
+  height: 55vw;
+  top: 40vh;
+  right: 10vw;
+  background: radial-gradient(circle at center, var(--aurora-color-4), transparent 70%);
+  animation: float4 28s infinite alternate-reverse ease-in-out;
+}
+
+.aurora-orb-5 {
+  width: 45vw;
+  height: 45vw;
+  bottom: -10vh;
+  left: 30vw;
+  background: radial-gradient(circle at center, var(--aurora-color-5), transparent 70%);
+  animation: float5 24s infinite alternate ease-in-out;
+}
+
+.aurora-orb-6 {
+  width: 65vw;
+  height: 65vw;
+  top: 10vh;
+  left: 50vw;
+  background: radial-gradient(circle at center, var(--aurora-color-6), transparent 70%);
+  animation: float6 30s infinite alternate-reverse ease-in-out;
+}
+
 @keyframes float1 {
   0% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(10vw, 15vh) scale(1.1); }
@@ -74,6 +101,30 @@
   50% { transform: translate(-20vw, 20vh) scale(0.8); }
   100% { transform: translate(10vw, -15vh) scale(1.1); }
 }
+
+@keyframes float4 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(15vw, 25vh) scale(1.15); }
+  100% { transform: translate(-10vw, 10vh) scale(0.9); }
+}
+
+@keyframes float5 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-25vw, -15vh) scale(0.85); }
+  100% { transform: translate(15vw, -20vh) scale(1.05); }
+}
+
+@keyframes float6 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20vw, 10vh) scale(1.1); }
+  100% { transform: translate(-15vw, -10vh) scale(0.95); }
+}
+
+.aurora-youtube .aurora-orb {
+  mix-blend-mode: screen;
+  filter: blur(10px);
+}
+
 
 .aurora-overlay {
   position: absolute;
