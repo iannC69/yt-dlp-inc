@@ -454,6 +454,13 @@ const YoutubeDownloader = ({ activeJobId }) => {
   const [scheduleTime, setScheduleTime] = useState("");
   const [ambientColor, setAmbientColor] = useState("rgba(239, 68, 68, 0.12)");
   const [missingTracks, setMissingTracks] = useState(null);
+  // YouTube Music per-track fallback state
+  const [ytMusicFallbackStatus, setYtMusicFallbackStatus] = useState(null); // { trackTitle, stage: 'searching'|'found'|'failed', fallbackTitle }
+  const [ytMusicFailedTracks, setYtMusicFailedTracks] = useState([]); // [{ title, artist, error, fallbackNote }]
+  const [ytMusicStats, setYtMusicStats] = useState(null); // { completed, failed, total }
+  const [ytMusicCurrentThumbnail, setYtMusicCurrentThumbnail] = useState(null); // cover art of the track currently being processed
+  const ytMusicAbortRef = useRef(null); // AbortController for the fetch stream
+
 
   useEffect(() => {
     let interval = null;
@@ -631,29 +638,29 @@ const YoutubeDownloader = ({ activeJobId }) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ items })
         })
-        .then(r => r.json())
-        .then(data => {
-          if (data.success && data.results) {
-            setInfo(prev => {
-              if (!prev || !prev.playlist) return prev;
-              const newEntries = [...prev.playlist.entries];
-              for (const res of data.results) {
-                const idx = newEntries.findIndex(e => e.id === res.id);
-                if (idx !== -1) {
-                  newEntries[idx] = {
-                    ...newEntries[idx],
-                    thumbnail: res.thumbnail || newEntries[idx].thumbnail,
-                    album: res.album || newEntries[idx].album,
-                    uploader: res.uploader || newEntries[idx].uploader,
-                    artistThumbnail: res.artistThumbnail || newEntries[idx].artistThumbnail,
-                  };
+          .then(r => r.json())
+          .then(data => {
+            if (data.success && data.results) {
+              setInfo(prev => {
+                if (!prev || !prev.playlist) return prev;
+                const newEntries = [...prev.playlist.entries];
+                for (const res of data.results) {
+                  const idx = newEntries.findIndex(e => e.id === res.id);
+                  if (idx !== -1) {
+                    newEntries[idx] = {
+                      ...newEntries[idx],
+                      thumbnail: res.thumbnail || newEntries[idx].thumbnail,
+                      album: res.album || newEntries[idx].album,
+                      uploader: res.uploader || newEntries[idx].uploader,
+                      artistThumbnail: res.artistThumbnail || newEntries[idx].artistThumbnail,
+                    };
+                  }
                 }
-              }
-              return { ...prev, playlist: { ...prev.playlist, entries: newEntries } };
-            });
-          }
-        })
-        .catch(err => console.error("Failed to enrich tracks", err));
+                return { ...prev, playlist: { ...prev.playlist, entries: newEntries } };
+              });
+            }
+          })
+          .catch(err => console.error("Failed to enrich tracks", err));
       }
     }
   }, [info]);
@@ -740,15 +747,15 @@ const YoutubeDownloader = ({ activeJobId }) => {
             const expectedCount = selectedTracks.size;
             const actualCount = data.downloadedCount;
             if (actualCount < expectedCount) {
-               let missingEntries = [];
-               if (data.failedIds && data.failedIds.length > 0) {
-                 missingEntries = Array.from(selectedTracks)
-                   .map(id => info.playlist.entries.find(e => e.id === id))
-                   .filter(e => e && data.failedIds.includes(e.id));
-               }
-               setMissingTracks({ actual: actualCount, expected: expectedCount, missing: missingEntries });
+              let missingEntries = [];
+              if (data.failedIds && data.failedIds.length > 0) {
+                missingEntries = Array.from(selectedTracks)
+                  .map(idx => info.playlist.entries.find(e => e.index === idx))
+                  .filter(e => e && data.failedIds.includes(e.id));
+              }
+              setMissingTracks({ actual: actualCount, expected: expectedCount, missing: missingEntries });
             } else {
-               setMissingTracks(null);
+              setMissingTracks(null);
             }
           }
 
@@ -851,28 +858,28 @@ const YoutubeDownloader = ({ activeJobId }) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ urls: first10 })
           })
-          .then(res => res.json())
-          .then(metaData => {
-            if (metaData.success && metaData.results) {
-              setInfo(prev => {
-                if (!prev || !prev.playlist) return prev;
-                const newEntries = prev.playlist.entries.map(entry => {
-                  const meta = metaData.results[entry.id];
-                  if (meta) {
-                    return {
-                      ...entry,
-                      album: meta.album || entry.album,
-                      artistThumbnail: meta.artistThumbnail || entry.artistThumbnail,
-                      thumbnail: meta.thumbnail || entry.thumbnail
-                    };
-                  }
-                  return entry;
+            .then(res => res.json())
+            .then(metaData => {
+              if (metaData.success && metaData.results) {
+                setInfo(prev => {
+                  if (!prev || !prev.playlist) return prev;
+                  const newEntries = prev.playlist.entries.map(entry => {
+                    const meta = metaData.results[entry.id];
+                    if (meta) {
+                      return {
+                        ...entry,
+                        album: meta.album || entry.album,
+                        artistThumbnail: meta.artistThumbnail || entry.artistThumbnail,
+                        thumbnail: meta.thumbnail || entry.thumbnail
+                      };
+                    }
+                    return entry;
+                  });
+                  return { ...prev, playlist: { ...prev.playlist, entries: newEntries } };
                 });
-                return { ...prev, playlist: { ...prev.playlist, entries: newEntries } };
-              });
-            }
-          })
-          .catch(err => console.error("Batch meta fetch error:", err));
+              }
+            })
+            .catch(err => console.error("Batch meta fetch error:", err));
         }
       }
 
@@ -989,6 +996,136 @@ const YoutubeDownloader = ({ activeJobId }) => {
           return;
         }
         jobId = data.jobId;
+      } else if (scope === "playlist" && info?.platform === "youtube_music") {
+        // ── YouTube Music per-track fallback download ─────────────────────
+        // Uses the new /api/ytdl/ytmusic-playlist-download endpoint which
+        // downloads each track individually with retry + YouTube search fallback.
+        const plTitle = (info.playlist && info.playlist.title) ? info.playlist.title : (info.title || "");
+        const plThumb = (info.playlist && info.playlist.thumbnail) ? info.playlist.thumbnail : (info.thumbnail || "");
+        const selectedItems = Array.from(overrideTracks || selectedTracks).sort((a, b) => a - b).join(",");
+        const [, audioFmtName = "mp3"] = formatToUse.startsWith("audio:") ? formatToUse.split(":") : ["audio", "mp3"];
+
+        const qp = new URLSearchParams({
+          url: info.url || url,
+          format: formatToUse,
+          title: plTitle,
+          thumbnail: plThumb,
+          selectedItems,
+          customPath: localCustomPath || localStorage.getItem("customPath") || "",
+          prependNumbers: prependNumbers.toString(),
+          concurrency: "3",
+        });
+
+        // Reset YTMusic-specific state
+        setYtMusicFallbackStatus(null);
+        setYtMusicFailedTracks([]);
+        setYtMusicStats(null);
+
+        const controller = new AbortController();
+        ytMusicAbortRef.current = controller;
+
+        // Stream the SSE response ourselves (fetch + ReadableStream)
+        const streamRes = await fetch(`/api/ytdl/ytmusic-playlist-download?${qp.toString()}`, {
+          signal: controller.signal,
+        });
+
+        if (!streamRes.ok) {
+          const errData = await streamRes.json().catch(() => ({}));
+          throw new Error(errData.error || "Server error starting YTMusic download");
+        }
+
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        const processLine = (line) => {
+          if (!line.startsWith("data: ")) return;
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.progress !== undefined) setProgress(data.progress);
+            if (data.totalTracks !== undefined) setYtMusicStats(prev => ({ ...prev, total: data.totalTracks }));
+            if (data.status) setDownloadStatus(data.status);
+
+            // Per-track progress
+            if (data.currentTrack && data.totalTracks) {
+              setDownloadStatus(
+                data.fallbackSearch
+                  ? `Searching YouTube for: ${data.trackTitle}`
+                  : data.fallbackFound
+                    ? `Found: ${data.fallbackTitle} — Downloading...`
+                    : `Track ${data.currentTrack} / ${data.totalTracks}${data.trackTitle ? " — " + data.trackTitle : ""}`
+              );
+              if (data.progress > 0 && data.progress < 95) setStep(2);
+            }
+
+            // Fallback status display — include thumbnail from the playlist entry
+            if (data.trackThumbnail) setYtMusicCurrentThumbnail(data.trackThumbnail);
+            if (data.fallbackSearch) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "searching", thumbnail: data.trackThumbnail || null });
+            if (data.fallbackFound) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "found", fallbackTitle: data.fallbackTitle, thumbnail: data.trackThumbnail || null });
+            if (data.fallbackFailed) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "failed", thumbnail: data.trackThumbnail || null });
+
+            if (data.trackDone) {
+              setYtMusicFallbackStatus(null);
+              setYtMusicStats(prev => ({ ...prev, completed: (prev?.completed || 0) + 1 }));
+            }
+            if (data.trackError) {
+              setYtMusicFallbackStatus(null);
+              setYtMusicStats(prev => ({ ...prev, failed: (prev?.failed || 0) + 1 }));
+            }
+
+            // Dispatch DynamicIsland update
+            window.dispatchEvent(new CustomEvent("download_update", {
+              detail: { source: "youtube", progress: data.progress || 0, status: data.status || "Downloading...", done: !!data.done },
+            }));
+
+            if (data.error && !data.done) {
+              setError(data.error);
+              setDownloading(false);
+              setStep(0);
+              ytMusicAbortRef.current = null;
+              return;
+            }
+
+            if (data.done) {
+              setDownloading(false);
+              setDownloadComplete(true);
+              setStep(4);
+              setFinalFilename(data.finalFilename || plTitle);
+              setYtMusicStats({ completed: data.completedTracks, failed: data.failedTracks, total: data.totalTracks });
+              if (data.failedTracksData?.length) setYtMusicFailedTracks(data.failedTracksData);
+              setYtMusicFallbackStatus(null);
+              ytMusicAbortRef.current = null;
+              window.dispatchEvent(new CustomEvent("download_update", { detail: { source: "youtube", done: true } }));
+
+              // Add to global history
+              try {
+                let h = JSON.parse(localStorage.getItem("global_history") || "[]");
+                h.unshift({ id: "youtube_" + Date.now(), title: plTitle, thumbnail: plThumb, date: Date.now(), source: "youtube", format: "Audio", filename: data.finalFilename || plTitle });
+                if (h.length > 500) h.length = 500;
+                localStorage.setItem("global_history", JSON.stringify(h));
+                window.dispatchEvent(new Event("history_updated"));
+              } catch { }
+            }
+          } catch { }
+        };
+
+        // Read the stream
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (line.trim()) processLine(line.trim());
+            }
+          }
+        } catch (streamErr) {
+          if (streamErr.name !== "AbortError") throw streamErr;
+        }
+        return; // Done — no jobId needed
       } else {
         const endpoint =
           scope === "playlist"
@@ -1124,6 +1261,12 @@ const YoutubeDownloader = ({ activeJobId }) => {
     setAppMode(null);
     setShowLibrary(false);
     setScheduleTime("");
+    // Cancel any active YTMusic stream
+    if (ytMusicAbortRef.current) { ytMusicAbortRef.current.abort(); ytMusicAbortRef.current = null; }
+    setYtMusicFallbackStatus(null);
+    setYtMusicFailedTracks([]);
+    setYtMusicStats(null);
+    setYtMusicCurrentThumbnail(null);
     localStorage.removeItem("ytdl_job_id");
     localStorage.removeItem("ytdl_job_scope");
     localStorage.removeItem("ytdl_url");
@@ -2059,7 +2202,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
                                             entry.uploader &&
                                             info.albumArtist &&
                                             entry.uploader.toLowerCase() !==
-                                              info.albumArtist.toLowerCase()
+                                            info.albumArtist.toLowerCase()
                                           ) &&
                                             info.artistThumbnail) ? (
                                           <img
@@ -2094,9 +2237,9 @@ const YoutubeDownloader = ({ activeJobId }) => {
                                       {entry.album ||
                                         (info.contentType === "album" && info.playlist?.title
                                           ? info.playlist.title.replace(
-                                              /^Album\s*-\s*/i,
-                                              "",
-                                            )
+                                            /^Album\s*-\s*/i,
+                                            "",
+                                          )
                                           : "-")}
                                     </div>
                                     <span className="ytdl-preview-row-duration">
@@ -2534,7 +2677,7 @@ const YoutubeDownloader = ({ activeJobId }) => {
                               {isPaused ? "PAUSED" : "DOWNLOADING"}
                             </div>
                             <div className="sp-prog-track-name">
-                              {pendingScope === "playlist" 
+                              {pendingScope === "playlist"
                                 ? (info?.playlist?.title || info?.title || "YouTube Playlist")
                                 : (info?.title || "YouTube Video")}
                             </div>
@@ -2560,6 +2703,78 @@ const YoutubeDownloader = ({ activeJobId }) => {
                                 <span className="sp-prog-status-text">
                                   {downloadStatus}
                                 </span>
+                              </div>
+                            )}
+                            {/* YTMusic per-track fallback status with cover art */}
+                            {ytMusicFallbackStatus && (
+                              <div style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                                marginTop: "0.4rem",
+                                padding: "0.35rem 0.5rem",
+                                borderRadius: "8px",
+                                backgroundColor: ytMusicFallbackStatus.stage === "searching"
+                                  ? "rgba(245,158,11,0.08)"
+                                  : ytMusicFallbackStatus.stage === "found"
+                                    ? "rgba(74,222,128,0.08)"
+                                    : "rgba(248,113,113,0.08)",
+                                border: `1px solid ${ytMusicFallbackStatus.stage === "searching"
+                                    ? "rgba(245,158,11,0.25)"
+                                    : ytMusicFallbackStatus.stage === "found"
+                                      ? "rgba(74,222,128,0.25)"
+                                      : "rgba(248,113,113,0.25)"
+                                  }`,
+                                transition: "all 0.3s ease",
+                              }}>
+                                {/* Cover art */}
+                                {(ytMusicFallbackStatus.thumbnail || ytMusicCurrentThumbnail) && (
+                                  <img
+                                    src={ytMusicFallbackStatus.thumbnail || ytMusicCurrentThumbnail}
+                                    alt="cover"
+                                    style={{
+                                      width: "32px",
+                                      height: "32px",
+                                      borderRadius: "4px",
+                                      objectFit: "cover",
+                                      flexShrink: 0,
+                                      opacity: 0.9,
+                                    }}
+                                  />
+                                )}
+                                {/* Status icon + text */}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem", minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                                    {ytMusicFallbackStatus.stage === "searching" && (
+                                      <><Loader2 size={11} className="spin" style={{ color: "#f59e0b", flexShrink: 0 }} />
+                                        <span style={{ color: "#f59e0b", fontSize: "0.76rem", fontWeight: 600 }}>Searching YouTube for fallback…</span>
+                                      </>
+                                    )}
+                                    {ytMusicFallbackStatus.stage === "found" && (
+                                      <><CheckCircle2 size={11} style={{ color: "#4ade80", flexShrink: 0 }} />
+                                        <span style={{ color: "#4ade80", fontSize: "0.76rem", fontWeight: 600 }}>Replacement found</span>
+                                      </>
+                                    )}
+                                    {ytMusicFallbackStatus.stage === "failed" && (
+                                      <><XCircle size={11} style={{ color: "#f87171", flexShrink: 0 }} />
+                                        <span style={{ color: "#f87171", fontSize: "0.76rem", fontWeight: 600 }}>No replacement — skipping</span>
+                                      </>
+                                    )}
+                                  </div>
+                                  <span style={{ color: "#64748b", fontSize: "0.7rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "180px" }}>
+                                    {ytMusicFallbackStatus.stage === "found"
+                                      ? ytMusicFallbackStatus.fallbackTitle
+                                      : ytMusicFallbackStatus.trackTitle}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {/* YTMusic live counter */}
+                            {ytMusicStats && ytMusicStats.total > 0 && (
+                              <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.3rem", fontSize: "0.76rem", opacity: 0.75 }}>
+                                <span style={{ color: "#4ade80" }}>✓ {ytMusicStats.completed || 0}</span>
+                                {(ytMusicStats.failed || 0) > 0 && <span style={{ color: "#f87171" }}>✗ {ytMusicStats.failed}</span>}
+                                <span style={{ color: "#94a3b8" }}>/ {ytMusicStats.total}</span>
                               </div>
                             )}
                           </div>
@@ -2617,25 +2832,37 @@ const YoutubeDownloader = ({ activeJobId }) => {
                       )}
 
                       <div className="ytdl-job-actions">
-                        {isPaused ? (
-                          <button
-                            className="ytdl-job-btn resume"
-                            onClick={() => handleJobAction("resume")}
-                          >
-                            <Play size={18} /> Reia descarcarea
-                          </button>
-                        ) : (
-                          <button
-                            className="ytdl-job-btn pause"
-                            onClick={() => handleJobAction("pause")}
-                            disabled={step === 3}
-                          >
-                            <Pause size={18} /> Pune pe pauza
-                          </button>
+                        {/* Hide pause/resume for YTMusic per-track downloads (no jobId) */}
+                        {!ytMusicAbortRef.current && (
+                          isPaused ? (
+                            <button
+                              className="ytdl-job-btn resume"
+                              onClick={() => handleJobAction("resume")}
+                            >
+                              <Play size={18} /> Reia descarcarea
+                            </button>
+                          ) : (
+                            <button
+                              className="ytdl-job-btn pause"
+                              onClick={() => handleJobAction("pause")}
+                              disabled={step === 3}
+                            >
+                              <Pause size={18} /> Pune pe pauza
+                            </button>
+                          )
                         )}
                         <button
                           className="ytdl-job-btn cancel"
-                          onClick={() => handleJobAction("cancel")}
+                          onClick={() => {
+                            if (ytMusicAbortRef.current) {
+                              ytMusicAbortRef.current.abort();
+                              ytMusicAbortRef.current = null;
+                              setDownloading(false);
+                              setStep(0);
+                            } else {
+                              handleJobAction("cancel");
+                            }
+                          }}
                         >
                           <XCircle size={18} /> Anuleaza
                         </button>
@@ -2662,16 +2889,59 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
                         {downloadScope === "playlist" ? (
                           <div className="ytdl-archive-notice">
-                            Fisierele au fost salvate cu succes in locatia ta.
-                            {missingTracks && (
-                              <div style={{ marginTop: '1rem', color: '#f87171', fontSize: '0.9rem', textAlign: 'left', padding: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', wordBreak: 'break-word' }}>
-                                <strong>Avertisment:</strong> Au fost descărcate {missingTracks.actual}/{missingTracks.expected} fișiere.
-                                {missingTracks.missing && missingTracks.missing.length > 0 && (
-                                  <div style={{ marginTop: '0.5rem' }}>
-                                    Lipsă: {missingTracks.missing.map(e => e.uploader ? `${e.uploader} - ${e.title}` : e.title).join(', ')}
+                            {/* YTMusic summary */}
+                            {ytMusicStats ? (
+                              <div style={{ textAlign: 'left' }}>
+                                <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', marginBottom: '0.75rem', fontSize: '0.92rem' }}>
+                                  <span style={{ color: '#4ade80', fontWeight: 700 }}>
+                                    ✓ Downloaded: {ytMusicStats.completed || 0} / {ytMusicStats.total || 0}
+                                  </span>
+                                  {(ytMusicStats.failed || 0) > 0 && (
+                                    <span style={{ color: '#f87171', fontWeight: 700 }}>
+                                      ✗ Failed: {ytMusicStats.failed}
+                                    </span>
+                                  )}
+                                </div>
+                                {ytMusicFailedTracks.length > 0 && (
+                                  <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.08)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                    <div style={{ color: '#f87171', fontWeight: 700, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                                      Failed Songs
+                                    </div>
+                                    {ytMusicFailedTracks.map((t, i) => (
+                                      <div key={i} style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: i < ytMusicFailedTracks.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                                        <div style={{ color: '#e2e8f0', fontSize: '0.83rem', fontWeight: 600 }}>
+                                          • {t.artist ? `${t.artist} — ${t.title}` : t.title}
+                                        </div>
+                                        <div style={{ color: '#94a3b8', fontSize: '0.76rem', marginTop: '0.2rem' }}>
+                                          Reason: {t.error}
+                                        </div>
+                                        {t.fallbackNote && (
+                                          <div style={{ color: '#64748b', fontSize: '0.74rem', marginTop: '0.1rem' }}>
+                                            Fallback: {t.fallbackNote}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
                                   </div>
                                 )}
+                                {ytMusicFailedTracks.length === 0 && (
+                                  <div style={{ color: '#94a3b8', fontSize: '0.83rem' }}>All tracks downloaded successfully.</div>
+                                )}
                               </div>
+                            ) : (
+                              <>
+                                Fisierele au fost salvate cu succes in locatia ta.
+                                {missingTracks && (
+                                  <div style={{ marginTop: '1rem', color: '#f87171', fontSize: '0.9rem', textAlign: 'left', padding: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', wordBreak: 'break-word' }}>
+                                    <strong>Avertisment:</strong> Au fost descărcate {missingTracks.actual}/{missingTracks.expected} fișiere.
+                                    {missingTracks.missing && missingTracks.missing.length > 0 && (
+                                      <div style={{ marginTop: '0.5rem' }}>
+                                        Lipsă: {missingTracks.missing.map(e => e.uploader ? `${e.uploader} - ${e.title}` : e.title).join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         ) : (

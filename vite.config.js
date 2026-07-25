@@ -1391,8 +1391,8 @@ function youtubeDownloaderPlugin() {
         const codecArgs = format === 'mp3'
           ? ['-codec:a', 'libmp3lame', '-q:a', '0']
           : format === 'm4a' ? ['-codec:a', 'aac', '-b:a', '256k']
-          : format === 'flac' ? ['-codec:a', 'flac']
-          : ['-codec:a', 'pcm_s16le']
+            : format === 'flac' ? ['-codec:a', 'flac']
+              : ['-codec:a', 'pcm_s16le']
 
         const filename = `${outputName}-${Date.now()}.${format}`
         const outputPath = path.join(ensureDownloadsDir(typeof urlObj !== 'undefined' ? (urlObj.searchParams ? urlObj.searchParams.get('customPath') : null) : null), filename)
@@ -1439,8 +1439,8 @@ function youtubeDownloaderPlugin() {
         const redirectUri = `http://127.0.0.1:5174/api/spotify-callback`;
 
         if (!clientId || !clientSecret) {
-           res.statusCode = 500;
-           return res.end('Missing Spotify credentials');
+          res.statusCode = 500;
+          return res.end('Missing Spotify credentials');
         }
 
         try {
@@ -2331,9 +2331,9 @@ function youtubeDownloaderPlugin() {
                         const tName = (t.title || '').toLowerCase().replace(/[^\w\s]/g, '');
                         return tName && (dName.includes(tName) || tName.includes(dName));
                       });
-                      
+
                       const resolvedTrack = matchedIdx !== -1 ? matchedIdx + 1 : ++currentTrack;
-                      
+
                       send({
                         currentTrack: resolvedTrack,
                         trackDone: true,
@@ -2451,8 +2451,8 @@ function youtubeDownloaderPlugin() {
                           windowsHide: true,
                           env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${path.resolve(__dirname, 'bin')}${path.delimiter}${process.env.PATH}` }
                         });
-                        rProc.stdout.on('data', () => {});
-                        rProc.stderr.on('data', () => {});
+                        rProc.stdout.on('data', () => { });
+                        rProc.stderr.on('data', () => { });
                         rProc.on('close', (code) => resolveRescue(code === 0 && fs.existsSync(finalOutputPath)));
                         rProc.on('error', () => resolveRescue(false));
                       });
@@ -2461,17 +2461,17 @@ function youtubeDownloaderPlugin() {
                         rescued = true;
                         downloadedNorms.add(norm(`${safeArtist} - ${safeTitle}`));
                         console.log(`[spotdl-rescue] ✓ Rescued: ${track.title}`);
-                        
+
                         const trackRealIdx = tracks.findIndex(t => t.title === track.title && t.artist === track.artist);
                         if (trackRealIdx !== -1) {
-                           send({
-                             currentTrack: trackRealIdx + 1,
-                             trackDone: true,
-                             status: `Rescued: ${track.title}`,
-                             trackProgress: 100
-                           });
+                          send({
+                            currentTrack: trackRealIdx + 1,
+                            trackDone: true,
+                            status: `Rescued: ${track.title}`,
+                            trackProgress: 100
+                          });
                         }
-                        
+
                         // Write ID3 tags
                         try {
                           const tags = {
@@ -2491,10 +2491,10 @@ function youtubeDownloaderPlugin() {
                                 }).on('error', j2);
                               });
                               tags.image = { mime: 'image/jpeg', type: { id: 3, name: 'Front Cover' }, description: 'Cover', imageBuffer: coverBuf };
-                            } catch {}
+                            } catch { }
                           }
                           NodeID3.update(tags, finalOutputPath);
-                        } catch {}
+                        } catch { }
                       } else {
                         console.log(`[spotdl-rescue] ✗ Strategy failed: "${track.title}" | query: ${query.substring(0, 60)}`);
                         if (!ok) await new Promise(r => setTimeout(r, 800));

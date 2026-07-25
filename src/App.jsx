@@ -1096,18 +1096,32 @@ export default function App() {
                       </div>
                       <div className="settings-field" style={{ marginTop: '20px' }}>
                         <label className="settings-label-row">Browser Cookies</label>
-                        <button className="settings-save-btn" onClick={async () => {
-                          try {
-                            const res = await fetch('/api/cookies/import', { method: 'POST' });
-                            const data = await res.json();
-                            if (data.success) alert('Cookies imported successfully!');
-                            else alert('Failed to import cookies: ' + data.error);
-                          } catch (e) {
-                            alert('Network error while importing cookies.');
-                          }
-                        }} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
-                          Import cookies from Chrome
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button className="settings-save-btn" onClick={async () => {
+                            try {
+                              const res = await fetch('/api/cookies/import', { method: 'POST' });
+                              const data = await res.json();
+                              if (data.success) alert('Cookies imported successfully!');
+                              else alert('Failed to import cookies: ' + data.error);
+                            } catch (e) {
+                              alert('Network error while importing cookies.');
+                            }
+                          }} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
+                            Import cookies from Chrome
+                          </button>
+                          <button className="settings-save-btn" onClick={async () => {
+                            try {
+                              const res = await fetch('/api/ytdl/clear-cookies');
+                              const data = await res.json();
+                              if (data.success) alert('Cookies cleared successfully!');
+                              else alert('Failed to clear cookies: ' + data.error);
+                            } catch (e) {
+                              alert('Network error while clearing cookies.');
+                            }
+                          }} style={{ width: 'auto', padding: '0.5rem 1rem', background: 'rgba(225, 29, 72, 0.8)' }}>
+                            Clear cookies
+                          </button>
+                        </div>
                         <p className="settings-hint">Imports YouTube cookies from Chrome to help bypass restrictions.</p>
                       </div>
                     </div>
