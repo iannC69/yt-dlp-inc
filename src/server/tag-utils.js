@@ -1,26 +1,48 @@
 import NodeID3 from 'node-id3';
+import fs from 'fs';
 
 /**
- * Write ID3v2 tags to an MP3 file using NodeID3.write() — full overwrite, always reliable.
- * - Reads existing tags first to preserve anything not in our Spotify data (e.g. lyrics)
- * - Writes: title, artist (TPE1), album artist (TPE2), album (TALB), year, track number, cover art (APIC)
+ * Write ID3v2 tags to an MP3 file using NodeID3.update() — partial update, preserves existing tags.
+ * - Reads existing tags first to preserve anything already embedded (e.g. lyrics, cover from yt-dlp)
+ * - Writes: title, artist (TPE1), album artist (TPE2), album (TALB), year, track number, disc number,
+ *   genre, ISRC, cover art (APIC), and more
+ * - coverBuffer can be a Buffer OR a file path string (will be read automatically)
  * - If coverBuffer provided → uses it as front cover
- * - If no coverBuffer but file already has embedded cover → preserves it
+ * - If no coverBuffer but file already has embedded cover → preserves it (with retry for race conditions)
  * - Never falls back to track.title for album
  */
 export async function writeAndVerifyTags(filePath, tags, coverBuffer, config = {}) {
   try {
-    // 1. Read existing tags to preserve embedded content (e.g. lyrics from yt-dlp)
-    let existingTags = {};
-    try {
-      existingTags = NodeID3.read(filePath) || {};
-    } catch (_) { }
+    // Normalize coverBuffer: accept file path string as well as Buffer
+    if (coverBuffer && typeof coverBuffer === 'string') {
+      try {
+        coverBuffer = fs.existsSync(coverBuffer) ? fs.readFileSync(coverBuffer) : null;
+      } catch (_) { coverBuffer = null; }
+    }
 
-    // 2. Build complete ID3 tag object from Spotify metadata
+    // 1. Read existing tags to preserve embedded content (e.g. cover art, lyrics from yt-dlp)
+    //    Retry up to 3 times with a short delay to handle race conditions where ffmpeg is still
+    //    writing the file's embedded thumbnail when we try to read it.
+    let existingTags = {};
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        existingTags = NodeID3.read(filePath) || {};
+        // If we still need a cover and haven't found one yet, wait and retry
+        if (!coverBuffer && !existingTags.image && attempt < 2) {
+          await new Promise(r => setTimeout(r, 400));
+          continue;
+        }
+        break;
+      } catch (_) {
+        if (attempt < 2) await new Promise(r => setTimeout(r, 400));
+      }
+    }
+
+    // 2. Build complete ID3 tag object — existing tags are the baseline, incoming tags override
     const id3Tags = {
       title: tags.title || existingTags.title || '',
       artist: tags.artist || existingTags.artist || '',
-      performerInfo: tags.allArtists || tags.artist || existingTags.performerInfo || '',
+      performerInfo: tags.allArtists || tags.albumArtist || tags.artist || existingTags.performerInfo || '',
       album: tags.album || existingTags.album || '',
       year: tags.year ? String(tags.year) : (existingTags.year || ''),
       date: tags.releaseDate ? tags.releaseDate.replace(/-/g, '') : (existingTags.date || ''),
@@ -30,7 +52,7 @@ export async function writeAndVerifyTags(filePath, tags, coverBuffer, config = {
       isrc: tags.isrc || existingTags.isrc || '',
       copyright: tags.copyright || existingTags.copyright || '',
       publisher: tags.label || existingTags.publisher || '',
-      comment: resolveComment(existingTags.comment, config.clearComments)
+      comment: resolveComment(existingTags.comment, config.clearComments),
     };
 
     // Keep explicit lyrics synced if available
@@ -41,10 +63,10 @@ export async function writeAndVerifyTags(filePath, tags, coverBuffer, config = {
       id3Tags.synchronisedLyrics = existingTags.synchronisedLyrics;
     }
 
-    // 3. Cover art — Spotify cover takes priority, YouTube embedded cover is fallback
+    // 3. Cover art — provided buffer takes priority; yt-dlp embedded cover is the fallback
     if (coverBuffer && coverBuffer.length > 1000) {
       id3Tags.image = {
-        mime: 'image/jpeg',
+        mime: detectMime(coverBuffer),
         type: { id: 3, name: 'Front Cover' },
         description: 'Cover',
         imageBuffer: coverBuffer,
@@ -53,12 +75,19 @@ export async function writeAndVerifyTags(filePath, tags, coverBuffer, config = {
       id3Tags.image = existingTags.image;
     }
 
-    // 4. NodeID3.write() — completely replaces all tags, no partial-update issues
-    const writeOk = NodeID3.write(id3Tags, filePath);
+    // 4. Clean up empty/null tags so NodeID3.update doesn't overwrite good existing values
+    for (const key in id3Tags) {
+      if (id3Tags[key] === '' || id3Tags[key] === null || id3Tags[key] === undefined) {
+        delete id3Tags[key];
+      }
+    }
+
+    // 5. NodeID3.update() — preserves all existing tags not specified in id3Tags
+    const writeOk = NodeID3.update(id3Tags, filePath);
     if (!writeOk) {
       // Retry once after a short delay (file may still be locked by ffmpeg)
-      await new Promise(r => setTimeout(r, 500));
-      NodeID3.write(id3Tags, filePath);
+      await new Promise(r => setTimeout(r, 600));
+      NodeID3.update(id3Tags, filePath);
     }
 
     return { success: true, file: filePath };
@@ -66,6 +95,18 @@ export async function writeAndVerifyTags(filePath, tags, coverBuffer, config = {
     console.error(`[tags] writeAndVerifyTags failed for ${filePath}: ${e.message}`);
     return { success: false, file: filePath, error: e.message };
   }
+}
+
+/**
+ * Detect MIME type from image buffer magic bytes.
+ * Defaults to image/jpeg for ID3 compatibility.
+ */
+function detectMime(buf) {
+  if (!buf || buf.length < 4) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49) return 'image/gif';
+  return 'image/jpeg';
 }
 
 function formatTrackNumber(trackNumber, totalTracks, existingTrackNumber, config) {
