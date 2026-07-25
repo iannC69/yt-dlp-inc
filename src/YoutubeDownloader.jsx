@@ -2705,76 +2705,105 @@ const YoutubeDownloader = ({ activeJobId }) => {
                                 </span>
                               </div>
                             )}
-                            {/* YTMusic per-track fallback status with cover art */}
-                            {ytMusicFallbackStatus && (
-                              <div style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                                marginTop: "0.4rem",
-                                padding: "0.35rem 0.5rem",
-                                borderRadius: "8px",
-                                backgroundColor: ytMusicFallbackStatus.stage === "searching"
-                                  ? "rgba(245,158,11,0.08)"
-                                  : ytMusicFallbackStatus.stage === "found"
-                                    ? "rgba(74,222,128,0.08)"
-                                    : "rgba(248,113,113,0.08)",
-                                border: `1px solid ${ytMusicFallbackStatus.stage === "searching"
-                                    ? "rgba(245,158,11,0.25)"
-                                    : ytMusicFallbackStatus.stage === "found"
-                                      ? "rgba(74,222,128,0.25)"
-                                      : "rgba(248,113,113,0.25)"
-                                  }`,
-                                transition: "all 0.3s ease",
-                              }}>
-                                {/* Cover art */}
-                                {(ytMusicFallbackStatus.thumbnail || ytMusicCurrentThumbnail) && (
-                                  <img
-                                    src={ytMusicFallbackStatus.thumbnail || ytMusicCurrentThumbnail}
-                                    alt="cover"
-                                    style={{
-                                      width: "32px",
-                                      height: "32px",
-                                      borderRadius: "4px",
-                                      objectFit: "cover",
-                                      flexShrink: 0,
-                                      opacity: 0.9,
-                                    }}
-                                  />
-                                )}
-                                {/* Status icon + text */}
-                                <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem", minWidth: 0 }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                                    {ytMusicFallbackStatus.stage === "searching" && (
-                                      <><Loader2 size={11} className="spin" style={{ color: "#f59e0b", flexShrink: 0 }} />
-                                        <span style={{ color: "#f59e0b", fontSize: "0.76rem", fontWeight: 600 }}>Searching YouTube for fallback…</span>
-                                      </>
-                                    )}
-                                    {ytMusicFallbackStatus.stage === "found" && (
-                                      <><CheckCircle2 size={11} style={{ color: "#4ade80", flexShrink: 0 }} />
-                                        <span style={{ color: "#4ade80", fontSize: "0.76rem", fontWeight: 600 }}>Replacement found</span>
-                                      </>
-                                    )}
-                                    {ytMusicFallbackStatus.stage === "failed" && (
-                                      <><XCircle size={11} style={{ color: "#f87171", flexShrink: 0 }} />
-                                        <span style={{ color: "#f87171", fontSize: "0.76rem", fontWeight: 600 }}>No replacement — skipping</span>
-                                      </>
-                                    )}
-                                  </div>
-                                  <span style={{ color: "#64748b", fontSize: "0.7rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "180px" }}>
-                                    {ytMusicFallbackStatus.stage === "found"
-                                      ? ytMusicFallbackStatus.fallbackTitle
-                                      : ytMusicFallbackStatus.trackTitle}
-                                  </span>
+                            {/* ── YTMusic Aurora Progress Panel ── */}
+                            {(ytMusicFallbackStatus || (ytMusicStats && ytMusicStats.total > 0)) && (
+                              <div className="ytmusic-aurora-panel" style={{ marginTop: '0.75rem', padding: '1rem' }}>
+                                {/* Animated aurora background orbs */}
+                                <div className="ytmusic-aurora-bg">
+                                  <div className="ytmusic-orb ytmusic-orb-1" />
+                                  <div className="ytmusic-orb ytmusic-orb-2" />
+                                  <div className="ytmusic-orb ytmusic-orb-3" />
+                                  <div className="ytmusic-orb ytmusic-orb-4" />
+                                  <div className="ytmusic-orb ytmusic-orb-5" />
                                 </div>
-                              </div>
-                            )}
-                            {/* YTMusic live counter */}
-                            {ytMusicStats && ytMusicStats.total > 0 && (
-                              <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.3rem", fontSize: "0.76rem", opacity: 0.75 }}>
-                                <span style={{ color: "#4ade80" }}>✓ {ytMusicStats.completed || 0}</span>
-                                {(ytMusicStats.failed || 0) > 0 && <span style={{ color: "#f87171" }}>✗ {ytMusicStats.failed}</span>}
-                                <span style={{ color: "#94a3b8" }}>/ {ytMusicStats.total}</span>
+
+                                {/* Floating music note particles */}
+                                <div className="ytmusic-particles">
+                                  {['♪','♫','♩','♬','♭','♪','♫'].map((note, i) => (
+                                    <span key={i} className="ytm-particle" style={{
+                                      left: `${10 + i * 13}%`,
+                                      animationDuration: `${4 + i * 0.7}s`,
+                                      animationDelay: `${i * 0.6}s`,
+                                      fontSize: `${11 + (i % 3) * 3}px`,
+                                      color: ['rgba(255,80,80,0.5)','rgba(255,140,40,0.4)','rgba(255,50,120,0.45)'][i % 3],
+                                    }}>{note}</span>
+                                  ))}
+                                </div>
+
+                                <div className="ytmusic-panel-content">
+                                  {/* Current track glassmorphism card */}
+                                  {ytMusicFallbackStatus && (
+                                    <div className={`ytmusic-track-card ytmusic-track-card--${ytMusicFallbackStatus.stage}`}>
+                                      {/* Cover art with glow */}
+                                      {(ytMusicFallbackStatus.thumbnail || ytMusicCurrentThumbnail) && (
+                                        <div className="ytmusic-cover">
+                                          <div className="ytmusic-cover-glow" />
+                                          <img
+                                            src={ytMusicFallbackStatus.thumbnail || ytMusicCurrentThumbnail}
+                                            alt="cover"
+                                          />
+                                        </div>
+                                      )}
+
+                                      {/* Info + waveform */}
+                                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                        {/* Stage badge + waveform */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                          {ytMusicFallbackStatus.stage === 'searching' && (
+                                            <>
+                                              <Loader2 size={11} className="spin" style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                              <span style={{ color: '#f59e0b', fontSize: '0.72rem', fontWeight: 700 }}>Searching YouTube…</span>
+                                            </>
+                                          )}
+                                          {ytMusicFallbackStatus.stage === 'found' && (
+                                            <>
+                                              <CheckCircle2 size={11} style={{ color: '#4ade80', flexShrink: 0 }} />
+                                              <span style={{ color: '#4ade80', fontSize: '0.72rem', fontWeight: 700 }}>Replacement found</span>
+                                            </>
+                                          )}
+                                          {ytMusicFallbackStatus.stage === 'failed' && (
+                                            <>
+                                              <XCircle size={11} style={{ color: '#f87171', flexShrink: 0 }} />
+                                              <span style={{ color: '#f87171', fontSize: '0.72rem', fontWeight: 700 }}>No replacement — skipping</span>
+                                            </>
+                                          )}
+                                          {/* Animated waveform — only while active */}
+                                          {ytMusicFallbackStatus.stage !== 'failed' && (
+                                            <div className="ytmusic-waveform" style={{ marginLeft: 'auto' }}>
+                                              {[1,2,3,4,5,6,7].map(i => (
+                                                <div key={i} className="ytmusic-waveform-bar" />
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Track title */}
+                                        <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.73rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {ytMusicFallbackStatus.stage === 'found'
+                                            ? ytMusicFallbackStatus.fallbackTitle
+                                            : ytMusicFallbackStatus.trackTitle}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Stats pills */}
+                                  {ytMusicStats && ytMusicStats.total > 0 && (
+                                    <div className="ytmusic-stats" style={{ marginTop: ytMusicFallbackStatus ? '0.6rem' : '0' }}>
+                                      <span className="ytmusic-stat-pill ytmusic-stat-pill--ok">
+                                        ✓ {ytMusicStats.completed || 0} done
+                                      </span>
+                                      {(ytMusicStats.failed || 0) > 0 && (
+                                        <span className="ytmusic-stat-pill ytmusic-stat-pill--fail">
+                                          ✗ {ytMusicStats.failed} failed
+                                        </span>
+                                      )}
+                                      <span className="ytmusic-stat-pill ytmusic-stat-pill--total">
+                                        / {ytMusicStats.total} tracks
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>

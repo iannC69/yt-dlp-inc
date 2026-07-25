@@ -597,9 +597,17 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             duration: j.duration || 0,
             thumbnail: j.thumbnails?.[j.thumbnails.length - 1]?.url || j.thumbnail || null,
             album: j.album || null,
+            trackNumber: j.playlist_index ?? j.track_number ?? null,
           });
         } catch { }
       }
+
+      // Fill in totalTracks so every entry gets X/N track numbering
+      const totalTracksCount = allEntries.length;
+      for (const e of allEntries) {
+        e.totalTracks = totalTracksCount;
+      }
+
 
       if (!allEntries.length) {
         send({ done: true, error: 'Could not read playlist entries.' });
@@ -739,10 +747,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 album:       entry.album || existing.album || '',
                 year:        existing.year || '',
                 genre:       existing.genre || '',
-                trackNumber: prependNumbers ? String(trackIndex) : (existing.trackNumber || ''),
+                // Prefer the playlist_index from YTM, fall back to position in download, then yt-dlp embedded
+                trackNumber: entry.trackNumber || (prependNumbers ? trackIndex : null) || existing.trackNumber || '',
+                totalTracks: entry.totalTracks || null,
                 discNumber:  existing.partOfSet || '',
                 isrc:        existing.isrc || '',
               };
+
 
               // Fetch the playlist thumbnail and convert to square JPEG.
               // Always prefer the high-res playlist thumbnail over yt-dlp's embedded one.
