@@ -3,7 +3,7 @@
   "private": true,
   "description": "MediaDL – YouTube & Spotify downloader desktop app",
   "author": "MediaDL",
-  "version": "1.0.65",
+  "version": "1.0.66",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -45,7 +45,7 @@
     "appId": "com.mediadl.desktop",
     "productName": "MediaDL",
     "copyright": "Copyright © 2024 MediaDL",
-    "icon": "installer-assets/app-icon.ico",
+    "icon": "public/icon.ico",
     "publish": {
       "provider": "github",
       "owner": "iannC69",

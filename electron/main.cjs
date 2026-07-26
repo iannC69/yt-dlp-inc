@@ -22,7 +22,7 @@ app.on('second-instance', () => {
 function createTray() {
   // Build a 16x16 icon from a tiny inline PNG (fallback if no icon file)
   const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'icon.ico')
+    ? path.join(app.getAppPath(), 'dist-fe', 'icon.ico')
     : path.join(app.getAppPath(), 'public', 'icon.ico');
 
   let trayIcon;
@@ -69,11 +69,16 @@ function createTray() {
 }
 
 function createWindow() {
+  const iconPath = app.isPackaged
+    ? path.join(app.getAppPath(), 'dist-fe', 'icon.ico')
+    : path.join(app.getAppPath(), 'public', 'icon.ico');
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1024,
     minHeight: 720,
+    icon: iconPath,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
