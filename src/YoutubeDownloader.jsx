@@ -312,7 +312,7 @@ function generateJobId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
-const YoutubeDownloader = ({ activeJobId }) => {
+const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
   const [url, setUrl] = useState("");
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -457,7 +457,9 @@ const YoutubeDownloader = ({ activeJobId }) => {
   // YouTube Music per-track fallback state
   const [ytMusicFallbackStatus, setYtMusicFallbackStatus] = useState(null); // { trackTitle, stage: 'searching'|'found'|'failed', fallbackTitle }
   const [ytMusicFailedTracks, setYtMusicFailedTracks] = useState([]); // [{ title, artist, error, fallbackNote }]
-  const [ytMusicStats, setYtMusicStats] = useState(null); // { completed, failed, total }
+  const [ytMusicStats, setYtMusicStats] = useState(null); // { completed, pendingManual, total }
+  const [ytMusicAttemptInfo, setYtMusicAttemptInfo] = useState(null); // { attempt: 3, source: 'SoundCloud', trackTitle: '...' }
+  const [ytMusicRateLimited, setYtMusicRateLimited] = useState(false); // true when HTTP 429 detected
   const [ytMusicCurrentThumbnail, setYtMusicCurrentThumbnail] = useState(null); // cover art of the track currently being processed
   const ytMusicAbortRef = useRef(null); // AbortController for the fetch stream
 
@@ -1020,6 +1022,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
         setYtMusicFallbackStatus(null);
         setYtMusicFailedTracks([]);
         setYtMusicStats(null);
+        setYtMusicAttemptInfo(null);
+        setYtMusicRateLimited(false);
 
         const controller = new AbortController();
         ytMusicAbortRef.current = controller;
@@ -1047,19 +1051,39 @@ const YoutubeDownloader = ({ activeJobId }) => {
             if (data.totalTracks !== undefined) setYtMusicStats(prev => ({ ...prev, total: data.totalTracks }));
             if (data.status) setDownloadStatus(data.status);
 
+            // Rate limit notification
+            if (data.rateLimited) {
+              setYtMusicRateLimited(true);
+              setDownloadStatus(`⏸ Rate limited — pausing ${data.waitSeconds || 60}s before resuming...`);
+              setTimeout(() => setYtMusicRateLimited(false), (data.waitSeconds || 60) * 1000 + 500);
+            }
+
+            // Live attempt tracking chip
+            if (data.attemptNumber !== undefined && data.attemptSource) {
+              setYtMusicAttemptInfo({
+                attempt: data.attemptNumber,
+                source: data.attemptSource,
+                trackTitle: data.trackTitle || "",
+              });
+            }
+
             // Per-track progress
             if (data.currentTrack && data.totalTracks) {
-              setDownloadStatus(
-                data.fallbackSearch
-                  ? `Searching YouTube for: ${data.trackTitle}`
-                  : data.fallbackFound
-                    ? `Found: ${data.fallbackTitle} — Downloading...`
-                    : `Track ${data.currentTrack} / ${data.totalTracks}${data.trackTitle ? " — " + data.trackTitle : ""}`
-              );
+              let statusMsg;
+              if (data.attemptNumber && data.attemptNumber > 1 && data.attemptSource) {
+                statusMsg = `↻ Attempt ${data.attemptNumber}/10 — ${data.attemptSource}: ${data.trackTitle || ""}`;
+              } else if (data.fallbackSearch) {
+                statusMsg = `Searching YouTube for: ${data.trackTitle}`;
+              } else if (data.fallbackFound) {
+                statusMsg = `Found: ${data.fallbackTitle} — Downloading...`;
+              } else {
+                statusMsg = `Track ${data.currentTrack} / ${data.totalTracks}${data.trackTitle ? " — " + data.trackTitle : ""}`;
+              }
+              setDownloadStatus(statusMsg);
               if (data.progress > 0 && data.progress < 95) setStep(2);
             }
 
-            // Fallback status display — include thumbnail from the playlist entry
+            // Fallback status display — thumbnail from playlist entry
             if (data.trackThumbnail) setYtMusicCurrentThumbnail(data.trackThumbnail);
             if (data.fallbackSearch) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "searching", thumbnail: data.trackThumbnail || null });
             if (data.fallbackFound) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "found", fallbackTitle: data.fallbackTitle, thumbnail: data.trackThumbnail || null });
@@ -1067,11 +1091,26 @@ const YoutubeDownloader = ({ activeJobId }) => {
 
             if (data.trackDone) {
               setYtMusicFallbackStatus(null);
+              setYtMusicAttemptInfo(null);
               setYtMusicStats(prev => ({ ...prev, completed: (prev?.completed || 0) + 1 }));
             }
+            // pendingManual replaces old "failed" — never show "failed" in UI
+            if (data.pendingManual) {
+              setYtMusicFallbackStatus(null);
+              setYtMusicAttemptInfo(null);
+              setYtMusicStats(prev => ({ ...prev, pendingManual: (prev?.pendingManual || 0) + 1 }));
+              setYtMusicFailedTracks(prev => [...prev, {
+                title: data.trackTitle,
+                artist: data.trackArtist,
+                error: "Needs manual review",
+                fallbackNote: "All 10 sources exhausted — check logs/pending_manual.json",
+              }]);
+            }
+            // Legacy trackError still supported for backward compat
             if (data.trackError) {
               setYtMusicFallbackStatus(null);
-              setYtMusicStats(prev => ({ ...prev, failed: (prev?.failed || 0) + 1 }));
+              setYtMusicAttemptInfo(null);
+              setYtMusicStats(prev => ({ ...prev, pendingManual: (prev?.pendingManual || 0) + 1 }));
             }
 
             // Dispatch DynamicIsland update
@@ -1083,6 +1122,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
               setError(data.error);
               setDownloading(false);
               setStep(0);
+              setYtMusicAttemptInfo(null);
+              setYtMusicRateLimited(false);
               ytMusicAbortRef.current = null;
               return;
             }
@@ -1092,9 +1133,16 @@ const YoutubeDownloader = ({ activeJobId }) => {
               setDownloadComplete(true);
               setStep(4);
               setFinalFilename(data.finalFilename || plTitle);
-              setYtMusicStats({ completed: data.completedTracks, failed: data.failedTracks, total: data.totalTracks });
-              if (data.failedTracksData?.length) setYtMusicFailedTracks(data.failedTracksData);
+              setYtMusicStats({
+                completed: data.completedTracks,
+                pendingManual: data.pendingManualTracks || data.failedTracks || 0,
+                total: data.totalTracks,
+              });
+              if (data.pendingManualData?.length) setYtMusicFailedTracks(data.pendingManualData);
+              else if (data.failedTracksData?.length) setYtMusicFailedTracks(data.failedTracksData);
               setYtMusicFallbackStatus(null);
+              setYtMusicAttemptInfo(null);
+              setYtMusicRateLimited(false);
               ytMusicAbortRef.current = null;
               window.dispatchEvent(new CustomEvent("download_update", { detail: { source: "youtube", done: true } }));
 
@@ -1267,6 +1315,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
     setYtMusicFailedTracks([]);
     setYtMusicStats(null);
     setYtMusicCurrentThumbnail(null);
+    setYtMusicAttemptInfo(null);
+    setYtMusicRateLimited(false);
     localStorage.removeItem("ytdl_job_id");
     localStorage.removeItem("ytdl_job_scope");
     localStorage.removeItem("ytdl_url");
@@ -2763,8 +2813,8 @@ const YoutubeDownloader = ({ activeJobId }) => {
                                           )}
                                           {ytMusicFallbackStatus.stage === 'failed' && (
                                             <>
-                                              <XCircle size={11} style={{ color: '#f87171', flexShrink: 0 }} />
-                                              <span style={{ color: '#f87171', fontSize: '0.72rem', fontWeight: 700 }}>No replacement — skipping</span>
+                                              <XCircle size={11} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                              <span style={{ color: '#f59e0b', fontSize: '0.72rem', fontWeight: 700 }}>Trying next source...</span>
                                             </>
                                           )}
                                           {/* Animated waveform — only while active */}
@@ -2787,15 +2837,33 @@ const YoutubeDownloader = ({ activeJobId }) => {
                                     </div>
                                   )}
 
+                                  {/* Live attempt chip */}
+                                  {ytMusicAttemptInfo && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem', padding: '0.3rem 0.6rem', background: 'rgba(255,255,255,0.06)', borderRadius: '6px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                      <Loader2 size={10} className={ytMusicAttemptInfo.attempt > 1 ? 'spin' : ''} style={{ color: ytMusicAttemptInfo.attempt > 5 ? '#f59e0b' : '#60a5fa', flexShrink: 0 }} />
+                                      <span style={{ fontWeight: 700, color: ytMusicAttemptInfo.attempt > 5 ? '#f59e0b' : '#60a5fa' }}>{ytMusicAttemptInfo.attempt}/10</span>
+                                      <span style={{ color: 'rgba(255,255,255,0.5)' }}>via</span>
+                                      <span style={{ fontWeight: 600 }}>{ytMusicAttemptInfo.source}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Rate limited toast */}
+                                  {ytMusicRateLimited && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem', padding: '0.3rem 0.6rem', background: 'rgba(245,158,11,0.12)', borderRadius: '6px', fontSize: '0.72rem', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>
+                                      <span>⏸</span>
+                                      <span>Rate limited — waiting 60s for YouTube...</span>
+                                    </div>
+                                  )}
+
                                   {/* Stats pills */}
                                   {ytMusicStats && ytMusicStats.total > 0 && (
-                                    <div className="ytmusic-stats" style={{ marginTop: ytMusicFallbackStatus ? '0.6rem' : '0' }}>
+                                    <div className="ytmusic-stats" style={{ marginTop: ytMusicFallbackStatus || ytMusicAttemptInfo ? '0.6rem' : '0' }}>
                                       <span className="ytmusic-stat-pill ytmusic-stat-pill--ok">
                                         ✓ {ytMusicStats.completed || 0} done
                                       </span>
-                                      {(ytMusicStats.failed || 0) > 0 && (
-                                        <span className="ytmusic-stat-pill ytmusic-stat-pill--fail">
-                                          ✗ {ytMusicStats.failed} failed
+                                      {(ytMusicStats.pendingManual || 0) > 0 && (
+                                        <span className="ytmusic-stat-pill" style={{ background: 'rgba(245,158,11,0.2)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.3)' }}>
+                                          ⚠ {ytMusicStats.pendingManual} pending manual
                                         </span>
                                       )}
                                       <span className="ytmusic-stat-pill ytmusic-stat-pill--total">
@@ -2925,16 +2993,16 @@ const YoutubeDownloader = ({ activeJobId }) => {
                                   <span style={{ color: '#4ade80', fontWeight: 700 }}>
                                     ✓ Downloaded: {ytMusicStats.completed || 0} / {ytMusicStats.total || 0}
                                   </span>
-                                  {(ytMusicStats.failed || 0) > 0 && (
-                                    <span style={{ color: '#f87171', fontWeight: 700 }}>
-                                      ✗ Failed: {ytMusicStats.failed}
+                                  {(ytMusicStats.pendingManual || 0) > 0 && (
+                                    <span style={{ color: '#fbbf24', fontWeight: 700 }}>
+                                      ⚠ Pending manual: {ytMusicStats.pendingManual}
                                     </span>
                                   )}
                                 </div>
                                 {ytMusicFailedTracks.length > 0 && (
-                                  <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.08)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                                    <div style={{ color: '#f87171', fontWeight: 700, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
-                                      Failed Songs
+                                  <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: 'rgba(245, 158, 11, 0.08)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                                    <div style={{ color: '#fbbf24', fontWeight: 700, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                                      Needs Manual Review — check logs/pending_manual.json
                                     </div>
                                     {ytMusicFailedTracks.map((t, i) => (
                                       <div key={i} style={{ marginBottom: '0.6rem', paddingBottom: '0.5rem', borderBottom: i < ytMusicFailedTracks.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>

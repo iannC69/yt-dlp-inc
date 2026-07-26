@@ -528,7 +528,7 @@ export default function App() {
             }}
             className="panel-slide"
           >
-            {activeIdx === 0 && <YoutubeDownloader activeJobId={activeYoutubeJob} />}
+            {activeIdx === 0 && <YoutubeDownloader activeJobId={activeYoutubeJob} setShowLibrary={setShowLibrary} />}
             {activeIdx === 1 && <SpotifyDownloader activeDownloadId={activeSpotifyJob} />}
             {activeIdx === 2 && <AudioCutter initialPayload={cutterPayload} />}
             {activeIdx === 3 && <MassDownloader />}

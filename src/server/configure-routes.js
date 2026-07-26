@@ -1,4 +1,4 @@
-import fs from 'fs'
+﻿import fs from 'fs'
 import path from 'path'
 import { spawn, spawnSync } from 'child_process'
 import os from 'os'
@@ -385,9 +385,29 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/ytdl/collection-download', (req, res, next) => { const u = new URL(req.url, 'http://' + req.headers.host); if (u.pathname !== '/') return next(); const jid = u.searchParams.get('jobId'); if (!jid) { res.statusCode = 400; return res.end('Missing jobId') }; if (activeJobs.has(jid)) { res.statusCode = 400; return res.end('Job exists.') }; const vid = u.searchParams.get('url'); const fmt = u.searchParams.get('format') || 'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'; const sel = u.searchParams.get('selectedItems'); const sched = u.searchParams.get('scheduleTime'); const title = u.searchParams.get('title') || ''; const thumb = u.searchParams.get('thumbnail') || ''; const hwaccel = u.searchParams.get('hwaccel') || 'NONE'; const prependNumbers = u.searchParams.get('prependNumbers') !== 'false'; if (!vid || !isYouTubeUrl(vid) || !sel) { res.statusCode = 400; return res.end('Invalid.') }; if (sched) { const [sh, sm] = sched.split(':').map(Number); let r = new Date(); r.setHours(sh, sm, 0, 0); if (r <= new Date()) r.setDate(r.getDate() + 1); addScheduledJob({ type: 'playlist', url: vid, format: fmt, selectedItems: sel, scheduleTime: sched, runAt: r.toISOString(), title, thumbnail: thumb }); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ scheduled: true })) }; res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const cd = path.join(dl, title ? sanitizeFilename(title) : 'youtube-playlist-' + jid); fs.mkdirSync(cd, { recursive: true }); const ot = path.join(cd, prependNumbers ? '%(playlist_index)03d - %(artist,uploader)s - %(title)s.%(ext)s' : '%(artist,uploader)s - %(title)s.%(ext)s'); let args; if (fmt.startsWith('audio:')) { const [, af, aq] = fmt.split(':'); const vaf = ['mp3', 'wav', 'vorbis'].includes(af) ? af : 'mp3'; const vaq = /^\d+$/.test(aq || '') ? aq : '0'; args = ['-x', '--audio-format', vaf, '-o', ot, '--ffmpeg-location', ffmpegDir]; if (vaf !== 'wav') args.splice(3, 0, '--audio-quality', vaq) } else { const vf = fmt.startsWith('video:') ? fmt.substring(6) : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'; args = ['-f', vf, '--merge-output-format', 'mp4', '-o', ot, '--ffmpeg-location', ffmpegDir] }; if (fmt.startsWith('audio:')) args.push('--convert-thumbnails', 'jpg', '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)'); args.push('-i', '--yes-playlist', '--playlist-items', sel, '--newline', '--embed-metadata', '--embed-thumbnail', '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', '-N', String(aiConfig.ytdlpConcurrentFragments)); let fa = `-threads ${aiConfig.ffmpegThreads}`; if (hwaccel === 'AUTO') fa = '-hwaccel auto ' + fa; else if (hwaccel === 'CUDA') fa = '-hwaccel cuda ' + fa; else if (hwaccel === 'AMF') fa = '-hwaccel d3d11va ' + fa; else if (hwaccel === 'QSV') fa = '-hwaccel qsv ' + fa; args.push('--postprocessor-args', `ffmpeg:-id3v2_version 3 ${fa}`, vid); const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; activeJobs.set(jid, { id: jid, type: 'playlist', args, downloadsDir: dl, collectionDir: cd, expectedCount: sel.split(',').length, clients: new Set([res]), isPaused: false, isCancelled: false, state: { progress: 0, status: 'Se pregătește playlistul...', done: false, isPaused: false, title, thumbnail: thumb } }); spawnYtDlp(jid); req.on('close', () => { const j = activeJobs.get(jid); if (j) j.clients.delete(res) }) })
 
-  // ── YouTube Music per-track fallback download ─────────────────────────────
-  // Handles premium-only / unavailable tracks by falling back to YouTube search.
-  // Downloads each track individually and sends SSE progress events.
+  // ── YouTube Music per-track fallback download (10-attempt chain) ────────────
+  // 100% download rate goal: tries 10 sources per track before giving up.
+  // Each failed track is logged to pending_manual.json with full attempt history.
+
+  // Levenshtein distance for smart title matching
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+    for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    return dp[m][n];
+  }
+  function stringSimilarity(a, b) {
+    if (!a || !b) return 0;
+    const s1 = a.toLowerCase().trim(), s2 = b.toLowerCase().trim();
+    if (s1 === s2) return 1;
+    const maxLen = Math.max(s1.length, s2.length);
+    if (maxLen === 0) return 1;
+    return (maxLen - levenshtein(s1, s2)) / maxLen;
+  }
+
+  // Rate limit state — shared across concurrent downloads for a session
+  let yt429PauseUntil = 0;
+
   middlewares.use('/api/ytdl/ytmusic-playlist-download', (req, res, next) => {
     const u = new URL(req.url, 'http://' + req.headers.host);
     if (u.pathname !== '/') return next();
@@ -398,7 +418,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     const thumbnail = u.searchParams.get('thumbnail') || '';
     const selectedParam = u.searchParams.get('selectedItems') || '';
     const customPath = u.searchParams.get('customPath') || '';
-    const concurrency = Math.min(6, Math.max(1, parseInt(u.searchParams.get('concurrency') || '3', 10)));
+    const concurrency = Math.min(3, Math.max(1, parseInt(u.searchParams.get('concurrency') || '3', 10)));
     const prependNumbers = u.searchParams.get('prependNumbers') !== 'false';
 
     if (!playlistUrl) { res.statusCode = 400; return res.end('Missing url'); }
@@ -422,10 +442,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       'Network error', 'timed out', 'Connection reset', 'No video formats found', 'DRM',
       'Requested format is not available', 'No downloadable formats'
     ];
+    const RATE_LIMIT_MARKERS = ['HTTP Error 429', 'Too Many Requests', '429'];
     const BAD_MATCH_RE = /\b(remix|remixed|live\s+at|live\s+from|live\s+version|live\s+concert|slowed|reverb|8d\s+audio|8d|nightcore|sped\s+up|karaoke|instrumental\s+version|cover\s+by|covered\s+by)\b/i;
 
     const isPremiumError = s => PREMIUM_MARKERS.some(m => s.includes(m));
     const isRecoverableError = s => RECOVERABLE_MARKERS.some(m => s.toLowerCase().includes(m.toLowerCase()));
+    const isRateLimited = s => RATE_LIMIT_MARKERS.some(m => s.includes(m));
 
     // ── Candidate scoring ─────────────────────────────────────────────────────
     const cleanStr = s => (s || '').toLowerCase()
@@ -451,6 +473,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       // Title similarity
       const titleSim = wordOverlap(ct, ot);
       score += titleSim * 40;
+      // Also check Levenshtein similarity (60% threshold required to pass)
+      const levSim = stringSimilarity(ct, ot);
+      if (levSim < 0.6) score -= 20; // penalise low-similarity titles
 
       // Artist / channel match
       if (ch.includes(oa) || oa.includes(ch) || wordOverlap(ch, oa) > 0.5) score += 30;
@@ -460,7 +485,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         const diff = Math.abs(candidate.duration - origDurationSec);
         if (diff <= 10) score += 20;
         else if (diff <= 35) score += 20 * (1 - (diff - 10) / 25);
-        else if (diff > 60) score -= 10; // Very far off
+        else if (diff > 60) score -= 10;
       }
 
       // Official signals bonus
@@ -469,14 +494,17 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       if (candidate.title.toLowerCase().includes('official audio')) score += 7;
       if (candidate.title.toLowerCase().includes('official')) score += 3;
 
-      // Bad match penalty
+      // Bad match penalty (avoid covers/lives/remixes as primary result)
       if (BAD_MATCH_RE.test(candidate.title)) score -= 50;
 
       return score;
     };
 
+    // ── Sleep helper ──────────────────────────────────────────────────────────
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
     // ── Run yt-dlp and return {ok, stderr, stdout} ────────────────────────────
-    const runYtdlp = (args) => new Promise(resolve => {
+    const runYtdlp = (args, { timeout = 90000 } = {}) => new Promise(resolve => {
       if (dlState.cancelled) return resolve({ ok: false, stderr: 'cancelled' });
       const cookiesPath = path.resolve(appDir, 'cookies.txt');
       const cfb = getConfig().cookiesFromBrowser || '';
@@ -492,16 +520,40 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       let stdout = '', stderr = '';
       proc.stdout.on('data', c => { stdout += c.toString(); });
       proc.stderr.on('data', c => { stderr += c.toString(); });
+      const timer = setTimeout(() => { try { proc.kill(); } catch {} }, timeout);
       proc.on('close', code => {
+        clearTimeout(timer);
         dlState.procs.delete(proc);
         resolve({ ok: code === 0, code, stdout, stderr });
       });
-      proc.on('error', e => { dlState.procs.delete(proc); resolve({ ok: false, stderr: e.message }); });
+      proc.on('error', e => { clearTimeout(timer); dlState.procs.delete(proc); resolve({ ok: false, stderr: e.message }); });
     });
 
-    // ── Download a single track URL to outputPath ─────────────────────────────
-    const downloadSingleTrack = async (videoUrl, outputTemplate) => {
-      const args = [
+    // ── Run spotdl for Spotify fallback ───────────────────────────────────────
+    const runSpotdl = (artist, trackTitle, outputDir) => new Promise(resolve => {
+      if (dlState.cancelled) return resolve({ ok: false, stderr: 'cancelled' });
+      if (!fs.existsSync(spotdlBin)) return resolve({ ok: false, stderr: 'spotdl not found' });
+      const query = `${artist} ${trackTitle}`;
+      const proc = spawn(spotdlBin, ['download', query, '--output', outputDir, '--format', safeAudioFmt], {
+        windowsHide: true,
+        env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
+      });
+      dlState.procs.add(proc);
+      let stdout = '', stderr = '';
+      proc.stdout.on('data', c => { stdout += c.toString(); });
+      proc.stderr.on('data', c => { stderr += c.toString(); });
+      const timer = setTimeout(() => { try { proc.kill(); } catch {} }, 120000);
+      proc.on('close', code => {
+        clearTimeout(timer);
+        dlState.procs.delete(proc);
+        resolve({ ok: code === 0, code, stdout, stderr });
+      });
+      proc.on('error', e => { clearTimeout(timer); dlState.procs.delete(proc); resolve({ ok: false, stderr: e.message }); });
+    });
+
+    // ── Build base yt-dlp audio-download args ─────────────────────────────────
+    const buildDownloadArgs = (videoUrl, outputTemplate, extraArgs = []) => {
+      const baseArgs = [
         videoUrl,
         '-x', '--audio-format', safeAudioFmt, '--audio-quality', '0',
         '--ffmpeg-location', ffmpegDir,
@@ -511,57 +563,89 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         '--embed-thumbnail',
         '--convert-thumbnails', 'jpg',
         '--extractor-args', getExtractorArgs(),
-        '--extractor-retries', '3', '--fragment-retries', '5',
+        '--socket-timeout', '30',
+        '--retries', '10',
+        '--fragment-retries', '10',
+        '--ignore-errors',
+        '--no-abort-on-error',
+        '--prefer-free-formats',
+        '--add-metadata',
+        '--geo-bypass',
         '--retry-sleep', 'linear=1::2',
         '--add-header', 'Accept-Language:en-US,en;q=0.9',
         '--newline',
+        ...extraArgs
       ];
+      return baseArgs;
+    };
+
+    // ── Download a single track URL ───────────────────────────────────────────
+    const downloadSingleTrack = async (videoUrl, outputTemplate, extraArgs = []) => {
+      const args = buildDownloadArgs(videoUrl, outputTemplate, extraArgs);
       return runYtdlp(args);
     };
 
-    // ── Search YouTube for a fallback and score candidates ────────────────────
-    const searchYouTubeFallback = async (artist, trackTitle, durationSec) => {
-      const queries = [
-        `ytsearch5:${artist} - ${trackTitle} official audio`,
-        `ytsearch5:${artist} ${trackTitle} topic`,
-        `ytsearch5:${artist} ${trackTitle} audio`,
-        `ytsearch5:${artist} ${trackTitle} lyric`,
-        `ytsearch10:${artist} ${trackTitle}`,
-      ];
+    // ── Search yt-dlp for candidates and score them ───────────────────────────
+    const searchAndScore = async (query, origTitle, origArtist, durationSec, extraArgs = []) => {
+      await sleep(2000); // 2s delay between search requests
+      if (dlState.cancelled) return null;
+      const result = await runYtdlp([
+        query,
+        '--dump-json', '--flat-playlist', '--no-warnings',
+        '--playlist-end', '10',
+        '--extractor-args', getExtractorArgs(),
+        ...extraArgs
+      ], { timeout: 30000 });
+      if (!result.stdout) return null;
 
-      for (const query of queries) {
-        if (dlState.cancelled) return null;
-        const result = await runYtdlp([
-          query,
-          '--dump-json', '--flat-playlist', '--no-warnings',
-          '--playlist-end', '10',
-          '--extractor-args', getExtractorArgs(),
-        ]);
-        if (!result.ok && !result.stdout) continue;
+      const candidates = result.stdout.split('\n').filter(Boolean).map(line => {
+        try { return JSON.parse(line); } catch { return null; }
+      }).filter(Boolean);
 
-        const candidates = result.stdout.split('\n').filter(Boolean).map(line => {
-          try { return JSON.parse(line); } catch { return null; }
-        }).filter(Boolean);
+      if (!candidates.length) return null;
 
-        if (!candidates.length) continue;
+      const scored = candidates
+        .map(c => ({ ...c, _score: scoreCandidate(c, origTitle, origArtist, durationSec) }))
+        .sort((a, b) => b._score - a._score);
 
-        // Score all candidates
-        const scored = candidates
-          .map(c => ({ ...c, _score: scoreCandidate(c, trackTitle, artist, durationSec) }))
-          .sort((a, b) => b._score - a._score);
-
-        const best = scored[0];
-        if (best && best._score >= 30) {
-          // Return the watchable URL
-          const videoId = best.id || best.url;
-          return {
-            url: videoId.startsWith('http') ? videoId : `https://www.youtube.com/watch?v=${videoId}`,
-            title: best.title,
-            score: best._score,
-          };
-        }
+      const best = scored[0];
+      if (best && best._score >= 30) {
+        const videoId = best.id || best.url;
+        return {
+          url: videoId.startsWith('http') ? videoId : `https://www.youtube.com/watch?v=${videoId}`,
+          title: best.title,
+          score: best._score,
+        };
       }
       return null;
+    };
+
+    // ── Log helpers ───────────────────────────────────────────────────────────
+    const appendSessionLog = (logsDir, entry, attemptNum, source, result, reason) => {
+      try {
+        const line = `[${new Date().toISOString()}] Track: "${entry.title}" | Artist: "${entry.artist}" | Attempt: ${attemptNum}/10 | Source: ${source} | Result: ${result}${reason ? ' | Reason: ' + reason : ''}\n`;
+        fs.appendFileSync(path.join(logsDir, 'session_log.txt'), line, 'utf8');
+      } catch {}
+    };
+
+    const writeDownloadedLog = (logsDir, entry, source, attemptNum, quality) => {
+      try {
+        const logPath = path.join(logsDir, 'downloaded.json');
+        let log = [];
+        try { log = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch {}
+        log.push({ track: entry.title, artist: entry.artist, source, attempt_number: attemptNum, quality, timestamp: new Date().toISOString() });
+        fs.writeFileSync(logPath, JSON.stringify(log, null, 2), 'utf8');
+      } catch {}
+    };
+
+    const writePendingManual = (logsDir, entry, attemptLog) => {
+      try {
+        const logPath = path.join(logsDir, 'pending_manual.json');
+        let log = [];
+        try { log = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch {}
+        log.push({ track: entry.title, artist: entry.artist, url: entry.url, timestamp: new Date().toISOString(), attempts: attemptLog });
+        fs.writeFileSync(logPath, JSON.stringify(log, null, 2), 'utf8');
+      } catch {}
     };
 
     // ── Main runner ───────────────────────────────────────────────────────────
@@ -569,7 +653,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       const downloadsDir = ensureDownloadsDir(customPath);
       const safeTitle = title ? sanitizeFilename(title) : `ytmusic-playlist-${Date.now()}`;
       const outputDir = path.join(downloadsDir, safeTitle);
+      const logsDir = path.join(outputDir, 'logs');
       fs.mkdirSync(outputDir, { recursive: true });
+      fs.mkdirSync(logsDir, { recursive: true });
 
       send({ status: 'Fetching playlist info...', progress: 2 });
 
@@ -599,15 +685,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             album: j.album || null,
             trackNumber: j.playlist_index ?? j.track_number ?? null,
           });
-        } catch { }
+        } catch {}
       }
 
-      // Fill in totalTracks so every entry gets X/N track numbering
       const totalTracksCount = allEntries.length;
-      for (const e of allEntries) {
-        e.totalTracks = totalTracksCount;
-      }
-
+      for (const e of allEntries) { e.totalTracks = totalTracksCount; }
 
       if (!allEntries.length) {
         send({ done: true, error: 'Could not read playlist entries.' });
@@ -632,14 +714,14 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       send({ totalTracks, status: `Starting download of ${totalTracks} tracks...`, progress: 3 });
 
       let completedCount = 0;
-      let failedCount = 0;
-      const failedTracksData = [];
+      let pendingManualCount = 0;
+      const pendingManualTracksData = [];
       const activePromises = new Set();
 
       for (let i = 0; i < entries.length; i++) {
         if (dlState.cancelled) break;
 
-        // Respect concurrency limit
+        // Respect concurrency limit (max 3)
         while (activePromises.size >= concurrency) {
           await Promise.race(activePromises);
         }
@@ -654,92 +736,397 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           const trackNum = prependNumbers ? String(trackIndex).padStart(3, '0') + ' - ' : '';
           const baseName = `${trackNum}${safeArtist ? safeArtist + ' - ' : ''}${safeTrackTitle}`;
           const outputTemplate = path.join(outputDir, `${baseName}.%(ext)s`);
-          const finalPath = path.join(outputDir, `${baseName}.${safeAudioFmt}`);
 
-          const progress = () => Math.round(3 + ((completedCount + failedCount) / totalTracks) * 90);
+          const calcProgress = () => Math.round(3 + ((completedCount + pendingManualCount) / totalTracks) * 90);
 
+          const attemptLog = []; // record each attempt for pending_manual.json
+
+          // ── Find a downloaded file in outputDir matching baseName ─────────
+          const findDownloadedFile = () => {
+            const finalPath = path.join(outputDir, `${baseName}.${safeAudioFmt}`);
+            if (fs.existsSync(finalPath)) return finalPath;
+            try {
+              const all = fs.readdirSync(outputDir);
+              const match = all.find(f => f.startsWith(baseName) && !f.endsWith('.part') && !f.endsWith('.ytdl'));
+              if (match) return path.join(outputDir, match);
+            } catch {}
+            return null;
+          };
+
+          // ── Attempt 1: Direct YTM URL + geo-bypass ────────────────────────
           send({
             currentTrack: trackIndex, totalTracks,
             trackTitle: entry.title, trackArtist: entry.artist,
             trackThumbnail: entry.thumbnail || null,
-            trackProgress: 0, status: `Downloading: ${entry.title}`,
-            progress: progress(),
+            status: `Downloading: ${entry.title}`,
+            attemptNumber: 1, attemptSource: 'YouTube Music',
+            progress: calcProgress(),
           });
 
-          // ── Attempt 1 & 2: direct YTM URL ────────────────────────────────
-          let result = null;
+          let downloadedFile = null;
           let lastError = '';
-          let usedFallback = false;
-          let fallbackTitle = '';
 
-          for (let attempt = 1; attempt <= 2; attempt++) {
-            if (dlState.cancelled) return;
-            result = await downloadSingleTrack(entry.url, outputTemplate);
-            if (result.ok && fs.existsSync(finalPath)) break;
-            lastError = result.stderr || '';
-            if (attempt === 1) {
-              const isRecoverable = isPremiumError(lastError) || isRecoverableError(lastError);
-              if (!isRecoverable) break; // Non-recoverable, skip retry
-              // Wait briefly before retry
-              await new Promise(r => setTimeout(r, 1500));
-            }
+          // Wait if rate-limited
+          if (yt429PauseUntil > Date.now()) {
+            const waitMs = yt429PauseUntil - Date.now();
+            send({ rateLimited: true, waitSeconds: Math.ceil(waitMs / 1000), trackTitle: entry.title });
+            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'rate-limited', `429 pause for ${Math.ceil(waitMs/1000)}s`);
+            await sleep(waitMs);
           }
 
-          // ── Attempt 3+: YouTube search fallback ───────────────────────────
-          if ((!result || !result.ok || !fs.existsSync(finalPath)) && !dlState.cancelled) {
+          let result1 = await downloadSingleTrack(entry.url, outputTemplate);
+          lastError = result1.stderr || '';
+          if (isRateLimited(lastError)) {
+            yt429PauseUntil = Date.now() + 60000;
+            send({ rateLimited: true, waitSeconds: 60, trackTitle: entry.title });
+            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'rate-limited', '429 — pausing 60s');
+            await sleep(60000);
+            // Retry attempt 1 after pause
+            result1 = await downloadSingleTrack(entry.url, outputTemplate);
+            lastError = result1.stderr || '';
+          }
+          downloadedFile = findDownloadedFile();
+
+          if (downloadedFile) {
+            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'SUCCESS', null);
+            attemptLog.push({ attempt: 1, source: 'YouTube Music', result: 'success' });
+          } else {
+            attemptLog.push({ attempt: 1, source: 'YouTube Music', result: 'failed', reason: lastError.slice(0, 200) });
+            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'failed', lastError.slice(0, 200));
+          }
+
+          // ── Attempt 2: YT search v1 — "{artist} {title}" ─────────────────
+          if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Searching YouTube for: ${entry.title}`,
-              fallbackSearch: true, progress: progress(),
+              status: `Retrying (2/10 — YouTube search)...`,
+              attemptNumber: 2, attemptSource: 'YouTube',
+              progress: calcProgress(),
             });
+            if (yt429PauseUntil > Date.now()) await sleep(yt429PauseUntil - Date.now());
+            const q2 = `ytsearch3:${entry.artist} ${entry.title}`;
+            const fb2 = await searchAndScore(q2, entry.title, entry.artist, entry.duration);
+            if (fb2 && !dlState.cancelled) {
+              const r2 = await downloadSingleTrack(fb2.url, outputTemplate);
+              lastError = r2.stderr || '';
+              if (isRateLimited(lastError)) { yt429PauseUntil = Date.now() + 60000; send({ rateLimited: true, waitSeconds: 60, trackTitle: entry.title }); await sleep(60000); }
+              downloadedFile = findDownloadedFile();
+            }
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 2, 'YouTube', 'SUCCESS', fb2?.title);
+              attemptLog.push({ attempt: 2, source: 'YouTube', result: 'success', match: fb2?.title });
+            } else {
+              attemptLog.push({ attempt: 2, source: 'YouTube', result: 'failed' });
+              appendSessionLog(logsDir, entry, 2, 'YouTube', 'failed', 'No match found');
+            }
+          }
 
-            const fallback = await searchYouTubeFallback(
-              entry.artist || entry.title,
-              entry.title,
-              entry.duration
-            );
+          // ── Attempt 3: YT search v2 — "{title} audio" ────────────────────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (3/10 — YouTube audio search)...`,
+              attemptNumber: 3, attemptSource: 'YouTube',
+              progress: calcProgress(),
+            });
+            if (yt429PauseUntil > Date.now()) await sleep(yt429PauseUntil - Date.now());
+            const q3 = `ytsearch3:${entry.title} audio`;
+            const fb3 = await searchAndScore(q3, entry.title, entry.artist, entry.duration);
+            if (fb3 && !dlState.cancelled) {
+              const r3 = await downloadSingleTrack(fb3.url, outputTemplate);
+              lastError = r3.stderr || '';
+              if (isRateLimited(lastError)) { yt429PauseUntil = Date.now() + 60000; send({ rateLimited: true, waitSeconds: 60, trackTitle: entry.title }); await sleep(60000); }
+              downloadedFile = findDownloadedFile();
+            }
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 3, 'YouTube', 'SUCCESS', fb3?.title);
+              attemptLog.push({ attempt: 3, source: 'YouTube', result: 'success', match: fb3?.title });
+            } else {
+              attemptLog.push({ attempt: 3, source: 'YouTube', result: 'failed' });
+              appendSessionLog(logsDir, entry, 3, 'YouTube', 'failed', 'No match found');
+            }
+          }
 
-            if (fallback && !dlState.cancelled) {
-              fallbackTitle = fallback.title;
-              send({
-                currentTrack: trackIndex, totalTracks,
-                trackTitle: entry.title, trackArtist: entry.artist,
-                trackThumbnail: entry.thumbnail || null,
-                status: `Found: ${fallback.title} — Downloading...`,
-                fallbackFound: true, fallbackTitle: fallback.title,
-                progress: progress(),
-              });
+          // ── Attempt 4: YT with US geo-spoof ──────────────────────────────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (4/10 — YouTube US geo-spoof)...`,
+              attemptNumber: 4, attemptSource: 'YouTube (US)',
+              progress: calcProgress(),
+            });
+            if (yt429PauseUntil > Date.now()) await sleep(yt429PauseUntil - Date.now());
+            await sleep(2000);
+            const q4 = `ytsearch1:${entry.artist} ${entry.title}`;
+            const fb4 = await searchAndScore(q4, entry.title, entry.artist, entry.duration, ['--geo-bypass-country', 'US']);
+            if (fb4 && !dlState.cancelled) {
+              const r4 = await downloadSingleTrack(fb4.url, outputTemplate, ['--geo-bypass-country', 'US']);
+              lastError = r4.stderr || '';
+              if (isRateLimited(lastError)) { yt429PauseUntil = Date.now() + 60000; send({ rateLimited: true, waitSeconds: 60, trackTitle: entry.title }); await sleep(60000); }
+              downloadedFile = findDownloadedFile();
+            }
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 4, 'YouTube (US geo-spoof)', 'SUCCESS', fb4?.title);
+              attemptLog.push({ attempt: 4, source: 'YouTube (US geo-spoof)', result: 'success', match: fb4?.title });
+            } else {
+              attemptLog.push({ attempt: 4, source: 'YouTube (US geo-spoof)', result: 'failed' });
+              appendSessionLog(logsDir, entry, 4, 'YouTube (US geo-spoof)', 'failed', 'No match found');
+            }
+          }
 
-              result = await downloadSingleTrack(fallback.url, outputTemplate);
-              usedFallback = true;
+          // ── Attempt 5: YouTube with browser cookies (Premium bypass) ─────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (5/10 — YouTube Premium bypass via cookies)...`,
+              attemptNumber: 5, attemptSource: 'YouTube (cookies)',
+              progress: calcProgress(),
+            });
+            if (yt429PauseUntil > Date.now()) await sleep(yt429PauseUntil - Date.now());
+            // Build args manually here — force cookies-from-browser chrome even if config differs
+            const cookieArgs = ['--cookies-from-browser', 'chrome', '--geo-bypass'];
+            const r5 = await runYtdlp([
+              entry.url,
+              '-x', '--audio-format', safeAudioFmt, '--audio-quality', '0',
+              '--ffmpeg-location', ffmpegDir,
+              '-o', outputTemplate,
+              '--no-playlist', '--playlist-items', '1',
+              '--embed-metadata', '--embed-thumbnail', '--convert-thumbnails', 'jpg',
+              '--extractor-args', getExtractorArgs(),
+              '--socket-timeout', '30', '--retries', '10', '--fragment-retries', '10',
+              '--newline', ...cookieArgs
+            ]);
+            lastError = r5.stderr || '';
+            if (isRateLimited(lastError)) { yt429PauseUntil = Date.now() + 60000; send({ rateLimited: true, waitSeconds: 60, trackTitle: entry.title }); await sleep(60000); }
+            downloadedFile = findDownloadedFile();
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 5, 'YouTube (cookies)', 'SUCCESS', null);
+              attemptLog.push({ attempt: 5, source: 'YouTube (cookies)', result: 'success' });
+            } else {
+              attemptLog.push({ attempt: 5, source: 'YouTube (cookies)', result: 'failed', reason: lastError.slice(0, 200) });
+              appendSessionLog(logsDir, entry, 5, 'YouTube (cookies)', 'failed', lastError.slice(0, 200));
+            }
+          }
+
+          // ── Attempt 6: SoundCloud search ──────────────────────────────────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (6/10 — SoundCloud)...`,
+              attemptNumber: 6, attemptSource: 'SoundCloud',
+              progress: calcProgress(),
+            });
+            await sleep(2000);
+            const scQuery = `scsearch3:${entry.artist} ${entry.title}`;
+            // SoundCloud: search and pick best by score
+            const scSearchResult = await runYtdlp([
+              scQuery,
+              '--dump-json', '--flat-playlist', '--no-warnings',
+              '--playlist-end', '5',
+            ], { timeout: 30000 });
+            let scFallback = null;
+            if (scSearchResult.stdout) {
+              const scCandidates = scSearchResult.stdout.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+              const scScored = scCandidates.map(c => ({ ...c, _score: scoreCandidate(c, entry.title, entry.artist, entry.duration) })).sort((a, b) => b._score - a._score);
+              if (scScored[0] && scScored[0]._score >= 20) {
+                const vid = scScored[0].id || scScored[0].url || scScored[0].webpage_url;
+                scFallback = { url: vid.startsWith('http') ? vid : `https://soundcloud.com/${vid}`, title: scScored[0].title };
+              }
+            }
+            if (scFallback && !dlState.cancelled) {
+              const r6 = await downloadSingleTrack(scFallback.url, outputTemplate);
+              lastError = r6.stderr || '';
+              downloadedFile = findDownloadedFile();
+            }
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 6, 'SoundCloud', 'SUCCESS', scFallback?.title);
+              attemptLog.push({ attempt: 6, source: 'SoundCloud', result: 'success', match: scFallback?.title });
+            } else {
+              attemptLog.push({ attempt: 6, source: 'SoundCloud', result: 'failed' });
+              appendSessionLog(logsDir, entry, 6, 'SoundCloud', 'failed', scFallback ? lastError.slice(0, 200) : 'No SoundCloud match found');
+            }
+          }
+
+          // ── Attempt 7: Spotify via spotdl ────────────────────────────────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (7/10 — Spotify / spotdl)...`,
+              attemptNumber: 7, attemptSource: 'Spotify',
+              progress: calcProgress(),
+            });
+            const filesBefore = fs.existsSync(outputDir) ? new Set(fs.readdirSync(outputDir)) : new Set();
+            const r7 = await runSpotdl(entry.artist, entry.title, outputDir);
+            // Find any new file created by spotdl
+            if (fs.existsSync(outputDir)) {
+              const filesAfter = fs.readdirSync(outputDir);
+              const newFile = filesAfter.find(f => !filesBefore.has(f) && (f.endsWith('.mp3') || f.endsWith('.m4a') || f.endsWith('.flac')));
+              if (newFile) {
+                downloadedFile = path.join(outputDir, newFile);
+                // Rename to match our naming convention
+                try {
+                  const targetPath = path.join(outputDir, `${baseName}.${safeAudioFmt}`);
+                  if (downloadedFile !== targetPath) fs.renameSync(downloadedFile, targetPath);
+                  downloadedFile = fs.existsSync(targetPath) ? targetPath : downloadedFile;
+                } catch {}
+              }
+            }
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 7, 'Spotify (spotdl)', 'SUCCESS', null);
+              attemptLog.push({ attempt: 7, source: 'Spotify (spotdl)', result: 'success' });
+            } else {
+              attemptLog.push({ attempt: 7, source: 'Spotify (spotdl)', result: 'failed', reason: r7.stderr?.slice(0, 200) || 'spotdl failed or not found' });
+              appendSessionLog(logsDir, entry, 7, 'Spotify (spotdl)', 'failed', r7.stderr?.slice(0, 200) || 'not found');
+            }
+          }
+
+          // ── Attempt 8: Internet Archive ───────────────────────────────────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (8/10 — Internet Archive)...`,
+              attemptNumber: 8, attemptSource: 'Archive.org',
+              progress: calcProgress(),
+            });
+            await sleep(2000);
+            const archiveQuery = encodeURIComponent(`${entry.artist} ${entry.title}`);
+            const archiveUrl = `https://archive.org/search?query=${archiveQuery}&and[]=mediatype%3A%22audio%22&output=json&rows=5`;
+            // Search Archive.org API for matching audio
+            let archiveFallbackUrl = null;
+            try {
+              const archiveRes = await fetch(archiveUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) });
+              if (archiveRes.ok) {
+                const archiveData = await archiveRes.json();
+                const docs = archiveData?.response?.docs || [];
+                for (const doc of docs) {
+                  const sim = stringSimilarity(entry.title, doc.title || '');
+                  if (sim >= 0.6) {
+                    archiveFallbackUrl = `https://archive.org/details/${doc.identifier}`;
+                    break;
+                  }
+                }
+              }
+            } catch {}
+            if (archiveFallbackUrl && !dlState.cancelled) {
+              const r8 = await downloadSingleTrack(archiveFallbackUrl, outputTemplate);
+              lastError = r8.stderr || '';
+              downloadedFile = findDownloadedFile();
+            }
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 8, 'Archive.org', 'SUCCESS', archiveFallbackUrl);
+              attemptLog.push({ attempt: 8, source: 'Archive.org', result: 'success', match: archiveFallbackUrl });
+            } else {
+              attemptLog.push({ attempt: 8, source: 'Archive.org', result: 'failed' });
+              appendSessionLog(logsDir, entry, 8, 'Archive.org', 'failed', archiveFallbackUrl ? lastError.slice(0, 200) : 'No match in Archive.org');
+            }
+          }
+
+          // ── Attempt 9: YouTube cover/live version ─────────────────────────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (9/10 — YouTube cover/live)...`,
+              attemptNumber: 9, attemptSource: 'YouTube (cover/live)',
+              progress: calcProgress(),
+            });
+            if (yt429PauseUntil > Date.now()) await sleep(yt429PauseUntil - Date.now());
+            const q9 = `ytsearch3:${entry.artist} ${entry.title} cover OR live OR acoustic`;
+            // For this attempt, remove the BAD_MATCH_RE penalty by using a simpler score
+            const scoreCoverLive = (candidate, origTitle, origArtist, origDurationSec) => {
+              let score = 0;
+              const ct = cleanStr(candidate.title);
+              const ot = cleanStr(origTitle);
+              const ch = cleanStr(candidate.channel || candidate.uploader || '');
+              const oa = cleanStr(origArtist);
+              score += wordOverlap(ct, ot) * 50;
+              if (ch.includes(oa) || oa.includes(ch) || wordOverlap(ch, oa) > 0.5) score += 20;
+              if (origDurationSec > 0 && candidate.duration > 0) {
+                const diff = Math.abs(candidate.duration - origDurationSec);
+                if (diff <= 30) score += 20;
+              }
+              return score;
+            };
+            await sleep(2000);
+            const r9Search = await runYtdlp([
+              q9, '--dump-json', '--flat-playlist', '--no-warnings', '--playlist-end', '5',
+              '--extractor-args', getExtractorArgs(),
+            ], { timeout: 30000 });
+            let cover9 = null;
+            if (r9Search.stdout) {
+              const cands = r9Search.stdout.split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+              const scored = cands.map(c => ({ ...c, _score: scoreCoverLive(c, entry.title, entry.artist, entry.duration) })).sort((a, b) => b._score - a._score);
+              if (scored[0] && scored[0]._score >= 20) {
+                const vid = scored[0].id || scored[0].url;
+                cover9 = { url: vid.startsWith('http') ? vid : `https://www.youtube.com/watch?v=${vid}`, title: scored[0].title };
+              }
+            }
+            if (cover9 && !dlState.cancelled) {
+              const r9 = await downloadSingleTrack(cover9.url, outputTemplate);
+              lastError = r9.stderr || '';
+              if (isRateLimited(lastError)) { yt429PauseUntil = Date.now() + 60000; send({ rateLimited: true, waitSeconds: 60, trackTitle: entry.title }); await sleep(60000); }
+              downloadedFile = findDownloadedFile();
+            }
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 9, 'YouTube (cover/live)', 'SUCCESS', cover9?.title);
+              attemptLog.push({ attempt: 9, source: 'YouTube (cover/live)', result: 'success', match: cover9?.title });
+            } else {
+              attemptLog.push({ attempt: 9, source: 'YouTube (cover/live)', result: 'failed' });
+              appendSessionLog(logsDir, entry, 9, 'YouTube (cover/live)', 'failed', cover9 ? lastError.slice(0, 200) : 'No cover/live match found');
+            }
+          }
+
+          // ── Attempt 10: Deezer via yt-dlp ────────────────────────────────
+          if (!downloadedFile && !dlState.cancelled) {
+            send({
+              currentTrack: trackIndex, totalTracks,
+              trackTitle: entry.title, trackArtist: entry.artist,
+              trackThumbnail: entry.thumbnail || null,
+              status: `Retrying (10/10 — Deezer)...`,
+              attemptNumber: 10, attemptSource: 'Deezer',
+              progress: calcProgress(),
+            });
+            await sleep(2000);
+            const deezerQuery = encodeURIComponent(`${entry.artist} ${entry.title}`);
+            const deezerUrl = `https://deezer.com/search/${deezerQuery}`;
+            const r10 = await downloadSingleTrack(deezerUrl, outputTemplate);
+            lastError = r10.stderr || '';
+            downloadedFile = findDownloadedFile();
+            if (downloadedFile) {
+              appendSessionLog(logsDir, entry, 10, 'Deezer', 'SUCCESS', null);
+              attemptLog.push({ attempt: 10, source: 'Deezer', result: 'success' });
+            } else {
+              attemptLog.push({ attempt: 10, source: 'Deezer', result: 'failed', reason: lastError.slice(0, 200) });
+              appendSessionLog(logsDir, entry, 10, 'Deezer', 'failed', lastError.slice(0, 200));
             }
           }
 
           if (dlState.cancelled) return;
 
           // ── Check success ─────────────────────────────────────────────────
-          // Find the actually downloaded file (any audio extension)
-          let downloadedFile = null;
-          if (fs.existsSync(finalPath)) {
-            downloadedFile = finalPath;
-          } else {
-            // Scan for any recently created file matching our baseName
-            try {
-              const all = fs.readdirSync(outputDir);
-              const match = all.find(f => f.startsWith(baseName.replace(/\.%(ext)s$/, '')) && !f.endsWith('.part'));
-              if (match) downloadedFile = path.join(outputDir, match);
-            } catch { }
-          }
-
           if (downloadedFile && fs.existsSync(downloadedFile)) {
+            const successfulAttempt = attemptLog.find(a => a.result === 'success');
+            const attemptNum = successfulAttempt?.attempt || 1;
+            const sourceName = successfulAttempt?.source || 'YouTube Music';
+
             // ── Write ID3 metadata ────────────────────────────────────────
             try {
-              // Read ALL fields already embedded by yt-dlp (via --embed-metadata / --embed-thumbnail)
-              // These are our baseline — never destroy them, only enrich.
               const existing = NodeID3.read(downloadedFile) || {};
-
               const tags = {
                 title:       entry.title || existing.title || '',
                 artist:      entry.artist || existing.artist || '',
@@ -747,18 +1134,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 album:       entry.album || existing.album || '',
                 year:        existing.year || '',
                 genre:       existing.genre || '',
-                // Prefer the playlist_index from YTM, fall back to position in download, then yt-dlp embedded
                 trackNumber: entry.trackNumber || (prependNumbers ? trackIndex : null) || existing.trackNumber || '',
                 totalTracks: entry.totalTracks || null,
                 discNumber:  existing.partOfSet || '',
                 isrc:        existing.isrc || '',
               };
 
-
-              // Fetch the playlist thumbnail and convert to square JPEG.
-              // Always prefer the high-res playlist thumbnail over yt-dlp's embedded one.
-              // yt-dlp now embeds its own as a fallback (--embed-thumbnail above), so if this
-              // fetch fails, writeAndVerifyTags will preserve whatever yt-dlp already embedded.
               let coverBuffer = null;
               if (entry.thumbnail) {
                 try {
@@ -774,82 +1155,56 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                       r.on('end', () => resolve(Buffer.concat(chunks)));
                     }).on('error', reject);
                   });
-
                   const rawBuf = await fetchThumb(entry.thumbnail);
                   if (rawBuf && rawBuf.length > 1000) {
-                    // Convert to square JPEG via ffmpeg using a temp file (most reliable on Windows).
-                    // We read the result back as a Buffer immediately and delete the temp file.
                     const tempImg = downloadedFile + '.cover.jpg';
                     try {
-                      spawnSync(ffmpegBin, [
-                        '-y',
-                        '-i', 'pipe:0',
-                        '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)',
-                        '-frames:v', '1',
-                        tempImg,
-                      ], { input: rawBuf, windowsHide: true });
-
+                      spawnSync(ffmpegBin, ['-y', '-i', 'pipe:0', '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)', '-frames:v', '1', tempImg], { input: rawBuf, windowsHide: true });
                       if (fs.existsSync(tempImg) && fs.statSync(tempImg).size > 1000) {
-                        coverBuffer = fs.readFileSync(tempImg); // read into buffer immediately
+                        coverBuffer = fs.readFileSync(tempImg);
                       } else {
-                        // ffmpeg conversion failed — use raw download as-is
                         coverBuffer = rawBuf;
                       }
-                    } catch (_) {
-                      coverBuffer = rawBuf; // fallback: pass raw to writeAndVerifyTags
-                    } finally {
-                      try { if (fs.existsSync(tempImg)) fs.unlinkSync(tempImg); } catch (_) { }
-                    }
+                    } catch (_) { coverBuffer = rawBuf; }
+                    finally { try { if (fs.existsSync(tempImg)) fs.unlinkSync(tempImg); } catch (_) {} }
                   }
-                } catch (_) { /* thumbnail fetch failed — yt-dlp embedded thumbnail is the fallback */ }
+                } catch (_) {}
               }
 
-              // writeAndVerifyTags uses NodeID3.update() (not .write()), so all other embedded
-              // tags survive untouched. It also handles the yt-dlp embedded cover as a fallback
-              // automatically if coverBuffer is null.
               await writeAndVerifyTags(downloadedFile, tags, coverBuffer);
             } catch (tagErr) {
               console.error(`[ytmusic-fallback] Tag write failed for ${entry.title}: ${tagErr.message}`);
             }
 
-
             completedCount++;
+            writeDownloadedLog(logsDir, entry, sourceName, attemptNum, safeAudioFmt);
             send({
               trackDone: true,
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
               trackProgress: 100,
-              usedFallback, fallbackTitle,
-              progress: Math.round(3 + ((completedCount + failedCount) / totalTracks) * 90),
+              usedFallback: attemptNum > 1,
+              fallbackTitle: successfulAttempt?.match || null,
+              attemptNumber: attemptNum,
+              attemptSource: sourceName,
+              progress: Math.round(3 + ((completedCount + pendingManualCount) / totalTracks) * 90),
             });
           } else {
-            // ── Track failed completely ───────────────────────────────────
-            let failReason = 'Download failed';
-            if (isPremiumError(lastError)) failReason = 'YouTube Music Premium exclusive';
-            else if (lastError.includes('unavailable') || lastError.includes('Video unavailable')) failReason = 'Video unavailable';
-            else if (lastError.includes('region') || lastError.includes('geo')) failReason = 'Region locked';
-            else if (lastError.includes('DRM')) failReason = 'DRM protected';
-            else if (lastError.includes('Sign in')) failReason = 'Sign-in required';
-            else if (lastError) failReason = lastError.trim().split('\n').pop()?.slice(0, 120) || 'Download failed';
-
-            const fallbackNote = usedFallback
-              ? `Fallback attempted (${fallbackTitle || 'unknown'}), but download failed`
-              : (await searchYouTubeFallback(entry.artist, entry.title, entry.duration) === null
-                ? 'No suitable YouTube replacement found'
-                : 'Fallback search returned no results');
-
-            failedCount++;
-            failedTracksData.push({ title: entry.title, artist: entry.artist, error: failReason, fallbackNote });
+            // ── All 10 attempts failed → pending manual ───────────────────
+            pendingManualCount++;
+            pendingManualTracksData.push({ title: entry.title, artist: entry.artist, url: entry.url, attempts: attemptLog });
+            writePendingManual(logsDir, entry, attemptLog);
+            appendSessionLog(logsDir, entry, 10, 'ALL', 'PENDING MANUAL', 'All 10 attempts exhausted');
 
             send({
-              trackError: failReason,
+              pendingManual: true,
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              fallbackFailed: true,
-              progress: Math.round(3 + ((completedCount + failedCount) / totalTracks) * 90),
-              status: `No replacement found — skipping: ${entry.title}`,
+              attemptNumber: 10,
+              progress: Math.round(3 + ((completedCount + pendingManualCount) / totalTracks) * 90),
+              status: `Needs manual review: ${entry.title}`,
             });
           }
         })();
@@ -873,17 +1228,14 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           fs.writeFileSync(rawJp, cb);
           const jp = path.join(metaDir, 'folder.jpg');
 
-          // Crop to square with ffmpeg
           await new Promise(r => { spawn(ffmpegBin, ['-y', '-i', rawJp, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)', jp], { windowsHide: true }).on('close', r); });
           if (!fs.existsSync(jp)) fs.writeFileSync(jp, cb);
-          try { fs.unlinkSync(rawJp); } catch { }
+          try { fs.unlinkSync(rawJp); } catch {}
 
-          // Place folder.jpg in the root so media players (e.g. MusicBee, foobar) pick it up
           const rootJp = path.join(outputDir, 'folder.jpg');
           fs.copyFileSync(fs.existsSync(jp) ? jp : rawJp, rootJp);
-          if (os.platform() === 'win32') { try { spawnSync('attrib', ['+h', rootJp], { windowsHide: true }); } catch { } }
+          if (os.platform() === 'win32') { try { spawnSync('attrib', ['+h', rootJp], { windowsHide: true }); } catch {} }
 
-          // ── Windows folder icon via desktop.ini + album.ico ─────────────
           if (process.platform === 'win32') {
             const ip = path.join(metaDir, 'album.ico');
             await new Promise(r => { spawn(ffmpegBin, ['-y', '-i', jp, '-vf', 'scale=256:256', ip], { windowsHide: true }).on('close', r); });
@@ -892,12 +1244,10 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 path.join(outputDir, 'desktop.ini'),
                 "[.ShellClassInfo]\r\nIconResource=.metadata\\album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n"
               );
-
               await new Promise(r => { spawn('attrib', ['+s', `"${outputDir}"`], { shell: true }).on('close', r); });
               await new Promise(r => { spawn('attrib', ['+s', '+h', `"${path.join(outputDir, 'desktop.ini')}"`], { shell: true }).on('close', r); });
               await new Promise(r => { spawn('attrib', ['+h', `"${metaDir}"`], { shell: true }).on('close', r); });
 
-              // ApplyFolderIcon.bat — lets the user re-apply the icon if Windows ever loses it
               const batPath = path.join(outputDir, 'ApplyFolderIcon.bat');
               fs.writeFileSync(batPath, `@echo off\r\nattrib +s "%~dp0."\r\nattrib +s +h "%~dp0desktop.ini"\r\nattrib +h "%~dp0.metadata"\r\nie4uinit.exe -show\r\npause\r\n`);
               await new Promise(r => { spawn('attrib', ['+h', `"${batPath}"`], { shell: true }).on('close', r); });
@@ -906,16 +1256,18 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         } catch (e) { console.error('[ytmusic-fallback] folder thumbnail error:', e.message); }
       }
 
-
       send({
         done: true, progress: 100,
         completedTracks: completedCount,
-        failedTracks: failedCount,
+        failedTracks: 0,
+        pendingManualTracks: pendingManualCount,
         totalTracks,
-        failedTracksData,
+        failedTracksData: pendingManualTracksData,
+        pendingManualData: pendingManualTracksData,
         finalFilename: path.basename(outputDir),
         isArchive: false,
         collectionTitle: title || safeTitle,
+        logsDir: path.join(path.basename(outputDir), 'logs'),
       });
       res.end();
     };
@@ -926,7 +1278,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         try {
           if (process.platform === 'win32') require('child_process').spawnSync('taskkill', ['/pid', p.pid, '/f', '/t']);
           else p.kill('SIGKILL');
-        } catch { }
+        } catch {}
       }
     });
 
