@@ -446,6 +446,9 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
   const [clipboardToast, setClipboardToast] = useState(false);
 
   const eventSourceRef = useRef(null);
+  const vinylThumbsRef = useRef([]);  // Cached thumbnails for cycling
+  const vinylIdxRef = useRef(0);      // Current index in the cycle
+  const vinylIntervalRef = useRef(null); // Stable interval ref
   const [systemStatus, setSystemStatus] = useState(null);
   const [isStatusExpanded, setIsStatusExpanded] = useState(false);
   const [customPath, setCustomPath] = useState("");
@@ -454,6 +457,7 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
   const [scheduleTime, setScheduleTime] = useState("");
   const [ambientColor, setAmbientColor] = useState("rgba(239, 68, 68, 0.12)");
   const [missingTracks, setMissingTracks] = useState(null);
+  const [lifetimeStats, setLifetimeStats] = useState({ videos: 0, audio: 0, sizeEstimate: 0 });
   // YouTube Music per-track fallback state
   const [ytMusicFallbackStatus, setYtMusicFallbackStatus] = useState(null); // { trackTitle, stage: 'searching'|'found'|'failed', fallbackTitle }
   const [ytMusicFailedTracks, setYtMusicFailedTracks] = useState([]); // [{ title, artist, error, fallbackNote }]
@@ -464,27 +468,59 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
   const ytMusicAbortRef = useRef(null); // AbortController for the fetch stream
 
 
+  // Seed vinyl thumbnails whenever new ones become available (enrichment fills them in later)
   useEffect(() => {
-    let interval = null;
-    if (downloading && info?.playlist?.entries && currentJobId && !isPaused) {
-      const validThumbs = info.playlist.entries.map(e => e.thumbnail || e.artistThumbnail).filter(Boolean);
-      if (validThumbs.length > 1) {
-        let idx = 0;
-        setCurrentVinylImage(validThumbs[idx]);
-        interval = setInterval(() => {
-          idx = (idx + 1) % validThumbs.length;
-          setCurrentVinylImage(validThumbs[idx]);
-        }, 4000); // Shuffle every 4 seconds
-      } else {
-        setCurrentVinylImage(validThumbs[0] || info?.thumbnail || null);
-      }
+    if (!downloading || !currentJobId) return;
+    const entries = info?.playlist?.entries || [];
+    const freshThumbs = entries.map(e => e.thumbnail || e.artistThumbnail).filter(Boolean);
+    if (freshThumbs.length > vinylThumbsRef.current.length) {
+      vinylThumbsRef.current = freshThumbs;
+    }
+  }, [info, downloading, currentJobId]);
+
+  // Stable cycling interval — only depends on downloading / paused / jobId
+  useEffect(() => {
+    if (vinylIntervalRef.current) {
+      clearInterval(vinylIntervalRef.current);
+      vinylIntervalRef.current = null;
+    }
+
+    if (downloading && !isPaused) {
+      // Start cycling; reads from ref so it never goes stale
+      const tick = () => {
+        const thumbs = vinylThumbsRef.current;
+        if (thumbs.length > 1) {
+          vinylIdxRef.current = (vinylIdxRef.current + 1) % thumbs.length;
+          setCurrentVinylImage(thumbs[vinylIdxRef.current]);
+        } else if (thumbs.length === 1) {
+          setCurrentVinylImage(thumbs[0]);
+        }
+      };
+      // Show first image immediately
+      const thumbs = vinylThumbsRef.current;
+      if (thumbs.length > 0) setCurrentVinylImage(thumbs[0]);
+      vinylIdxRef.current = 0;
+      vinylIntervalRef.current = setInterval(tick, 800);
     } else {
+      // Not downloading — show album/video thumbnail
       setCurrentVinylImage(info?.playlist?.thumbnail || info?.thumbnail || null);
     }
+
     return () => {
-      if (interval) clearInterval(interval);
+      if (vinylIntervalRef.current) {
+        clearInterval(vinylIntervalRef.current);
+        vinylIntervalRef.current = null;
+      }
     };
-  }, [downloading, info, currentJobId, isPaused]);
+  }, [downloading, isPaused]);
+
+  // Reset cache when a new download is kicked off or component idles
+  useEffect(() => {
+    if (!downloading) {
+      vinylThumbsRef.current = [];
+      vinylIdxRef.current = 0;
+    }
+  }, [downloading]);
 
   useEffect(() => {
     fetch("/api/ytdl/get-config")
@@ -493,6 +529,20 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
         if (data.customPath) setCustomPath(data.customPath);
       })
       .catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    const calcStats = () => {
+      try {
+        const gHist = JSON.parse(localStorage.getItem("global_history") || "[]");
+        const videos = gHist.filter(i => String(i.format).toLowerCase().includes("video")).length;
+        const audios = gHist.filter(i => String(i.format).toLowerCase().includes("audio")).length;
+        setLifetimeStats({ videos, audio: audios, total: gHist.length });
+      } catch (e) {}
+    };
+    calcStats();
+    window.addEventListener("history_updated", calcStats);
+    return () => window.removeEventListener("history_updated", calcStats);
   }, []);
 
   // Smart Clipboard Auto-Detect
@@ -711,6 +761,13 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
           setDownloadStatus(
             `Se descarca videoclipul ${data.currentItem} din ${data.totalItems}`,
           );
+        }
+        // Accumulate per-track thumbnails into vinyl cycling pool
+        if (data.trackThumbnail) {
+          if (!vinylThumbsRef.current.includes(data.trackThumbnail)) {
+            vinylThumbsRef.current = [...vinylThumbsRef.current, data.trackThumbnail];
+            if (vinylThumbsRef.current.length === 1) setCurrentVinylImage(data.trackThumbnail);
+          }
         }
         if (data.raw && data.raw.includes("Merging formats")) {
           setStep(3);
@@ -949,6 +1006,20 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
     setError(null);
     setDownloadScope(scope);
 
+    // Pre-seed vinyl thumbnails so cycling can start immediately
+    {
+      const entries = info?.playlist?.entries || [];
+      const initialThumbs = entries.map(e => e.thumbnail || e.artistThumbnail).filter(Boolean);
+      if (initialThumbs.length > 0) {
+        vinylThumbsRef.current = initialThumbs;
+      } else if (info?.thumbnail) {
+        vinylThumbsRef.current = [info.thumbnail];
+      } else {
+        vinylThumbsRef.current = [];
+      }
+      vinylIdxRef.current = 0;
+    }
+
     const formatToUse = computedFormat || downloadFormat;
 
     try {
@@ -1084,7 +1155,17 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
             }
 
             // Fallback status display — thumbnail from playlist entry
-            if (data.trackThumbnail) setYtMusicCurrentThumbnail(data.trackThumbnail);
+            if (data.trackThumbnail) {
+              setYtMusicCurrentThumbnail(data.trackThumbnail);
+              // Accumulate into vinyl cycling pool (deduplicated)
+              if (!vinylThumbsRef.current.includes(data.trackThumbnail)) {
+                vinylThumbsRef.current = [...vinylThumbsRef.current, data.trackThumbnail];
+                // Show first image immediately once we have one
+                if (vinylThumbsRef.current.length === 1) {
+                  setCurrentVinylImage(data.trackThumbnail);
+                }
+              }
+            }
             if (data.fallbackSearch) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "searching", thumbnail: data.trackThumbnail || null });
             if (data.fallbackFound) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "found", fallbackTitle: data.fallbackTitle, thumbnail: data.trackThumbnail || null });
             if (data.fallbackFailed) setYtMusicFallbackStatus({ trackTitle: data.trackTitle, stage: "failed", thumbnail: data.trackThumbnail || null });
@@ -3118,6 +3199,8 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
             </motion.div>
           )}
         </AnimatePresence>
+
+
 
         {history.length > 0 && (
           <>

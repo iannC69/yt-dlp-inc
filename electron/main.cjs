@@ -79,6 +79,8 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 720,
     icon: iconPath,
+    titleBarStyle: 'hidden',
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -86,6 +88,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
     }
   });
+
+  mainWindow.setMenu(null);
 
   // Set Content-Security-Policy to suppress Electron security warning
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -211,11 +215,37 @@ app.on('before-quit', () => {
 // ── Spotify OAuth is now handled natively via the browser and Vite/Express proxy ──
 ipcMain.handle('open-external', (_event, url) => shell.openExternal(url));
 
+// IPC: Custom Window Controls
+ipcMain.on('window-minimize', () => { if(mainWindow) mainWindow.minimize(); });
+ipcMain.on('window-maximize', () => { 
+  if(mainWindow) {
+    if(mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  }
+});
+ipcMain.on('window-close', () => { if(mainWindow) mainWindow.close(); });
+
 // IPC: Explicit quit from renderer
 ipcMain.handle('quit-app', () => { app.isQuiting = true; app.quit(); });
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('context-menu', event => event.preventDefault());
+  
+  // Enable standard Chrome developer shortcuts
+  contents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown') {
+      if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
+        contents.reload();
+        event.preventDefault();
+      } else if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+        contents.toggleDevTools();
+        event.preventDefault();
+      } else if (input.key === 'F11') {
+        if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen());
+        event.preventDefault();
+      }
+    }
+  });
 });
 
 // ── IPC: Persistent Settings Store ─────────────────────────────────────────────

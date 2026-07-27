@@ -13,6 +13,20 @@
   overflow: hidden;
 }
 
+/* ---- Title Bar ---- */
+.title-bar {
+  position: relative;
+  width: 100%;
+  height: 38px;
+  background: #080a0f;
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  -webkit-app-region: drag;
+  z-index: 200;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
 /* ---- Platform Bar ---- */
 .platform-bar {
   position: sticky;
@@ -48,12 +62,53 @@
   align-items: center;
   justify-content: center;
   position: relative;
+  -webkit-app-region: no-drag;
 }
 
 .settings-button:hover {
   color: #f4f4f5;
   background: rgba(255, 255, 255, 0.05);
 }
+
+.custom-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.mac-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.1);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease, filter 0.2s, opacity 0.2s;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mac-btn svg {
+  width: 10px;
+  height: 10px;
+  opacity: 1;
+  color: rgba(0,0,0,0.65);
+}
+
+.custom-window-controls:hover .mac-btn {
+  opacity: 1;
+}
+
+.mac-btn.mac-close { background: #ff5f56; }
+.mac-btn.mac-min { background: #ffbd2e; }
+.mac-btn.mac-max { background: #27c93f; }
+
+.custom-window-controls:hover .mac-btn { opacity: 1; }
+.mac-btn:hover { filter: brightness(1.2); }
 
 .settings-status-dot {
   position: absolute;
@@ -316,6 +371,7 @@
   transition: color 0.2s ease;
   overflow: hidden;
   font-family: inherit;
+  -webkit-app-region: no-drag;
 }
 
 .platform-tab:hover {
@@ -1285,4 +1341,21 @@
   font-size: 0.95rem;
   color: rgba(255, 255, 255, 0.6);
   font-weight: 500;
+}
+
+body.glass-ui-active .panel-slide {
+  backdrop-filter: blur(24px) saturate(180%);
+}
+body.glass-ui-active .ytdl-card,
+body.glass-ui-active .settings-panel,
+body.glass-ui-active .cp-panel-section,
+body.glass-ui-active .settings-hw-btn {
+  backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--panel-color, #0f111a) 60%, transparent) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.glass-ui-active .settings-modal-content {
+  backdrop-filter: blur(30px) saturate(200%);
+  background: color-mix(in srgb, #080a0f 85%, transparent);
 }

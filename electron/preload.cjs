@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   
+  // Window controls
+  window: {
+    minimize: () => ipcRenderer.send('window-minimize'),
+    maximize: () => ipcRenderer.send('window-maximize'),
+    close: () => ipcRenderer.send('window-close')
+  },
+  
   // Settings Store APIs
   settings: {
     get: (key) => ipcRenderer.sendSync('store-get', key),

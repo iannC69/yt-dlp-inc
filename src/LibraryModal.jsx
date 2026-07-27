@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Film, FolderOpen, Play, Music, LayoutGrid, List, X, ChevronDown, Scissors, Trash2, Search } from 'lucide-react';
+import { Film, FolderOpen, Play, Music, LayoutGrid, List, X, ChevronDown, Scissors, Trash2, Search, MonitorPlay, Headphones, HardDrive } from 'lucide-react';
 import './LibraryModal.css';
 
 const FILTERS = ['All', 'YouTube', 'Spotify', 'Cutter', 'Audio', 'Video'];
@@ -24,6 +24,12 @@ export default function LibraryModal({ historyData, onClose, onSendToCutter }) {
       console.error('Failed to open folder:', err);
     }
   };
+
+  const lifetimeStats = useMemo(() => {
+    const videos = historyData.filter(i => String(i.format).match(/mp4|webm|mkv|video/i)).length;
+    const audio = historyData.filter(i => String(i.format).match(/mp3|ogg|wav|flac|m4a|audio/i)).length;
+    return { videos, audio, total: historyData.length };
+  }, [historyData]);
 
   const filtered = useMemo(() => {
     let items = [...historyData];
@@ -127,6 +133,33 @@ export default function LibraryModal({ historyData, onClose, onSendToCutter }) {
             </AnimatePresence>
           </div>
         </div>
+
+        {/* Stats Widget */}
+        {historyData.length > 0 && (
+          <div className="ytdl-stats-widget" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', margin: '0 1.5rem 1.5rem 1.5rem', background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%)', padding: '1.25rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}>
+              <div style={{ padding: '0.8rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '12px', color: '#60a5fa', flexShrink: 0 }}><MonitorPlay size={24} strokeWidth={2.5} /></div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', lineHeight: 1 }}>{lifetimeStats.videos || 0}</span>
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Videos Saved</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}>
+              <div style={{ padding: '0.8rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '12px', color: '#34d399', flexShrink: 0 }}><Headphones size={24} strokeWidth={2.5} /></div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', lineHeight: 1 }}>{lifetimeStats.audio || 0}</span>
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Audio Tracks</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}>
+              <div style={{ padding: '0.8rem', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '12px', color: '#c084fc', flexShrink: 0 }}><HardDrive size={24} strokeWidth={2.5} /></div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', lineHeight: 1 }}>{lifetimeStats.total || 0}</span>
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.2rem', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Downloads</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="lib-toolbar">

@@ -24,7 +24,7 @@ const PLATFORMS = [
     color: '#ef4444',
     icon: (
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
       </svg>
     ),
   },
@@ -34,7 +34,7 @@ const PLATFORMS = [
     color: '#1DB954',
     icon: (
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
       </svg>
     ),
   },
@@ -80,10 +80,10 @@ export default function App() {
   const overlayMouseDownRef = useRef(false);
   const colorPickerActiveRef = useRef(false);
   const colorPickerTimerRef = useRef(null);
-  
+
   // Cross-module payload for Cutter
   const [cutterPayload, setCutterPayload] = useState(null);
-  
+
   const [spotifyClientId, setSpotifyClientId] = useState('');
   const [spotifyClientSecret, setSpotifyClientSecret] = useState('');
   const [downloadPreset, setDownloadPreset] = useState('AUTO');
@@ -91,32 +91,32 @@ export default function App() {
   const [customPath, setCustomPath] = useState(() => storage.getItem('customPath') || '');
   const [customTheme, setCustomTheme] = useState({
     // Global
-    primary:     '#ef4444',
-    secondary:   '#3b82f6',
-    bgBase:      '#080a0f',
-    panelColor:  '#0f111a',
-    navColor:    '#06080e',
-    textColor:   '#f1f5f9',
+    primary: '#ef4444',
+    secondary: '#3b82f6',
+    bgBase: '#080a0f',
+    panelColor: '#0f111a',
+    navColor: '#06080e',
+    textColor: '#f1f5f9',
     borderColor: '#ffffff',
     // YouTube panel
-    ytBg:        '#080a0f',
-    ytAccent:    '#ef4444',
+    ytBg: '#080a0f',
+    ytAccent: '#ef4444',
     ytSecondary: '#3b82f6',
-    ytMusic:     '#8b5cf6',
-    ytText:      '#f1f5f9',
+    ytMusic: '#8b5cf6',
+    ytText: '#f1f5f9',
     // Spotify panel
-    spBg:        '#060a06',
-    spAccent:    '#1DB954',
-    spText:      '#f8fafc',
+    spBg: '#060a06',
+    spAccent: '#1DB954',
+    spText: '#f8fafc',
     // Mass DL panel
-    mdBg:        '#07060f',
-    mdAccent:    '#a855f7',
+    mdBg: '#07060f',
+    mdAccent: '#a855f7',
     mdSecondary: '#d946ef',
-    mdText:      '#e2d9f3',
+    mdText: '#e2d9f3',
     // Audio Cutter panel
-    acBg:        '#060910',
-    acAccent:    '#22d3ee',
-    acText:      '#d8e4f0',
+    acBg: '#060910',
+    acAccent: '#22d3ee',
+    acText: '#d8e4f0',
   });
   const [showHelp, setShowHelp] = useState(false);
   const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
@@ -224,7 +224,7 @@ export default function App() {
 
     const savedTheme = storage.getItem('global_theme');
     if (savedTheme) {
-      try { setCustomTheme(prev => ({ ...prev, ...JSON.parse(savedTheme) })); } catch {}
+      try { setCustomTheme(prev => ({ ...prev, ...JSON.parse(savedTheme) })); } catch { }
     }
 
     // Auto-reconnect to background jobs
@@ -239,12 +239,12 @@ export default function App() {
           setActiveIdx(1);
         }
       })
-      .catch(() => {});
-      
+      .catch(() => { });
+
     const handleHistoryUpdate = () => fetchHistory();
     window.addEventListener('history_updated', handleHistoryUpdate);
-    
-    let cleanupUpdater = () => {};
+
+    let cleanupUpdater = () => { };
     if (window.electronAPI && window.electronAPI.updater) {
       cleanupUpdater = window.electronAPI.updater.onUpdaterEvent((name, data) => {
         if (name === 'update-available') {
@@ -274,7 +274,7 @@ export default function App() {
         window.electronAPI.updater.checkForUpdates();
       }, 5000);
     }
-    
+
     return () => {
       window.removeEventListener('history_updated', handleHistoryUpdate);
       cleanupUpdater();
@@ -289,43 +289,49 @@ export default function App() {
       const num = parseInt(c, 16);
       return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
     };
+    const isWallpaper = !!customTheme.customWallpaper;
+    const wpOpacity = customTheme.wallpaperOpacity !== undefined ? customTheme.wallpaperOpacity : 85;
+    const applyBg = (hexColor) => {
+      if (!isWallpaper) return hexColor;
+      return `rgba(${hexToRgb(hexColor)}, ${wpOpacity / 100})`;
+    };
 
     // Global
-    root.style.setProperty('--primary',      customTheme.primary);
-    root.style.setProperty('--primary-dark',  customTheme.primary + 'CC');
-    root.style.setProperty('--secondary',     customTheme.secondary);
-    root.style.setProperty('--bg-base',       customTheme.bgBase);
-    root.style.setProperty('--bg-panel',      customTheme.bgBase + 'F2');
-    root.style.setProperty('--panel-color',   customTheme.panelColor  || '#0f111a');
-    root.style.setProperty('--nav-color',     customTheme.navColor    || '#06080e');
-    root.style.setProperty('--text-color',    customTheme.textColor   || '#f1f5f9');
-    root.style.setProperty('--border-color',  customTheme.borderColor || '#ffffff');
+    root.style.setProperty('--primary', customTheme.primary);
+    root.style.setProperty('--primary-dark', customTheme.primary + 'CC');
+    root.style.setProperty('--secondary', customTheme.secondary);
+    root.style.setProperty('--bg-base', applyBg(customTheme.bgBase || '#080a0f'));
+    root.style.setProperty('--bg-panel', (customTheme.bgBase || '#080a0f') + 'F2');
+    root.style.setProperty('--panel-color', customTheme.panelColor || '#0f111a');
+    root.style.setProperty('--nav-color', isWallpaper && wpOpacity === 0 ? 'rgba(6, 8, 14, 0.4)' : applyBg(customTheme.navColor || '#06080e'));
+    root.style.setProperty('--text-color', customTheme.textColor || '#f1f5f9');
+    root.style.setProperty('--border-color', customTheme.borderColor || '#ffffff');
     // YouTube
-    root.style.setProperty('--theme-bg',      customTheme.ytBg     || '#080a0f');
+    root.style.setProperty('--theme-bg', applyBg(customTheme.ytBg || '#080a0f'));
     root.style.setProperty('--theme-primary', customTheme.ytAccent || '#ef4444');
     root.style.setProperty('--theme-secondary', customTheme.ytSecondary || '#3b82f6');
-    root.style.setProperty('--theme-music',   customTheme.ytMusic  || '#8b5cf6');
-    root.style.setProperty('--theme-music-bg', customTheme.ytMusicBg || '#120a1f');
+    root.style.setProperty('--theme-music', customTheme.ytMusic || '#8b5cf6');
+    root.style.setProperty('--theme-music-bg', applyBg(customTheme.ytMusicBg || '#120a1f'));
     root.style.setProperty('--theme-music-text', customTheme.ytMusicText || '#f5f3ff');
     root.style.setProperty('--theme-music-secondary', customTheme.ytMusicSecondary || '#c084fc');
-    root.style.setProperty('--yt-text',       customTheme.ytText   || '#f1f5f9');
+    root.style.setProperty('--yt-text', customTheme.ytText || '#f1f5f9');
     // Spotify
-    root.style.setProperty('--sp-bg',         customTheme.spBg     || '#060a06');
-    root.style.setProperty('--sp-green',      customTheme.spAccent || '#1DB954');
-    root.style.setProperty('--sp-green-dim',  (customTheme.spAccent || '#1DB954') + '26');
-    root.style.setProperty('--sp-text',       customTheme.spText   || '#f8fafc');
+    root.style.setProperty('--sp-bg', applyBg(customTheme.spBg || '#060a06'));
+    root.style.setProperty('--sp-green', customTheme.spAccent || '#1DB954');
+    root.style.setProperty('--sp-green-dim', (customTheme.spAccent || '#1DB954') + '26');
+    root.style.setProperty('--sp-text', customTheme.spText || '#f8fafc');
     // Mass DL
-    root.style.setProperty('--md-bg',         customTheme.mdBg        || '#07060f');
-    root.style.setProperty('--md-purple',     customTheme.mdAccent    || '#a855f7');
+    root.style.setProperty('--md-bg', applyBg(customTheme.mdBg || '#07060f'));
+    root.style.setProperty('--md-purple', customTheme.mdAccent || '#a855f7');
     root.style.setProperty('--md-purple-rgb', hexToRgb(customTheme.mdAccent || '#a855f7'));
-    root.style.setProperty('--md-magenta',    customTheme.mdSecondary || '#d946ef');
-    root.style.setProperty('--md-magenta-rgb',hexToRgb(customTheme.mdSecondary || '#d946ef'));
-    root.style.setProperty('--md-text',       customTheme.mdText      || '#e2d9f3');
+    root.style.setProperty('--md-magenta', customTheme.mdSecondary || '#d946ef');
+    root.style.setProperty('--md-magenta-rgb', hexToRgb(customTheme.mdSecondary || '#d946ef'));
+    root.style.setProperty('--md-text', customTheme.mdText || '#e2d9f3');
     // Audio Cutter
-    root.style.setProperty('--ac-bg',         customTheme.acBg     || '#060910');
-    root.style.setProperty('--ac-accent',     customTheme.acAccent || '#22d3ee');
+    root.style.setProperty('--ac-bg', applyBg(customTheme.acBg || '#060910'));
+    root.style.setProperty('--ac-accent', customTheme.acAccent || '#22d3ee');
     root.style.setProperty('--ac-accent-rgb', hexToRgb(customTheme.acAccent || '#22d3ee'));
-    root.style.setProperty('--ac-text',       customTheme.acText   || '#d8e4f0');
+    root.style.setProperty('--ac-text', customTheme.acText || '#d8e4f0');
   }, [customTheme]);
 
   const saveSettings = () => {
@@ -340,11 +346,11 @@ export default function App() {
   const isConfigured = spotifyClientId.trim() !== '' && spotifyClientSecret.trim() !== '';
 
   const handleSetupComplete = useCallback(({ clientId, clientSecret, audioFormat, audioQuality, customPath }) => {
-    if (clientId)      setSpotifyClientId(clientId);
-    if (clientSecret)  setSpotifyClientSecret(clientSecret);
-    if (audioFormat)   setAudioFormat(audioFormat);
-    if (audioQuality)  setAudioQuality(audioQuality);
-    if (customPath)    setCustomPath(customPath);
+    if (clientId) setSpotifyClientId(clientId);
+    if (clientSecret) setSpotifyClientSecret(clientSecret);
+    if (audioFormat) setAudioFormat(audioFormat);
+    if (audioQuality) setAudioQuality(audioQuality);
+    if (customPath) setCustomPath(customPath);
     setSetupDone(true);
   }, []);
 
@@ -393,7 +399,7 @@ export default function App() {
         if (showSettingsModal) setShowSettingsModal(false);
         if (showUpdateOverlay) setShowUpdateOverlay(false);
       }
-      
+
       // Ctrl+D triggers global download
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
@@ -414,6 +420,13 @@ export default function App() {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      style={customTheme.customWallpaper ? {
+        backgroundImage: `url(${customTheme.customWallpaper})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      } : {}}
     >
       {/* Splash Screen */}
       <AnimatePresence>
@@ -441,6 +454,23 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Dedicated Title Bar */}
+      <div className="title-bar">
+        <div className="custom-window-controls">
+          <button className="mac-btn mac-min" onClick={() => window.electronAPI?.window?.minimize()} title="Minimize">
+            <svg viewBox="0 0 14 14"><path d="M3 7 h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+          <button className="mac-btn mac-max" onClick={() => window.electronAPI?.window?.maximize()} title="Maximize">
+            <svg viewBox="0 0 14 14">
+              <path d="M4.5 9.5 L2 12 M2 12 V8.5 M2 12 H5.5 M9.5 4.5 L12 2 M12 2 V5.5 M12 2 H8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button className="mac-btn mac-close" onClick={() => window.electronAPI?.window?.close()} title="Close">
+            <svg viewBox="0 0 14 14"><path d="M4 4 L10 10 M10 4 L4 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        </div>
+      </div>
 
       {/* Platform Switcher Bar */}
       <div className="platform-bar">
@@ -475,7 +505,7 @@ export default function App() {
             ))}
           </div>
           <div className="global-top-actions">
-            <button 
+            <button
               className="settings-button"
               onClick={() => setShowQueueModal(true)}
               title="Queue Manager"
@@ -483,7 +513,7 @@ export default function App() {
               <ListVideo size={18} />
               <span className="navbar-action-label">Queue</span>
             </button>
-            <button 
+            <button
               className="settings-button"
               onClick={() => setShowSettingsModal(true)}
               title="Theme / Palette"
@@ -491,7 +521,7 @@ export default function App() {
               <Palette size={18} />
               <span className="navbar-action-label">Theme</span>
             </button>
-            <button 
+            <button
               className="settings-button"
               onClick={() => { fetchHistory(); setShowLibrary(true); }}
               title="Library / History"
@@ -499,7 +529,7 @@ export default function App() {
               <Library size={18} />
               <span className="navbar-action-label">Library</span>
             </button>
-            <button 
+            <button
               className="settings-button"
               onClick={() => setShowSettingsModal(true)}
               title="Settings"
@@ -538,9 +568,9 @@ export default function App() {
 
       <AnimatePresence>
         {showLibrary && (
-          <LibraryModal 
-            historyData={historyData} 
-            onClose={() => setShowLibrary(false)} 
+          <LibraryModal
+            historyData={historyData}
+            onClose={() => setShowLibrary(false)}
             onSendToCutter={handleSendToCutter}
           />
         )}
@@ -554,7 +584,7 @@ export default function App() {
 
       <AnimatePresence>
         {showSettingsModal && (
-          <motion.div 
+          <motion.div
             className="settings-modal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -562,7 +592,7 @@ export default function App() {
             onMouseDown={(e) => { overlayMouseDownRef.current = e.target === e.currentTarget; }}
             onClick={(e) => { if (e.target === e.currentTarget && overlayMouseDownRef.current && !colorPickerActiveRef.current) { overlayMouseDownRef.current = false; setShowSettingsModal(false); } }}
           >
-            <motion.div 
+            <motion.div
               className="settings-modal-content control-panel-mode"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -573,9 +603,9 @@ export default function App() {
                 <h2>MediaDL</h2>
                 <div className="cp-tab-section-label">General</div>
                 {[
-                  { id: 'general', label: 'General',        icon: <SlidersHorizontal size={14}/> },
-                  { id: 'theme',   label: 'Appearance',     icon: <Palette size={14}/> },
-                  { id: 'system',  label: 'System & Engine', icon: <Cpu size={14}/> },
+                  { id: 'general', label: 'General', icon: <SlidersHorizontal size={14} /> },
+                  { id: 'theme', label: 'Appearance', icon: <Palette size={14} /> },
+                  { id: 'system', label: 'System & Engine', icon: <Cpu size={14} /> },
                 ].map(t => (
                   <button key={t.id} className={`cp-tab ${activeSettingsTab === t.id ? 'active' : ''}`} onClick={() => setActiveSettingsTab(t.id)}>
                     <span className="cp-tab-icon">{t.icon}</span>{t.label}
@@ -583,10 +613,10 @@ export default function App() {
                 ))}
                 <div className="cp-tab-section-label">Modules</div>
                 {[
-                  { id: 'youtube', label: 'YouTube',      icon: <Play size={14}/> },
-                  { id: 'spotify', label: 'Spotify',      icon: <Music2 size={14}/> },
-                  { id: 'massdl',  label: 'Mass DL',      icon: <Layers size={14}/> },
-                  { id: 'cutter',  label: 'Audio Cutter', icon: <Scissors size={14}/> },
+                  { id: 'youtube', label: 'YouTube', icon: <Play size={14} /> },
+                  { id: 'spotify', label: 'Spotify', icon: <Music2 size={14} /> },
+                  { id: 'massdl', label: 'Mass DL', icon: <Layers size={14} /> },
+                  { id: 'cutter', label: 'Audio Cutter', icon: <Scissors size={14} /> },
                 ].map(t => (
                   <button key={t.id} className={`cp-tab ${activeSettingsTab === t.id ? 'active' : ''}`} onClick={() => setActiveSettingsTab(t.id)}>
                     <span className="cp-tab-icon">{t.icon}</span>{t.label}
@@ -594,9 +624,9 @@ export default function App() {
                 ))}
                 <div className="cp-tab-section-label">Advanced</div>
                 {[
-                  { id: 'rules', label: 'Download Rules', icon: <Filter size={14}/> },
-                  { id: 'logs',  label: 'Logs',           icon: <Terminal size={14}/> },
-                  { id: 'updates', label: 'Updates',      icon: <RefreshCw size={14}/> },
+                  { id: 'rules', label: 'Download Rules', icon: <Filter size={14} /> },
+                  { id: 'logs', label: 'Logs', icon: <Terminal size={14} /> },
+                  { id: 'updates', label: 'Updates', icon: <RefreshCw size={14} /> },
                 ].map(t => (
                   <button key={t.id} className={`cp-tab ${activeSettingsTab === t.id ? 'active' : ''}`} onClick={() => setActiveSettingsTab(t.id)}>
                     <span className="cp-tab-icon">{t.icon}</span>{t.label}
@@ -615,9 +645,9 @@ export default function App() {
                       {activeSettingsTab === 'system' && 'System & Engine'}
                       {activeSettingsTab === 'logs' && 'Server Logs'}
                       {activeSettingsTab === 'youtube' && 'YouTube'}
-                      { activeSettingsTab === 'massdl' && 'Mass Download' }
-                      { activeSettingsTab === 'cutter' && 'Audio Cutter' }
-                      { activeSettingsTab === 'updates' && 'Software Update' }
+                      {activeSettingsTab === 'massdl' && 'Mass Download'}
+                      {activeSettingsTab === 'cutter' && 'Audio Cutter'}
+                      {activeSettingsTab === 'updates' && 'Software Update'}
                     </h3>
                     <div style={{ fontSize: '0.75rem', color: '#52525b', marginTop: '2px' }}>
                       {activeSettingsTab === 'general' && 'Download path, format and quality defaults'}
@@ -627,16 +657,16 @@ export default function App() {
                       {activeSettingsTab === 'system' && 'Engine performance and hardware settings'}
                       {activeSettingsTab === 'logs' && 'Live server output and error trace'}
                       {activeSettingsTab === 'youtube' && 'Default quality, format and playlist options'}
-                      { activeSettingsTab === 'massdl' && 'Concurrency, retry and batch behavior' }
-                      { activeSettingsTab === 'cutter' && 'Export format, fade and waveform settings' }
-                      { activeSettingsTab === 'updates' && 'Check for app updates and releases' }
+                      {activeSettingsTab === 'massdl' && 'Concurrency, retry and batch behavior'}
+                      {activeSettingsTab === 'cutter' && 'Export format, fade and waveform settings'}
+                      {activeSettingsTab === 'updates' && 'Check for app updates and releases'}
                     </div>
                   </div>
                   <button className="settings-modal-close" onClick={() => setShowSettingsModal(false)}>
                     <X size={18} />
                   </button>
                 </div>
-                
+
                 <div className="settings-scroll-content">
                   {activeSettingsTab === 'general' && (
                     <div className="settings-section">
@@ -673,7 +703,7 @@ export default function App() {
                           ))}
                         </div>
                       </div>
-                      
+
                       <div className="settings-field">
                         <label className="settings-label-row">Audio Quality (Bitrate)</label>
                         <div className="settings-hw-toggle">
@@ -750,23 +780,23 @@ export default function App() {
 
                   {activeSettingsTab === 'theme' && (() => {
                     const DEFAULTS = {
-                      primary:'#ef4444', secondary:'#3b82f6', bgBase:'#080a0f',
-                      panelColor:'#0f111a', navColor:'#06080e', textColor:'#f1f5f9', borderColor:'#ffffff',
-                      ytBg:'#080a0f', ytAccent:'#ef4444',
-                      spBg:'#060a06', spAccent:'#1DB954',
-                      mdBg:'#07060f', mdAccent:'#a855f7', mdSecondary:'#d946ef',
-                      acBg:'#060910', acAccent:'#22d3ee',
+                      primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f',
+                      panelColor: '#0f111a', navColor: '#06080e', textColor: '#f1f5f9', borderColor: '#ffffff',
+                      ytBg: '#080a0f', ytAccent: '#ef4444',
+                      spBg: '#060a06', spAccent: '#1DB954',
+                      mdBg: '#07060f', mdAccent: '#a855f7', mdSecondary: '#d946ef',
+                      acBg: '#060910', acAccent: '#22d3ee',
                     }
                     const PRESETS = [
-                      { label:'Default', primary:'#ef4444', secondary:'#3b82f6', bgBase:'#080a0f', panelColor:'#0f111a', navColor:'#06080e', textColor:'#f1f5f9', borderColor:'#ffffff', ytBg:'#080a0f', ytAccent:'#ef4444', ytSecondary:'#3b82f6', ytText:'#f8fafc', spBg:'#060a06', spAccent:'#1DB954', spText:'#f8fafc', mdBg:'#07060f', mdAccent:'#a855f7', mdSecondary:'#d946ef', mdText:'#e2d9f3', acBg:'#060910', acAccent:'#22d3ee', acText:'#d8e4f0' },
-                      { label:'Blue', primary:'#3b82f6', secondary:'#60a5fa', bgBase:'#080c18', panelColor:'#0a0f20', navColor:'#050810', textColor:'#e2e8f0', borderColor:'#3b82f6', ytBg:'#060914', ytAccent:'#3b82f6', ytSecondary:'#60a5fa', ytText:'#e2e8f0', spBg:'#040a12', spAccent:'#0ea5e9', spText:'#e0f2fe', mdBg:'#080c18', mdAccent:'#6366f1', mdSecondary:'#8b5cf6', mdText:'#e0e7ff', acBg:'#070d18', acAccent:'#38bdf8', acText:'#bae6fd' },
-                      { label:'Purple', primary:'#a855f7', secondary:'#d946ef', bgBase:'#0d0814', panelColor:'#110c1a', navColor:'#07050e', textColor:'#f5f3ff', borderColor:'#a855f7', ytBg:'#0d0814', ytAccent:'#c084fc', ytSecondary:'#e879f9', ytText:'#f5f3ff', spBg:'#0a0512', spAccent:'#d946ef', spText:'#fae8ff', mdBg:'#0d0814', mdAccent:'#a855f7', mdSecondary:'#c084fc', mdText:'#f3e8ff', acBg:'#0c0716', acAccent:'#e879f9', acText:'#fdf4ff' },
-                      { label:'Green', primary:'#22c55e', secondary:'#10b981', bgBase:'#06110a', panelColor:'#080f0b', navColor:'#040b06', textColor:'#ecfdf5', borderColor:'#22c55e', ytBg:'#040e08', ytAccent:'#22c55e', ytSecondary:'#4ade80', ytText:'#d1fae5', spBg:'#040d07', spAccent:'#10b981', spText:'#a7f3d0', mdBg:'#051009', mdAccent:'#34d399', mdSecondary:'#10b981', mdText:'#ecfdf5', acBg:'#030a06', acAccent:'#6ee7b7', acText:'#d1fae5' },
-                      { label:'Midnight', primary:'#818cf8', secondary:'#6366f1', bgBase:'#0f0f23', panelColor:'#141428', navColor:'#0a0a1a', textColor:'#e0e7ff', borderColor:'#4f46e5', ytBg:'#0d0d21', ytAccent:'#818cf8', ytSecondary:'#a5b4fc', ytText:'#e0e7ff', spBg:'#0b0b1c', spAccent:'#6366f1', spText:'#c7d2fe', mdBg:'#0e0e24', mdAccent:'#4f46e5', mdSecondary:'#6366f1', mdText:'#e0e7ff', acBg:'#0a0a1d', acAccent:'#a5b4fc', acText:'#c7d2fe' },
-                      { label:'Nord', primary:'#88c0d0', secondary:'#81a1c1', bgBase:'#1a1d2e', panelColor:'#212338', navColor:'#151726', textColor:'#eceff4', borderColor:'#5e81ac', ytBg:'#181a29', ytAccent:'#bf616a', ytSecondary:'#d08770', ytText:'#eceff4', spBg:'#161824', spAccent:'#a3be8c', spText:'#e5e9f0', mdBg:'#191b2b', mdAccent:'#b48ead', mdSecondary:'#88c0d0', mdText:'#eceff4', acBg:'#171927', acAccent:'#81a1c1', acText:'#e5e9f0' },
-                      { label:'Amber', primary:'#f59e0b', secondary:'#fbbf24', bgBase:'#100c04', panelColor:'#1a1408', navColor:'#0c0900', textColor:'#fef3c7', borderColor:'#f59e0b', ytBg:'#0e0a02', ytAccent:'#f59e0b', ytSecondary:'#fbbf24', ytText:'#fef3c7', spBg:'#0a0701', spAccent:'#d97706', spText:'#fde68a', mdBg:'#0c0903', mdAccent:'#b45309', mdSecondary:'#f59e0b', mdText:'#fef3c7', acBg:'#090702', acAccent:'#fcd34d', acText:'#fde68a' },
-                      { label:'Rose', primary:'#fb7185', secondary:'#f43f5e', bgBase:'#120811', panelColor:'#1a0c18', navColor:'#0e050d', textColor:'#ffe4e6', borderColor:'#fb7185', ytBg:'#10060e', ytAccent:'#fb7185', ytSecondary:'#fda4af', ytText:'#ffe4e6', spBg:'#0d040b', spAccent:'#f43f5e', spText:'#fecdd3', mdBg:'#11070f', mdAccent:'#e11d48', mdSecondary:'#fb7185', mdText:'#ffe4e6', acBg:'#0c0509', acAccent:'#fda4af', acText:'#fecdd3' },
-                      { label:'Monochrome', primary:'#e5e5e5', secondary:'#a3a3a3', bgBase:'#0a0a0a', panelColor:'#171717', navColor:'#000000', textColor:'#ffffff', borderColor:'#404040', ytBg:'#000000', ytAccent:'#d4d4d4', ytSecondary:'#737373', ytText:'#ffffff', spBg:'#050505', spAccent:'#f5f5f5', spText:'#ffffff', mdBg:'#080808', mdAccent:'#e5e5e5', mdSecondary:'#a3a3a3', mdText:'#ffffff', acBg:'#030303', acAccent:'#a3a3a3', acText:'#ffffff' }
+                      { label: 'Default', primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f', panelColor: '#0f111a', navColor: '#06080e', textColor: '#f1f5f9', borderColor: '#ffffff', ytBg: '#080a0f', ytAccent: '#ef4444', ytSecondary: '#3b82f6', ytText: '#f8fafc', spBg: '#060a06', spAccent: '#1DB954', spText: '#f8fafc', mdBg: '#07060f', mdAccent: '#a855f7', mdSecondary: '#d946ef', mdText: '#e2d9f3', acBg: '#060910', acAccent: '#22d3ee', acText: '#d8e4f0' },
+                      { label: 'Blue', primary: '#3b82f6', secondary: '#60a5fa', bgBase: '#080c18', panelColor: '#0a0f20', navColor: '#050810', textColor: '#e2e8f0', borderColor: '#3b82f6', ytBg: '#060914', ytAccent: '#3b82f6', ytSecondary: '#60a5fa', ytText: '#e2e8f0', spBg: '#040a12', spAccent: '#0ea5e9', spText: '#e0f2fe', mdBg: '#080c18', mdAccent: '#6366f1', mdSecondary: '#8b5cf6', mdText: '#e0e7ff', acBg: '#070d18', acAccent: '#38bdf8', acText: '#bae6fd' },
+                      { label: 'Purple', primary: '#a855f7', secondary: '#d946ef', bgBase: '#0d0814', panelColor: '#110c1a', navColor: '#07050e', textColor: '#f5f3ff', borderColor: '#a855f7', ytBg: '#0d0814', ytAccent: '#c084fc', ytSecondary: '#e879f9', ytText: '#f5f3ff', spBg: '#0a0512', spAccent: '#d946ef', spText: '#fae8ff', mdBg: '#0d0814', mdAccent: '#a855f7', mdSecondary: '#c084fc', mdText: '#f3e8ff', acBg: '#0c0716', acAccent: '#e879f9', acText: '#fdf4ff' },
+                      { label: 'Green', primary: '#22c55e', secondary: '#10b981', bgBase: '#06110a', panelColor: '#080f0b', navColor: '#040b06', textColor: '#ecfdf5', borderColor: '#22c55e', ytBg: '#040e08', ytAccent: '#22c55e', ytSecondary: '#4ade80', ytText: '#d1fae5', spBg: '#040d07', spAccent: '#10b981', spText: '#a7f3d0', mdBg: '#051009', mdAccent: '#34d399', mdSecondary: '#10b981', mdText: '#ecfdf5', acBg: '#030a06', acAccent: '#6ee7b7', acText: '#d1fae5' },
+                      { label: 'Midnight', primary: '#818cf8', secondary: '#6366f1', bgBase: '#0f0f23', panelColor: '#141428', navColor: '#0a0a1a', textColor: '#e0e7ff', borderColor: '#4f46e5', ytBg: '#0d0d21', ytAccent: '#818cf8', ytSecondary: '#a5b4fc', ytText: '#e0e7ff', spBg: '#0b0b1c', spAccent: '#6366f1', spText: '#c7d2fe', mdBg: '#0e0e24', mdAccent: '#4f46e5', mdSecondary: '#6366f1', mdText: '#e0e7ff', acBg: '#0a0a1d', acAccent: '#a5b4fc', acText: '#c7d2fe' },
+                      { label: 'Nord', primary: '#88c0d0', secondary: '#81a1c1', bgBase: '#1a1d2e', panelColor: '#212338', navColor: '#151726', textColor: '#eceff4', borderColor: '#5e81ac', ytBg: '#181a29', ytAccent: '#bf616a', ytSecondary: '#d08770', ytText: '#eceff4', spBg: '#161824', spAccent: '#a3be8c', spText: '#e5e9f0', mdBg: '#191b2b', mdAccent: '#b48ead', mdSecondary: '#88c0d0', mdText: '#eceff4', acBg: '#171927', acAccent: '#81a1c1', acText: '#e5e9f0' },
+                      { label: 'Amber', primary: '#f59e0b', secondary: '#fbbf24', bgBase: '#100c04', panelColor: '#1a1408', navColor: '#0c0900', textColor: '#fef3c7', borderColor: '#f59e0b', ytBg: '#0e0a02', ytAccent: '#f59e0b', ytSecondary: '#fbbf24', ytText: '#fef3c7', spBg: '#0a0701', spAccent: '#d97706', spText: '#fde68a', mdBg: '#0c0903', mdAccent: '#b45309', mdSecondary: '#f59e0b', mdText: '#fef3c7', acBg: '#090702', acAccent: '#fcd34d', acText: '#fde68a' },
+                      { label: 'Rose', primary: '#fb7185', secondary: '#f43f5e', bgBase: '#120811', panelColor: '#1a0c18', navColor: '#0e050d', textColor: '#ffe4e6', borderColor: '#fb7185', ytBg: '#10060e', ytAccent: '#fb7185', ytSecondary: '#fda4af', ytText: '#ffe4e6', spBg: '#0d040b', spAccent: '#f43f5e', spText: '#fecdd3', mdBg: '#11070f', mdAccent: '#e11d48', mdSecondary: '#fb7185', mdText: '#ffe4e6', acBg: '#0c0509', acAccent: '#fda4af', acText: '#fecdd3' },
+                      { label: 'Monochrome', primary: '#e5e5e5', secondary: '#a3a3a3', bgBase: '#0a0a0a', panelColor: '#171717', navColor: '#000000', textColor: '#ffffff', borderColor: '#404040', ytBg: '#000000', ytAccent: '#d4d4d4', ytSecondary: '#737373', ytText: '#ffffff', spBg: '#050505', spAccent: '#f5f5f5', spText: '#ffffff', mdBg: '#080808', mdAccent: '#e5e5e5', mdSecondary: '#a3a3a3', mdText: '#ffffff', acBg: '#030303', acAccent: '#a3a3a3', acText: '#ffffff' }
                     ]
                     const activePreset = PRESETS.find(p => p.primary === customTheme.primary && p.bgBase === customTheme.bgBase)
 
@@ -804,7 +834,7 @@ export default function App() {
 
                     const renderPanelSection = (title, icon, children) => (
                       <div className="cp-panel-section" key={title}>
-                        <div className="cp-panel-section-title"><span style={{display:'flex',alignItems:'center',gap:'6px'}}>{icon}<span>{title}</span></span></div>
+                        <div className="cp-panel-section-title"><span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>{icon}<span>{title}</span></span></div>
                         <div className="cp-color-grid">{children}</div>
                       </div>
                     )
@@ -828,7 +858,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        {renderPanelSection("Global", <Globe size={11}/>, [
+                        {renderPanelSection("Global", <Globe size={11} />, [
                           renderCPicker("primary", "Accent / Buttons"),
                           renderCPicker("bgBase", "App Background"),
                           renderCPicker("panelColor", "Panel / Card"),
@@ -842,8 +872,8 @@ export default function App() {
                             <Zap size={11} />
                             Effects
                           </div>
-                          <div className="cp-color-row">
-                            <span className="cp-color-label" style={{ flex: 1, minWidth: 'auto' }}>Live Aurora Background</span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px', background: 'rgba(255,255,255,0.02)', borderRadius: '7px' }}>
+                            <span className="cp-color-label" style={{ flex: 1, minWidth: 'auto', whiteSpace: 'normal', color: '#e4e4e7' }}>Live Aurora Background</span>
                             <button
                               className={`settings-hw-btn ${liveBackground ? 'active' : ''}`}
                               onClick={() => {
@@ -856,36 +886,108 @@ export default function App() {
                               {liveBackground ? 'Enabled' : 'Disabled'}
                             </button>
                           </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px', background: 'rgba(255,255,255,0.02)', borderRadius: '7px', marginTop: '4px' }}>
+                            <span className="cp-color-label" style={{ flex: 1, minWidth: 'auto', whiteSpace: 'normal', color: '#e4e4e7' }}>Custom PC Wallpaper</span>
+                            {customTheme.customWallpaper ? (
+                              <button
+                                className="settings-hw-btn active"
+                                onClick={() => setCustomTheme(prev => ({ ...prev, customWallpaper: null }))}
+                                style={{ width: 'auto', padding: '4px 12px', background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5' }}
+                              >
+                                Remove
+                              </button>
+                            ) : (
+                              <button
+                                className="settings-hw-btn"
+                                onClick={() => {
+                                  const input = document.createElement('input');
+                                  input.type = 'file';
+                                  input.accept = 'image/*';
+                                  input.onchange = (e) => {
+                                    const file = e.target.files[0];
+                                    if (!file) return;
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                      const img = new Image();
+                                      img.onload = () => {
+                                        const canvas = document.createElement('canvas');
+                                        let width = img.width;
+                                        let height = img.height;
+                                        const maxDim = 1920;
+                                        if (width > maxDim || height > maxDim) {
+                                          if (width > height) {
+                                            height = Math.round((height * maxDim) / width);
+                                            width = maxDim;
+                                          } else {
+                                            width = Math.round((width * maxDim) / height);
+                                            height = maxDim;
+                                          }
+                                        }
+                                        canvas.width = width;
+                                        canvas.height = height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0, width, height);
+                                        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                                        setCustomTheme(prev => ({ ...prev, customWallpaper: dataUrl, customWallpaperMode: 'full' }));
+                                      };
+                                      img.src = ev.target.result;
+                                    };
+                                    reader.readAsDataURL(file);
+                                  };
+                                  input.click();
+                                }}
+                                style={{ width: 'auto', padding: '4px 12px' }}
+                              >
+                                Browse PC
+                              </button>
+                            )}
+                          </div>
+                          {customTheme.customWallpaper && (
+                            <div style={{ display: 'flex', flexDirection: 'column', padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '7px', marginTop: '4px', gap: '10px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span className="cp-color-label" style={{ whiteSpace: 'normal', color: '#e4e4e7' }}>Theme Overlay Intensity</span>
+                                <span style={{ fontSize: '0.8rem', color: '#a1a1aa', fontWeight: 600 }}>{customTheme.wallpaperOpacity !== undefined ? customTheme.wallpaperOpacity : 85}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                value={customTheme.wallpaperOpacity !== undefined ? customTheme.wallpaperOpacity : 85}
+                                onChange={(e) => setCustomTheme(prev => ({ ...prev, wallpaperOpacity: parseInt(e.target.value) }))}
+                                style={{ width: '100%', cursor: 'pointer', accentColor: 'var(--primary, #ef4444)' }}
+                              />
+                            </div>
+                          )}
                         </div>
 
-                        {renderPanelSection("YouTube Panel", <Play size={11}/>, [
+                        {renderPanelSection("YouTube Panel", <Play size={11} />, [
                           renderCPicker("ytBg", "Background"),
                           renderCPicker("ytAccent", "Video Accent"),
                           renderCPicker("ytSecondary", "Secondary color"),
                           renderCPicker("ytText", "Text color")
                         ])}
 
-                        {renderPanelSection("YouTube Music", <Music size={11}/>, [
+                        {renderPanelSection("YouTube Music", <Music size={11} />, [
                           renderCPicker("ytMusicBg", "Background"),
                           renderCPicker("ytMusic", "Music Accent"),
                           renderCPicker("ytMusicSecondary", "Secondary color"),
                           renderCPicker("ytMusicText", "Text color")
                         ])}
 
-                        {renderPanelSection("Spotify Panel", <Music2 size={11}/>, [
+                        {renderPanelSection("Spotify Panel", <Music2 size={11} />, [
                           renderCPicker("spBg", "Background"),
                           renderCPicker("spAccent", "Accent / Green"),
                           renderCPicker("spText", "Text color")
                         ])}
 
-                        {renderPanelSection("Mass DL Panel", <Layers size={11}/>, [
+                        {renderPanelSection("Mass DL Panel", <Layers size={11} />, [
                           renderCPicker("mdBg", "Background"),
                           renderCPicker("mdAccent", "Purple accent"),
                           renderCPicker("mdSecondary", "Magenta accent"),
                           renderCPicker("mdText", "Text color")
                         ])}
 
-                        {renderPanelSection("Audio Cutter Panel", <Scissors size={11}/>, [
+                        {renderPanelSection("Audio Cutter Panel", <Scissors size={11} />, [
                           renderCPicker("acBg", "Background"),
                           renderCPicker("acAccent", "Cyan accent"),
                           renderCPicker("acText", "Text color")
@@ -923,7 +1025,7 @@ export default function App() {
                                 reader.onload = ev => {
                                   try {
                                     const parsed = JSON.parse(ev.target.result);
-                                    setCustomTheme(prev => ({...prev, ...parsed}));
+                                    setCustomTheme(prev => ({ ...prev, ...parsed }));
                                     toast.success("Theme imported!");
                                   } catch (err) {
                                     alert("Invalid JSON file.");
@@ -968,14 +1070,14 @@ export default function App() {
                         <p className="settings-hint">spotdl gives higher quality matches; yt-dlp is faster and more reliable.</p>
                       </div>
                       <div className="settings-field">
-                        <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={spotDlLyrics}
                             onChange={e => { setSpotDlLyrics(e.target.checked); storage.setItem('spotdl_lyrics', String(e.target.checked)); }} />
                           Embed lyrics in downloaded tracks
                         </label>
                       </div>
                       <div className="settings-field">
-                        <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={spotDlArchive}
                             onChange={e => { setSpotDlArchive(e.target.checked); storage.setItem('spotdl_archive', String(e.target.checked)); }} />
                           Skip already downloaded tracks (archive mode)
@@ -1037,21 +1139,21 @@ export default function App() {
                         <p className="settings-hint">yt-dlp output template. Variables: %(title)s %(uploader)s %(id)s %(ext)s</p>
                       </div>
                       <div className="settings-field">
-                        <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={ytEmbedThumbnail}
                             onChange={e => { setYtEmbedThumbnail(e.target.checked); storage.setItem('yt_embed_thumbnail', String(e.target.checked)); }} />
                           Embed thumbnail in audio files
                         </label>
                       </div>
                       <div className="settings-field">
-                        <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={ytWriteThumbnail}
                             onChange={e => { setYtWriteThumbnail(e.target.checked); storage.setItem('yt_write_thumbnail', String(e.target.checked)); }} />
                           Save thumbnail as separate image file
                         </label>
                       </div>
                       <div className="settings-field">
-                        <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={ytSponsorBlock}
                             onChange={e => { setYtSponsorBlock(e.target.checked); storage.setItem('yt_sponsorblock', String(e.target.checked)); }} />
                           SponsorBlock — mark/remove sponsor segments
@@ -1132,7 +1234,7 @@ export default function App() {
                       <div className="settings-field">
                         <label className="settings-label-row">Default Audio Format</label>
                         <div className="settings-hw-toggle">
-                          {['mp3','flac','m4a','wav','opus'].map(f => (
+                          {['mp3', 'flac', 'm4a', 'wav', 'opus'].map(f => (
                             <button key={f} className={`settings-hw-btn ${massDlOutputFormat === f ? 'active' : ''}`}
                               onClick={() => { setMassDlOutputFormat(f); storage.setItem('massdl_output_format', f); }}>
                               {f.toUpperCase()}
@@ -1141,25 +1243,25 @@ export default function App() {
                         </div>
                       </div>
                       <div className="settings-field">
-                        <label className="settings-label-row">Max Concurrent Downloads — <strong style={{color:'#f4f4f5'}}>{massDlConcurrency}</strong></label>
+                        <label className="settings-label-row">Max Concurrent Downloads — <strong style={{ color: '#f4f4f5' }}>{massDlConcurrency}</strong></label>
                         <input type="range" min="1" max="20" value={massDlConcurrency}
                           onChange={e => { setMassDlConcurrency(+e.target.value); storage.setItem('massdl_concurrency', e.target.value); }}
-                          style={{ width:'100%', accentColor:'var(--primary)' }}
+                          style={{ width: '100%', accentColor: 'var(--primary)' }}
                         />
                         <p className="settings-hint">Higher = faster downloads but more CPU and RAM usage. Recommended: 3–8.</p>
                       </div>
                       <div className="settings-field">
-                        <label className="settings-label-row">Delay Between Downloads — <strong style={{color:'#f4f4f5'}}>{massDlDelay}s</strong></label>
+                        <label className="settings-label-row">Delay Between Downloads — <strong style={{ color: '#f4f4f5' }}>{massDlDelay}s</strong></label>
                         <input type="range" min="0" max="10" value={massDlDelay}
                           onChange={e => { setMassDlDelay(+e.target.value); storage.setItem('massdl_delay', e.target.value); }}
-                          style={{ width:'100%', accentColor:'var(--primary)' }}
+                          style={{ width: '100%', accentColor: 'var(--primary)' }}
                         />
                         <p className="settings-hint">Adds a pause between each download to avoid rate limiting.</p>
                       </div>
                       <div className="settings-field">
                         <label className="settings-label-row">Max Retries per Failed Track</label>
                         <div className="settings-hw-toggle">
-                          {[0,1,2,3,5].map(n => (
+                          {[0, 1, 2, 3, 5].map(n => (
                             <button key={n} className={`settings-hw-btn ${massDlRetries === n ? 'active' : ''}`}
                               onClick={() => { setMassDlRetries(n); storage.setItem('massdl_retries', String(n)); }}>
                               {n}×
@@ -1168,7 +1270,7 @@ export default function App() {
                         </div>
                       </div>
                       <div className="settings-field">
-                        <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={massDlContinueOnError}
                             onChange={e => { setMassDlContinueOnError(e.target.checked); storage.setItem('massdl_continue_on_error', String(e.target.checked)); }} />
                           Continue batch on error
@@ -1183,7 +1285,7 @@ export default function App() {
                       <div className="settings-field">
                         <label className="settings-label-row">Default Export Format</label>
                         <div className="settings-hw-toggle">
-                          {['mp3','flac','wav','m4a','opus'].map(f => (
+                          {['mp3', 'flac', 'wav', 'm4a', 'opus'].map(f => (
                             <button key={f} className={`settings-hw-btn ${cutterOutputFormat === f ? 'active' : ''}`}
                               onClick={() => { setCutterOutputFormat(f); storage.setItem('cutter_output_format', f); }}>
                               {f.toUpperCase()}
@@ -1194,7 +1296,7 @@ export default function App() {
                       <div className="settings-field">
                         <label className="settings-label-row">Default Export Bitrate</label>
                         <div className="settings-hw-toggle">
-                          {['320k','256k','192k','128k'].map(q => (
+                          {['320k', '256k', '192k', '128k'].map(q => (
                             <button key={q} className={`settings-hw-btn ${cutterBitrate === q ? 'active' : ''}`}
                               onClick={() => { setCutterBitrate(q); storage.setItem('cutter_bitrate', q); }}>
                               {q}
@@ -1203,15 +1305,15 @@ export default function App() {
                         </div>
                       </div>
                       <div className="settings-field">
-                        <label className="settings-label-row">Default Fade In/Out — <strong style={{color:'#f4f4f5'}}>{cutterFadeDuration}ms</strong></label>
+                        <label className="settings-label-row">Default Fade In/Out — <strong style={{ color: '#f4f4f5' }}>{cutterFadeDuration}ms</strong></label>
                         <input type="range" min="0" max="3000" step="50" value={cutterFadeDuration}
                           onChange={e => { setCutterFadeDuration(+e.target.value); storage.setItem('cutter_fade_duration', e.target.value); }}
-                          style={{ width:'100%', accentColor:'var(--primary)' }}
+                          style={{ width: '100%', accentColor: 'var(--primary)' }}
                         />
                         <p className="settings-hint">Applied automatically when exporting cuts. Set to 0 to disable.</p>
                       </div>
                       <div className="settings-field">
-                        <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={cutterNormalize}
                             onChange={e => { setCutterNormalize(e.target.checked); storage.setItem('cutter_normalize', String(e.target.checked)); }} />
                           Normalize audio loudness on export
@@ -1278,12 +1380,14 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                
-                <div className="control-panel-footer">
-                  <button className="settings-save-btn settings-save-btn--cta" onClick={saveSettings}>
-                    <CheckCircle2 size={16} /> Save Settings
-                  </button>
-                </div>
+
+                {activeSettingsTab !== 'logs' && activeSettingsTab !== 'updates' && (
+                  <div className="control-panel-footer">
+                    <button className="settings-save-btn settings-save-btn--cta" onClick={saveSettings}>
+                      <CheckCircle2 size={16} /> Save Settings
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>
@@ -1326,7 +1430,7 @@ export default function App() {
       {/* Update Overlay */}
       <AnimatePresence>
         {showUpdateOverlay && (
-          <UpdateOverlay 
+          <UpdateOverlay
             status={updateState}
             progress={updateProgress}
             speed={updateSpeed}
@@ -1343,9 +1447,12 @@ export default function App() {
       {/* Global Toast System */}
       <ToastSystem />
 
-      {/* Background Layer */}
-      {liveBackground && (
+      {/* Background layer */}
+      {liveBackground && !customTheme.customWallpaper && (
         <AuroraBackground activeColor={PLATFORMS[activeIdx]?.color} />
+      )}
+      {customTheme.customWallpaper && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: `url(${customTheme.customWallpaper}) center/cover no-repeat` }} />
       )}
     </div>
   );

@@ -42,11 +42,11 @@ export default function LogsTab() {
 
   useEffect(() => {
     // Initial fetch of logs buffer
-    fetch('/api/logs/buffer')
+    fetch('/api/logs')
       .then(r => r.json())
       .then(data => {
-        if (data.logs) {
-          setLogs(data.logs);
+        if (Array.isArray(data)) {
+          setLogs(data);
         }
       })
       .catch(() => {});
@@ -127,7 +127,7 @@ export default function LogsTab() {
             <div key={i} style={{ marginBottom: '4px', borderBottom: '1px solid #1a1a1a', paddingBottom: '4px' }}>
               <span style={{ color: '#666', marginRight: '8px' }}>[{new Date(log.timestamp).toLocaleTimeString()}]</span>
               <span style={{ color: getLevelColor(log.level), fontWeight: 'bold', width: '60px', display: 'inline-block' }}>{log.level}</span>
-              <span style={{ color: '#a855f7', marginRight: '8px' }}>[{log.module}]</span>
+              <span style={{ color: '#a855f7', marginRight: '8px' }}>[{log.source || 'SYS'}]</span>
               <span style={{ color: '#e5e5e5' }}>{log.message}</span>
             </div>
           ))
