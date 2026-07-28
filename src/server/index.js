@@ -551,7 +551,7 @@ export function configureNewBackend(server) {
                     await new Promise(r => {
                        const ff = spawn(path.join(getFfmpegDir(), 'ffmpeg' + (isWin ? '.exe' : '')), [
                           '-i', thumbPath,
-                          '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)',
+                          '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=1200:1200:flags=lanczos',
                           '-frames:v', '1',
                           '-y', outThumb
                        ]);

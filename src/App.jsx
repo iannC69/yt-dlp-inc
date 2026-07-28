@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, lazy } from 'react';
+﻿import { useEffect, useState, useCallback, useRef, lazy } from 'react';
 import SetupWizard from './SetupWizard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot, Scissors, Layers, SlidersHorizontal, Cpu, Music2, Filter, Terminal, LayoutGrid, Globe, Check, Music, Folder, Link, Link2, Download, Upload } from 'lucide-react';
@@ -14,6 +14,7 @@ import UpdateOverlay from './UpdateOverlay';
 import SplashScreen from './SplashScreen';
 import ToastSystem, { toast } from './ToastSystem';
 import AuroraBackground from './AuroraBackground';
+import SettingsModal from './SettingsModal';
 import './App.css';
 import { storage } from './storage';
 
@@ -582,817 +583,89 @@ export default function App() {
         )}
       </AnimatePresence>
 
+
       <AnimatePresence>
         {showSettingsModal && (
-          <motion.div
-            className="settings-modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onMouseDown={(e) => { overlayMouseDownRef.current = e.target === e.currentTarget; }}
-            onClick={(e) => { if (e.target === e.currentTarget && overlayMouseDownRef.current && !colorPickerActiveRef.current) { overlayMouseDownRef.current = false; setShowSettingsModal(false); } }}
-          >
-            <motion.div
-              className="settings-modal-content control-panel-mode"
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="control-panel-sidebar">
-                <h2>MediaDL</h2>
-                <div className="cp-tab-section-label">General</div>
-                {[
-                  { id: 'general', label: 'General', icon: <SlidersHorizontal size={14} /> },
-                  { id: 'theme', label: 'Appearance', icon: <Palette size={14} /> },
-                  { id: 'system', label: 'System & Engine', icon: <Cpu size={14} /> },
-                ].map(t => (
-                  <button key={t.id} className={`cp-tab ${activeSettingsTab === t.id ? 'active' : ''}`} onClick={() => setActiveSettingsTab(t.id)}>
-                    <span className="cp-tab-icon">{t.icon}</span>{t.label}
-                  </button>
-                ))}
-                <div className="cp-tab-section-label">Modules</div>
-                {[
-                  { id: 'youtube', label: 'YouTube', icon: <Play size={14} /> },
-                  { id: 'spotify', label: 'Spotify', icon: <Music2 size={14} /> },
-                  { id: 'massdl', label: 'Mass DL', icon: <Layers size={14} /> },
-                  { id: 'cutter', label: 'Audio Cutter', icon: <Scissors size={14} /> },
-                ].map(t => (
-                  <button key={t.id} className={`cp-tab ${activeSettingsTab === t.id ? 'active' : ''}`} onClick={() => setActiveSettingsTab(t.id)}>
-                    <span className="cp-tab-icon">{t.icon}</span>{t.label}
-                  </button>
-                ))}
-                <div className="cp-tab-section-label">Advanced</div>
-                {[
-                  { id: 'rules', label: 'Download Rules', icon: <Filter size={14} /> },
-                  { id: 'logs', label: 'Logs', icon: <Terminal size={14} /> },
-                  { id: 'updates', label: 'Updates', icon: <RefreshCw size={14} /> },
-                ].map(t => (
-                  <button key={t.id} className={`cp-tab ${activeSettingsTab === t.id ? 'active' : ''}`} onClick={() => setActiveSettingsTab(t.id)}>
-                    <span className="cp-tab-icon">{t.icon}</span>{t.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="control-panel-body">
-                <div className="control-panel-header">
-                  <div>
-                    <h3 className="cp-title">
-                      {activeSettingsTab === 'general' && 'General'}
-                      {activeSettingsTab === 'rules' && 'Download Rules'}
-                      {activeSettingsTab === 'theme' && 'Appearance'}
-                      {activeSettingsTab === 'spotify' && 'Spotify'}
-                      {activeSettingsTab === 'system' && 'System & Engine'}
-                      {activeSettingsTab === 'logs' && 'Server Logs'}
-                      {activeSettingsTab === 'youtube' && 'YouTube'}
-                      {activeSettingsTab === 'massdl' && 'Mass Download'}
-                      {activeSettingsTab === 'cutter' && 'Audio Cutter'}
-                      {activeSettingsTab === 'updates' && 'Software Update'}
-                    </h3>
-                    <div style={{ fontSize: '0.75rem', color: '#52525b', marginTop: '2px' }}>
-                      {activeSettingsTab === 'general' && 'Download path, format and quality defaults'}
-                      {activeSettingsTab === 'rules' && 'Naming patterns and quality filters'}
-                      {activeSettingsTab === 'theme' && 'Colors, presets and panel customization'}
-                      {activeSettingsTab === 'spotify' && 'API credentials and search behavior (Updater Test v1.0.3!)'}
-                      {activeSettingsTab === 'system' && 'Engine performance and hardware settings'}
-                      {activeSettingsTab === 'logs' && 'Live server output and error trace'}
-                      {activeSettingsTab === 'youtube' && 'Default quality, format and playlist options'}
-                      {activeSettingsTab === 'massdl' && 'Concurrency, retry and batch behavior'}
-                      {activeSettingsTab === 'cutter' && 'Export format, fade and waveform settings'}
-                      {activeSettingsTab === 'updates' && 'Check for app updates and releases'}
-                    </div>
-                  </div>
-                  <button className="settings-modal-close" onClick={() => setShowSettingsModal(false)}>
-                    <X size={18} />
-                  </button>
-                </div>
-
-                <div className="settings-scroll-content">
-                  {activeSettingsTab === 'general' && (
-                    <div className="settings-section">
-                      <div className="settings-field">
-                        <label className="settings-label-row">Download Directory (Local)</label>
-                        <div className="settings-path-picker">
-                          <input
-                            type="text"
-                            readOnly
-                            value={customPath || 'Mod Implicit (Folderul Aplicației/downloads)'}
-                            className="settings-input"
-                            title={customPath}
-                          />
-                          <button className="settings-save-btn" onClick={handleSelectFolder} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
-                            <FolderOpen size={16} style={{ display: 'inline', marginRight: '4px' }} /> Folder
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="settings-field" style={{ marginTop: '20px' }}>
-                        <label className="settings-label-row">Audio Format</label>
-                        <div className="settings-hw-toggle">
-                          {['mp3', 'm4a', 'flac', 'wav', 'opus'].map(f => (
-                            <button
-                              key={f}
-                              className={`settings-hw-btn ${audioFormat === f ? 'active' : ''}`}
-                              onClick={() => {
-                                setAudioFormat(f);
-                                storage.setItem('audioFormat', f);
-                              }}
-                            >
-                              {f.toUpperCase()}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="settings-field">
-                        <label className="settings-label-row">Audio Quality (Bitrate)</label>
-                        <div className="settings-hw-toggle">
-                          {[
-                            { value: '320k', label: '320k (High)' },
-                            { value: '256k', label: '256k' },
-                            { value: '192k', label: '192k (Std)' },
-                            { value: '128k', label: '128k (Low)' }
-                          ].map(q => (
-                            <button
-                              key={q.value}
-                              className={`settings-hw-btn ${audioQuality === q.value ? 'active' : ''}`}
-                              onClick={() => {
-                                setAudioQuality(q.value);
-                                storage.setItem('audioQuality', q.value);
-                              }}
-                            >
-                              {q.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSettingsTab === 'rules' && (
-                    <div className="settings-section">
-                      <div className="settings-field">
-                        <label>Spotify Threshold (spotdl)</label>
-                        <p className="settings-hint" style={{ marginBottom: '8px' }}>
-                          If a Spotify playlist has fewer tracks than this number, we'll try to download the tracks directly from Spotify via spotdl instead of searching on YouTube.
-                        </p>
-                        <input
-                          type="number"
-                          className="settings-input"
-                          value={spotifyThreshold}
-                          onChange={e => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val)) {
-                              setSpotifyThreshold(val);
-                              saveConfigToBackend({ spotifyThreshold: val });
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="settings-field" style={{ marginTop: '20px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={ytDlpFallbackEnabled}
-                            onChange={e => {
-                              setYtDlpFallbackEnabled(e.target.checked);
-                              saveConfigToBackend({ ytDlpFallbackEnabled: e.target.checked });
-                            }}
-                          />
-                          Enable yt-dlp fallback
-                        </label>
-                        <p className="settings-hint">
-                          If spotdl fails to download a track, fallback to finding it on YouTube with yt-dlp.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSettingsTab === 'logs' && (
-                    <div className="settings-section" style={{ height: '400px', padding: 0 }}>
-                      <LogsTab />
-                    </div>
-                  )}
-
-                  {activeSettingsTab === 'updates' && (
-                    <UpdatesTab />
-                  )}
-
-                  {activeSettingsTab === 'theme' && (() => {
-                    const DEFAULTS = {
-                      primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f',
-                      panelColor: '#0f111a', navColor: '#06080e', textColor: '#f1f5f9', borderColor: '#ffffff',
-                      ytBg: '#080a0f', ytAccent: '#ef4444',
-                      spBg: '#060a06', spAccent: '#1DB954',
-                      mdBg: '#07060f', mdAccent: '#a855f7', mdSecondary: '#d946ef',
-                      acBg: '#060910', acAccent: '#22d3ee',
-                    }
-                    const PRESETS = [
-                      { label: 'Default', primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f', panelColor: '#0f111a', navColor: '#06080e', textColor: '#f1f5f9', borderColor: '#ffffff', ytBg: '#080a0f', ytAccent: '#ef4444', ytSecondary: '#3b82f6', ytText: '#f8fafc', spBg: '#060a06', spAccent: '#1DB954', spText: '#f8fafc', mdBg: '#07060f', mdAccent: '#a855f7', mdSecondary: '#d946ef', mdText: '#e2d9f3', acBg: '#060910', acAccent: '#22d3ee', acText: '#d8e4f0' },
-                      { label: 'Blue', primary: '#3b82f6', secondary: '#60a5fa', bgBase: '#080c18', panelColor: '#0a0f20', navColor: '#050810', textColor: '#e2e8f0', borderColor: '#3b82f6', ytBg: '#060914', ytAccent: '#3b82f6', ytSecondary: '#60a5fa', ytText: '#e2e8f0', spBg: '#040a12', spAccent: '#0ea5e9', spText: '#e0f2fe', mdBg: '#080c18', mdAccent: '#6366f1', mdSecondary: '#8b5cf6', mdText: '#e0e7ff', acBg: '#070d18', acAccent: '#38bdf8', acText: '#bae6fd' },
-                      { label: 'Purple', primary: '#a855f7', secondary: '#d946ef', bgBase: '#0d0814', panelColor: '#110c1a', navColor: '#07050e', textColor: '#f5f3ff', borderColor: '#a855f7', ytBg: '#0d0814', ytAccent: '#c084fc', ytSecondary: '#e879f9', ytText: '#f5f3ff', spBg: '#0a0512', spAccent: '#d946ef', spText: '#fae8ff', mdBg: '#0d0814', mdAccent: '#a855f7', mdSecondary: '#c084fc', mdText: '#f3e8ff', acBg: '#0c0716', acAccent: '#e879f9', acText: '#fdf4ff' },
-                      { label: 'Green', primary: '#22c55e', secondary: '#10b981', bgBase: '#06110a', panelColor: '#080f0b', navColor: '#040b06', textColor: '#ecfdf5', borderColor: '#22c55e', ytBg: '#040e08', ytAccent: '#22c55e', ytSecondary: '#4ade80', ytText: '#d1fae5', spBg: '#040d07', spAccent: '#10b981', spText: '#a7f3d0', mdBg: '#051009', mdAccent: '#34d399', mdSecondary: '#10b981', mdText: '#ecfdf5', acBg: '#030a06', acAccent: '#6ee7b7', acText: '#d1fae5' },
-                      { label: 'Midnight', primary: '#818cf8', secondary: '#6366f1', bgBase: '#0f0f23', panelColor: '#141428', navColor: '#0a0a1a', textColor: '#e0e7ff', borderColor: '#4f46e5', ytBg: '#0d0d21', ytAccent: '#818cf8', ytSecondary: '#a5b4fc', ytText: '#e0e7ff', spBg: '#0b0b1c', spAccent: '#6366f1', spText: '#c7d2fe', mdBg: '#0e0e24', mdAccent: '#4f46e5', mdSecondary: '#6366f1', mdText: '#e0e7ff', acBg: '#0a0a1d', acAccent: '#a5b4fc', acText: '#c7d2fe' },
-                      { label: 'Nord', primary: '#88c0d0', secondary: '#81a1c1', bgBase: '#1a1d2e', panelColor: '#212338', navColor: '#151726', textColor: '#eceff4', borderColor: '#5e81ac', ytBg: '#181a29', ytAccent: '#bf616a', ytSecondary: '#d08770', ytText: '#eceff4', spBg: '#161824', spAccent: '#a3be8c', spText: '#e5e9f0', mdBg: '#191b2b', mdAccent: '#b48ead', mdSecondary: '#88c0d0', mdText: '#eceff4', acBg: '#171927', acAccent: '#81a1c1', acText: '#e5e9f0' },
-                      { label: 'Amber', primary: '#f59e0b', secondary: '#fbbf24', bgBase: '#100c04', panelColor: '#1a1408', navColor: '#0c0900', textColor: '#fef3c7', borderColor: '#f59e0b', ytBg: '#0e0a02', ytAccent: '#f59e0b', ytSecondary: '#fbbf24', ytText: '#fef3c7', spBg: '#0a0701', spAccent: '#d97706', spText: '#fde68a', mdBg: '#0c0903', mdAccent: '#b45309', mdSecondary: '#f59e0b', mdText: '#fef3c7', acBg: '#090702', acAccent: '#fcd34d', acText: '#fde68a' },
-                      { label: 'Rose', primary: '#fb7185', secondary: '#f43f5e', bgBase: '#120811', panelColor: '#1a0c18', navColor: '#0e050d', textColor: '#ffe4e6', borderColor: '#fb7185', ytBg: '#10060e', ytAccent: '#fb7185', ytSecondary: '#fda4af', ytText: '#ffe4e6', spBg: '#0d040b', spAccent: '#f43f5e', spText: '#fecdd3', mdBg: '#11070f', mdAccent: '#e11d48', mdSecondary: '#fb7185', mdText: '#ffe4e6', acBg: '#0c0509', acAccent: '#fda4af', acText: '#fecdd3' },
-                      { label: 'Monochrome', primary: '#e5e5e5', secondary: '#a3a3a3', bgBase: '#0a0a0a', panelColor: '#171717', navColor: '#000000', textColor: '#ffffff', borderColor: '#404040', ytBg: '#000000', ytAccent: '#d4d4d4', ytSecondary: '#737373', ytText: '#ffffff', spBg: '#050505', spAccent: '#f5f5f5', spText: '#ffffff', mdBg: '#080808', mdAccent: '#e5e5e5', mdSecondary: '#a3a3a3', mdText: '#ffffff', acBg: '#030303', acAccent: '#a3a3a3', acText: '#ffffff' }
-                    ]
-                    const activePreset = PRESETS.find(p => p.primary === customTheme.primary && p.bgBase === customTheme.bgBase)
-
-                    const armColorPicker = () => {
-                      colorPickerActiveRef.current = true;
-                      clearTimeout(colorPickerTimerRef.current);
-                      // Safety fallback: always disarm after 6s
-                      colorPickerTimerRef.current = setTimeout(() => { colorPickerActiveRef.current = false; }, 6000);
-                    };
-                    const onColorChange = (stateKey, val) => {
-                      setCustomTheme(prev => ({ ...prev, [stateKey]: val }));
-                      // change fires when OS picker closes after selection — disarm shortly after
-                      clearTimeout(colorPickerTimerRef.current);
-                      colorPickerTimerRef.current = setTimeout(() => { colorPickerActiveRef.current = false; }, 600);
-                    };
-
-                    const renderCPicker = (stateKey, label) => (
-                      <div className="cp-color-row" key={stateKey}>
-                        <div className="cp-color-swatch-wrap" onMouseDown={armColorPicker}>
-                          <input type="color"
-                            value={customTheme[stateKey] || '#000000'}
-                            onChange={e => onColorChange(stateKey, e.target.value)}
-                            title={label}
-                          />
-                          <div className="cp-color-swatch-preview" style={{ background: customTheme[stateKey] || '#000000' }} />
-                        </div>
-                        <span className="cp-color-label">{label}</span>
-                        <input type="text" className="cp-color-hex"
-                          value={(customTheme[stateKey] || '#000000').toUpperCase()}
-                          onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setCustomTheme(prev => ({ ...prev, [stateKey]: e.target.value })); }}
-                          maxLength={7}
-                        />
-                      </div>
-                    )
-
-                    const renderPanelSection = (title, icon, children) => (
-                      <div className="cp-panel-section" key={title}>
-                        <div className="cp-panel-section-title"><span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>{icon}<span>{title}</span></span></div>
-                        <div className="cp-color-grid">{children}</div>
-                      </div>
-                    )
-
-                    return (
-                      <div>
-                        <div className="settings-field" style={{ marginBottom: '14px' }}>
-                          <label className="settings-label-row" style={{ marginBottom: '8px' }}>Quick Presets</label>
-                          <div className="settings-swatch-grid">
-                            {PRESETS.map(t => (
-                              <button key={t.label}
-                                className={`settings-swatch ${activePreset?.label === t.label ? 'active' : ''}`}
-                                style={{ '--swatch-color': t.primary }}
-                                onClick={() => setCustomTheme(prev => ({ ...prev, ...t }))}
-                                title={t.label}
-                              >
-                                <span className="settings-swatch-dot" />
-                                <span className="settings-swatch-label">{t.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {renderPanelSection("Global", <Globe size={11} />, [
-                          renderCPicker("primary", "Accent / Buttons"),
-                          renderCPicker("bgBase", "App Background"),
-                          renderCPicker("panelColor", "Panel / Card"),
-                          renderCPicker("navColor", "Navbar"),
-                          renderCPicker("textColor", "Primary Text"),
-                          renderCPicker("borderColor", "Borders & Glow")
-                        ])}
-
-                        <div className="cp-panel-section">
-                          <div className="cp-panel-section-title">
-                            <Zap size={11} />
-                            Effects
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px', background: 'rgba(255,255,255,0.02)', borderRadius: '7px' }}>
-                            <span className="cp-color-label" style={{ flex: 1, minWidth: 'auto', whiteSpace: 'normal', color: '#e4e4e7' }}>Live Aurora Background</span>
-                            <button
-                              className={`settings-hw-btn ${liveBackground ? 'active' : ''}`}
-                              onClick={() => {
-                                const newVal = !liveBackground;
-                                setLiveBackground(newVal);
-                                storage.setItem('live_background', newVal.toString());
-                              }}
-                              style={{ width: 'auto', padding: '4px 12px' }}
-                            >
-                              {liveBackground ? 'Enabled' : 'Disabled'}
-                            </button>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px', background: 'rgba(255,255,255,0.02)', borderRadius: '7px', marginTop: '4px' }}>
-                            <span className="cp-color-label" style={{ flex: 1, minWidth: 'auto', whiteSpace: 'normal', color: '#e4e4e7' }}>Custom PC Wallpaper</span>
-                            {customTheme.customWallpaper ? (
-                              <button
-                                className="settings-hw-btn active"
-                                onClick={() => setCustomTheme(prev => ({ ...prev, customWallpaper: null }))}
-                                style={{ width: 'auto', padding: '4px 12px', background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5' }}
-                              >
-                                Remove
-                              </button>
-                            ) : (
-                              <button
-                                className="settings-hw-btn"
-                                onClick={() => {
-                                  const input = document.createElement('input');
-                                  input.type = 'file';
-                                  input.accept = 'image/*';
-                                  input.onchange = (e) => {
-                                    const file = e.target.files[0];
-                                    if (!file) return;
-                                    const reader = new FileReader();
-                                    reader.onload = (ev) => {
-                                      const img = new Image();
-                                      img.onload = () => {
-                                        const canvas = document.createElement('canvas');
-                                        let width = img.width;
-                                        let height = img.height;
-                                        const maxDim = 1920;
-                                        if (width > maxDim || height > maxDim) {
-                                          if (width > height) {
-                                            height = Math.round((height * maxDim) / width);
-                                            width = maxDim;
-                                          } else {
-                                            width = Math.round((width * maxDim) / height);
-                                            height = maxDim;
-                                          }
-                                        }
-                                        canvas.width = width;
-                                        canvas.height = height;
-                                        const ctx = canvas.getContext('2d');
-                                        ctx.drawImage(img, 0, 0, width, height);
-                                        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                                        setCustomTheme(prev => ({ ...prev, customWallpaper: dataUrl, customWallpaperMode: 'full' }));
-                                      };
-                                      img.src = ev.target.result;
-                                    };
-                                    reader.readAsDataURL(file);
-                                  };
-                                  input.click();
-                                }}
-                                style={{ width: 'auto', padding: '4px 12px' }}
-                              >
-                                Browse PC
-                              </button>
-                            )}
-                          </div>
-                          {customTheme.customWallpaper && (
-                            <div style={{ display: 'flex', flexDirection: 'column', padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '7px', marginTop: '4px', gap: '10px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span className="cp-color-label" style={{ whiteSpace: 'normal', color: '#e4e4e7' }}>Theme Overlay Intensity</span>
-                                <span style={{ fontSize: '0.8rem', color: '#a1a1aa', fontWeight: 600 }}>{customTheme.wallpaperOpacity !== undefined ? customTheme.wallpaperOpacity : 85}%</span>
-                              </div>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                value={customTheme.wallpaperOpacity !== undefined ? customTheme.wallpaperOpacity : 85}
-                                onChange={(e) => setCustomTheme(prev => ({ ...prev, wallpaperOpacity: parseInt(e.target.value) }))}
-                                style={{ width: '100%', cursor: 'pointer', accentColor: 'var(--primary, #ef4444)' }}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {renderPanelSection("YouTube Panel", <Play size={11} />, [
-                          renderCPicker("ytBg", "Background"),
-                          renderCPicker("ytAccent", "Video Accent"),
-                          renderCPicker("ytSecondary", "Secondary color"),
-                          renderCPicker("ytText", "Text color")
-                        ])}
-
-                        {renderPanelSection("YouTube Music", <Music size={11} />, [
-                          renderCPicker("ytMusicBg", "Background"),
-                          renderCPicker("ytMusic", "Music Accent"),
-                          renderCPicker("ytMusicSecondary", "Secondary color"),
-                          renderCPicker("ytMusicText", "Text color")
-                        ])}
-
-                        {renderPanelSection("Spotify Panel", <Music2 size={11} />, [
-                          renderCPicker("spBg", "Background"),
-                          renderCPicker("spAccent", "Accent / Green"),
-                          renderCPicker("spText", "Text color")
-                        ])}
-
-                        {renderPanelSection("Mass DL Panel", <Layers size={11} />, [
-                          renderCPicker("mdBg", "Background"),
-                          renderCPicker("mdAccent", "Purple accent"),
-                          renderCPicker("mdSecondary", "Magenta accent"),
-                          renderCPicker("mdText", "Text color")
-                        ])}
-
-                        {renderPanelSection("Audio Cutter Panel", <Scissors size={11} />, [
-                          renderCPicker("acBg", "Background"),
-                          renderCPicker("acAccent", "Cyan accent"),
-                          renderCPicker("acText", "Text color")
-                        ])}
-
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                          <button className="settings-reset-btn" style={{ flex: 1 }}
-                            onClick={() => setCustomTheme(DEFAULTS)}>
-                            <RefreshCw size={13} /> Reset All
-                          </button>
-                          <button className="settings-reset-btn" style={{ flex: 1, backgroundColor: 'var(--panel-color)' }}
-                            onClick={() => {
-                              const data = JSON.stringify(customTheme, null, 2);
-                              const blob = new Blob([data], { type: 'application/json' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `ytdl-theme-${Date.now()}.json`;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                              URL.revokeObjectURL(url);
-                            }}>
-                            <Download size={13} /> Export
-                          </button>
-                          <button className="settings-reset-btn" style={{ flex: 1, backgroundColor: 'var(--panel-color)' }}
-                            onClick={() => {
-                              const input = document.createElement('input');
-                              input.type = 'file';
-                              input.accept = 'application/json';
-                              input.onchange = e => {
-                                const file = e.target.files[0];
-                                if (!file) return;
-                                const reader = new FileReader();
-                                reader.onload = ev => {
-                                  try {
-                                    const parsed = JSON.parse(ev.target.result);
-                                    setCustomTheme(prev => ({ ...prev, ...parsed }));
-                                    toast.success("Theme imported!");
-                                  } catch (err) {
-                                    alert("Invalid JSON file.");
-                                  }
-                                };
-                                reader.readAsText(file);
-                              };
-                              input.click();
-                            }}>
-                            <Upload size={13} /> Import
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {activeSettingsTab === 'spotify' && (
-                    <div className="settings-section">
-                      <div className="settings-cred-header">
-                        <div className="settings-cred-status">
-                          <span className={`settings-cred-dot ok`} />
-                          <span className="settings-cred-status-label">Pre-configured integration</span>
-                        </div>
-                      </div>
-                      <p className="settings-hint" style={{ color: '#1DB954', fontWeight: 500, margin: '16px 0' }}>
-                        <CheckCircle2 size={14} style={{ display: 'inline-block', verticalAlign: 'text-bottom', marginRight: 4 }} />
-                        Spotify integration is fully configured! Head over to the Spotify tab and click "Login" to sync your playlists and albums.
-                      </p>
-                      <div className="settings-field" style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '18px' }}>
-                        <label className="settings-label-row">Download Engine Priority</label>
-                        <div className="settings-hw-toggle">
-                          {[
-                            { value: 'spotdl', label: 'spotdl first' },
-                            { value: 'ytdlp', label: 'yt-dlp first' },
-                          ].map(e => (
-                            <button key={e.value} className={`settings-hw-btn ${spotDlEngine === e.value ? 'active' : ''}`}
-                              onClick={() => { setSpotDlEngine(e.value); storage.setItem('spotdl_engine', e.value); }}>
-                              {e.label}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="settings-hint">spotdl gives higher quality matches; yt-dlp is faster and more reliable.</p>
-                      </div>
-                      <div className="settings-field">
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={spotDlLyrics}
-                            onChange={e => { setSpotDlLyrics(e.target.checked); storage.setItem('spotdl_lyrics', String(e.target.checked)); }} />
-                          Embed lyrics in downloaded tracks
-                        </label>
-                      </div>
-                      <div className="settings-field">
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={spotDlArchive}
-                            onChange={e => { setSpotDlArchive(e.target.checked); storage.setItem('spotdl_archive', String(e.target.checked)); }} />
-                          Skip already downloaded tracks (archive mode)
-                        </label>
-                        <p className="settings-hint">Keeps a record of downloaded tracks and skips re-downloads when syncing playlists.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSettingsTab === 'youtube' && (
-                    <div className="settings-section">
-                      <div className="settings-field">
-                        <label className="settings-label-row">Default Video Quality</label>
-                        <div className="settings-preset-cards">
-                          {[
-                            { value: 'best', label: 'Best', sub: 'Auto highest' },
-                            { value: '2160p', label: '4K', sub: '2160p' },
-                            { value: '1080p', label: '1080p', sub: 'Full HD' },
-                            { value: '720p', label: '720p', sub: 'HD' },
-                            { value: '480p', label: '480p', sub: 'SD' },
-                          ].map(q => (
-                            <button
-                              key={q.value}
-                              className={`settings-preset-card ${ytVideoQuality === q.value ? 'active' : ''}`}
-                              onClick={() => { setYtVideoQuality(q.value); storage.setItem('yt_video_quality', q.value); }}
-                            >
-                              <span className="settings-preset-label">{q.label}</span>
-                              <span className="settings-preset-sub">{q.sub}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Subtitle Download</label>
-                        <div className="settings-hw-toggle">
-                          {[
-                            { value: 'off', label: 'Off' },
-                            { value: 'auto', label: 'Auto' },
-                            { value: 'en', label: 'English' },
-                            { value: 'ro', label: 'Romanian' },
-                            { value: 'all', label: 'All langs' },
-                          ].map(s => (
-                            <button key={s.value} className={`settings-hw-btn ${ytSubtitles === s.value ? 'active' : ''}`}
-                              onClick={() => { setYtSubtitles(s.value); storage.setItem('yt_subtitles', s.value); }}>
-                              {s.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Filename Template</label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={ytFilenameTemplate}
-                          onChange={e => { setYtFilenameTemplate(e.target.value); storage.setItem('yt_filename_template', e.target.value); }}
-                          placeholder="%(title)s"
-                        />
-                        <p className="settings-hint">yt-dlp output template. Variables: %(title)s %(uploader)s %(id)s %(ext)s</p>
-                      </div>
-                      <div className="settings-field">
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={ytEmbedThumbnail}
-                            onChange={e => { setYtEmbedThumbnail(e.target.checked); storage.setItem('yt_embed_thumbnail', String(e.target.checked)); }} />
-                          Embed thumbnail in audio files
-                        </label>
-                      </div>
-                      <div className="settings-field">
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={ytWriteThumbnail}
-                            onChange={e => { setYtWriteThumbnail(e.target.checked); storage.setItem('yt_write_thumbnail', String(e.target.checked)); }} />
-                          Save thumbnail as separate image file
-                        </label>
-                      </div>
-                      <div className="settings-field">
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={ytSponsorBlock}
-                            onChange={e => { setYtSponsorBlock(e.target.checked); storage.setItem('yt_sponsorblock', String(e.target.checked)); }} />
-                          SponsorBlock — mark/remove sponsor segments
-                        </label>
-                        <p className="settings-hint">Removes sponsor, intro, and self-promo segments from downloaded videos.</p>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">YouTube PO Token (optional)</label>
-                        <input
-                          type="text"
-                          className="settings-input"
-                          value={youtubePoToken}
-                          onChange={e => {
-                            setYoutubePoToken(e.target.value);
-                            saveConfigToBackend({ youtubePoToken: e.target.value });
-                          }}
-                          placeholder="PO_TOKEN"
-                        />
-                        <p className="settings-hint">Passes the Proof of Origin token to bypass bot detection on some connections.</p>
-                      </div>
-
-                      <div className="settings-field">
-                        <label className="settings-label-row">Browser Cookies (Anti-Bot Bypass)</label>
-                        <select
-                          className="settings-input"
-                          value={cookiesFromBrowser}
-                          onChange={e => {
-                            setCookiesFromBrowser(e.target.value);
-                            saveConfigToBackend({ cookiesFromBrowser: e.target.value });
-                          }}
-                        >
-                          <option value="">None (Use cookies.txt if exists)</option>
-                          <option value="chrome">Google Chrome</option>
-                          <option value="edge">Microsoft Edge</option>
-                          <option value="brave">Brave</option>
-                          <option value="firefox">Firefox</option>
-                          <option value="opera">Opera</option>
-                          <option value="vivaldi">Vivaldi</option>
-                          <option value="safari">Safari</option>
-                        </select>
-                        <p className="settings-hint">Automatically extract your active YouTube login session from your browser to completely bypass bot protection blocks. Must have logged into YouTube in that browser.</p>
-                      </div>
-                      <div className="settings-field" style={{ marginTop: '20px' }}>
-                        <label className="settings-label-row">Browser Cookies</label>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <button className="settings-save-btn" onClick={async () => {
-                            try {
-                              const res = await fetch('/api/cookies/import', { method: 'POST' });
-                              const data = await res.json();
-                              if (data.success) alert('Cookies imported successfully!');
-                              else alert('Failed to import cookies: ' + data.error);
-                            } catch (e) {
-                              alert('Network error while importing cookies.');
-                            }
-                          }} style={{ width: 'auto', padding: '0.5rem 1rem' }}>
-                            Import cookies from Chrome
-                          </button>
-                          <button className="settings-save-btn" onClick={async () => {
-                            try {
-                              const res = await fetch('/api/ytdl/clear-cookies');
-                              const data = await res.json();
-                              if (data.success) alert('Cookies cleared successfully!');
-                              else alert('Failed to clear cookies: ' + data.error);
-                            } catch (e) {
-                              alert('Network error while clearing cookies.');
-                            }
-                          }} style={{ width: 'auto', padding: '0.5rem 1rem', background: 'rgba(225, 29, 72, 0.8)' }}>
-                            Clear cookies
-                          </button>
-                        </div>
-                        <p className="settings-hint">Imports YouTube cookies from Chrome to help bypass restrictions.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSettingsTab === 'massdl' && (
-                    <div className="settings-section">
-                      <div className="settings-field">
-                        <label className="settings-label-row">Default Audio Format</label>
-                        <div className="settings-hw-toggle">
-                          {['mp3', 'flac', 'm4a', 'wav', 'opus'].map(f => (
-                            <button key={f} className={`settings-hw-btn ${massDlOutputFormat === f ? 'active' : ''}`}
-                              onClick={() => { setMassDlOutputFormat(f); storage.setItem('massdl_output_format', f); }}>
-                              {f.toUpperCase()}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Max Concurrent Downloads — <strong style={{ color: '#f4f4f5' }}>{massDlConcurrency}</strong></label>
-                        <input type="range" min="1" max="20" value={massDlConcurrency}
-                          onChange={e => { setMassDlConcurrency(+e.target.value); storage.setItem('massdl_concurrency', e.target.value); }}
-                          style={{ width: '100%', accentColor: 'var(--primary)' }}
-                        />
-                        <p className="settings-hint">Higher = faster downloads but more CPU and RAM usage. Recommended: 3–8.</p>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Delay Between Downloads — <strong style={{ color: '#f4f4f5' }}>{massDlDelay}s</strong></label>
-                        <input type="range" min="0" max="10" value={massDlDelay}
-                          onChange={e => { setMassDlDelay(+e.target.value); storage.setItem('massdl_delay', e.target.value); }}
-                          style={{ width: '100%', accentColor: 'var(--primary)' }}
-                        />
-                        <p className="settings-hint">Adds a pause between each download to avoid rate limiting.</p>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Max Retries per Failed Track</label>
-                        <div className="settings-hw-toggle">
-                          {[0, 1, 2, 3, 5].map(n => (
-                            <button key={n} className={`settings-hw-btn ${massDlRetries === n ? 'active' : ''}`}
-                              onClick={() => { setMassDlRetries(n); storage.setItem('massdl_retries', String(n)); }}>
-                              {n}×
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={massDlContinueOnError}
-                            onChange={e => { setMassDlContinueOnError(e.target.checked); storage.setItem('massdl_continue_on_error', String(e.target.checked)); }} />
-                          Continue batch on error
-                        </label>
-                        <p className="settings-hint">If a track fails all retries, skip it and continue with the rest instead of stopping.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSettingsTab === 'cutter' && (
-                    <div className="settings-section">
-                      <div className="settings-field">
-                        <label className="settings-label-row">Default Export Format</label>
-                        <div className="settings-hw-toggle">
-                          {['mp3', 'flac', 'wav', 'm4a', 'opus'].map(f => (
-                            <button key={f} className={`settings-hw-btn ${cutterOutputFormat === f ? 'active' : ''}`}
-                              onClick={() => { setCutterOutputFormat(f); storage.setItem('cutter_output_format', f); }}>
-                              {f.toUpperCase()}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Default Export Bitrate</label>
-                        <div className="settings-hw-toggle">
-                          {['320k', '256k', '192k', '128k'].map(q => (
-                            <button key={q} className={`settings-hw-btn ${cutterBitrate === q ? 'active' : ''}`}
-                              onClick={() => { setCutterBitrate(q); storage.setItem('cutter_bitrate', q); }}>
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Default Fade In/Out — <strong style={{ color: '#f4f4f5' }}>{cutterFadeDuration}ms</strong></label>
-                        <input type="range" min="0" max="3000" step="50" value={cutterFadeDuration}
-                          onChange={e => { setCutterFadeDuration(+e.target.value); storage.setItem('cutter_fade_duration', e.target.value); }}
-                          style={{ width: '100%', accentColor: 'var(--primary)' }}
-                        />
-                        <p className="settings-hint">Applied automatically when exporting cuts. Set to 0 to disable.</p>
-                      </div>
-                      <div className="settings-field">
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={cutterNormalize}
-                            onChange={e => { setCutterNormalize(e.target.checked); storage.setItem('cutter_normalize', String(e.target.checked)); }} />
-                          Normalize audio loudness on export
-                        </label>
-                        <p className="settings-hint">Uses FFmpeg loudnorm filter to bring volume to a consistent level.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSettingsTab === 'system' && (
-                    <div className="settings-section">
-                      <div className="settings-field">
-                        <label className="settings-label-row">Download Speed Preset</label>
-                        <div className="settings-preset-cards">
-                          {[
-                            { value: 'ECO', label: 'Eco', sub: 'Low CPU', icon: <Leaf size={18} /> },
-                            { value: 'BALANCED', label: 'Balanced', sub: 'Recommended', icon: <Scale size={18} /> },
-                            { value: 'HIGH_PERFORMANCE', label: 'Fast', sub: 'High CPU', icon: <Zap size={18} /> },
-                            { value: 'ULTRA_PERFORMANCE', label: 'Ultra', sub: 'Max speed', icon: <Rocket size={18} /> },
-                            { value: 'AUTO', label: 'Auto', sub: 'AI decides', icon: <Bot size={18} /> },
-                          ].map(p => (
-                            <button
-                              key={p.value}
-                              className={`settings-preset-card ${downloadPreset === p.value ? 'active' : ''}`}
-                              onClick={() => setDownloadPreset(p.value)}
-                            >
-                              <span className="settings-preset-icon">{p.icon}</span>
-                              <span className="settings-preset-label">{p.label}</span>
-                              <span className="settings-preset-sub">{p.sub}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Hardware Acceleration (FFmpeg)</label>
-                        <div className="settings-hw-toggle">
-                          {[
-                            { value: 'NONE', label: 'CPU Only' },
-                            { value: 'AUTO', label: 'Auto' },
-                            { value: 'CUDA', label: 'NVIDIA' },
-                            { value: 'AMF', label: 'AMD' },
-                            { value: 'QSV', label: 'Intel' },
-                          ].map(h => (
-                            <button
-                              key={h.value}
-                              className={`settings-hw-btn ${hardwareAcceleration === h.value ? 'active' : ''}`}
-                              onClick={() => setHardwareAcceleration(h.value)}
-                            >
-                              {h.label}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="settings-hint">GPU encoding speeds up video conversion. MP3 is always CPU.</p>
-                      </div>
-                      <div className="settings-field">
-                        <label className="settings-label-row">Engine (yt-dlp)</label>
-                        <button
-                          className="settings-update-btn"
-                          onClick={handleUpdateEngine}
-                        >
-                          <RefreshCw size={15} /> Check for Updates
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {activeSettingsTab !== 'logs' && activeSettingsTab !== 'updates' && (
-                  <div className="control-panel-footer">
-                    <button className="settings-save-btn settings-save-btn--cta" onClick={saveSettings}>
-                      <CheckCircle2 size={16} /> Save Settings
-                    </button>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
+          <SettingsModal
+            onClose={saveSettings}
+            activeTab={activeSettingsTab}
+            setActiveTab={setActiveSettingsTab}
+            /* General */
+            customPath={customPath}
+            handleSelectFolder={handleSelectFolder}
+            audioFormat={audioFormat}
+            setAudioFormat={setAudioFormat}
+            audioQuality={audioQuality}
+            setAudioQuality={setAudioQuality}
+            /* Theme */
+            customTheme={customTheme}
+            setCustomTheme={setCustomTheme}
+            liveBackground={liveBackground}
+            setLiveBackground={setLiveBackground}
+            colorPickerActiveRef={colorPickerActiveRef}
+            colorPickerTimerRef={colorPickerTimerRef}
+            /* System */
+            downloadPreset={downloadPreset}
+            setDownloadPreset={setDownloadPreset}
+            hardwareAcceleration={hardwareAcceleration}
+            setHardwareAcceleration={setHardwareAcceleration}
+            handleUpdateEngine={handleUpdateEngine}
+            saveConfigToBackend={saveConfigToBackend}
+            /* YouTube */
+            ytVideoQuality={ytVideoQuality}
+            setYtVideoQuality={setYtVideoQuality}
+            ytSubtitles={ytSubtitles}
+            setYtSubtitles={setYtSubtitles}
+            ytEmbedThumbnail={ytEmbedThumbnail}
+            setYtEmbedThumbnail={setYtEmbedThumbnail}
+            ytWriteThumbnail={ytWriteThumbnail}
+            setYtWriteThumbnail={setYtWriteThumbnail}
+            ytSponsorBlock={ytSponsorBlock}
+            setYtSponsorBlock={setYtSponsorBlock}
+            ytFilenameTemplate={ytFilenameTemplate}
+            setYtFilenameTemplate={setYtFilenameTemplate}
+            youtubePoToken={youtubePoToken}
+            setYoutubePoToken={setYoutubePoToken}
+            cookiesFromBrowser={cookiesFromBrowser}
+            setCookiesFromBrowser={setCookiesFromBrowser}
+            /* Spotify */
+            spotDlEngine={spotDlEngine}
+            setSpotDlEngine={setSpotDlEngine}
+            spotDlLyrics={spotDlLyrics}
+            setSpotDlLyrics={setSpotDlLyrics}
+            spotDlArchive={spotDlArchive}
+            setSpotDlArchive={setSpotDlArchive}
+            /* Mass DL */
+            massDlConcurrency={massDlConcurrency}
+            setMassDlConcurrency={setMassDlConcurrency}
+            massDlRetries={massDlRetries}
+            setMassDlRetries={setMassDlRetries}
+            massDlContinueOnError={massDlContinueOnError}
+            setMassDlContinueOnError={setMassDlContinueOnError}
+            massDlOutputFormat={massDlOutputFormat}
+            setMassDlOutputFormat={setMassDlOutputFormat}
+            massDlDelay={massDlDelay}
+            setMassDlDelay={setMassDlDelay}
+            /* Cutter */
+            cutterOutputFormat={cutterOutputFormat}
+            setCutterOutputFormat={setCutterOutputFormat}
+            cutterFadeDuration={cutterFadeDuration}
+            setCutterFadeDuration={setCutterFadeDuration}
+            cutterNormalize={cutterNormalize}
+            setCutterNormalize={setCutterNormalize}
+            cutterBitrate={cutterBitrate}
+            setCutterBitrate={setCutterBitrate}
+            /* Rules */
+            spotifyThreshold={spotifyThreshold}
+            setSpotifyThreshold={setSpotifyThreshold}
+            ytDlpFallbackEnabled={ytDlpFallbackEnabled}
+            setYtDlpFallbackEnabled={setYtDlpFallbackEnabled}
+          />
         )}
       </AnimatePresence>
+
+
+
       {/* Update Toast */}
       <AnimatePresence>
         {updateNotice && (

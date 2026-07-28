@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Film, FolderOpen, Play, Music, LayoutGrid, List, X, ChevronDown, Scissors, Trash2, Search, MonitorPlay, Headphones, HardDrive } from 'lucide-react';
+import { getBestYtThumbnail } from './utils/colorUtils';
 import './LibraryModal.css';
 
 const FILTERS = ['All', 'YouTube', 'Spotify', 'Cutter', 'Audio', 'Video'];
@@ -218,10 +219,20 @@ export default function LibraryModal({ historyData, onClose, onSendToCutter }) {
                   >
                     <div className="lib-card-thumb">
                       <img
-                        src={item.thumbnail && item.thumbnail !== 'undefined' ? item.thumbnail : `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
+                        src={item.thumbnail && item.thumbnail !== 'undefined' ? getBestYtThumbnail(item.thumbnail) : `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
                         alt=""
                         className="lib-thumb-img"
-                        onError={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
+                        onError={(e) => {
+                          const cur = e.target.src;
+                          if (cur.includes('maxresdefault')) {
+                            e.target.src = cur.replace('maxresdefault', 'sddefault');
+                          } else if (cur.includes('sddefault')) {
+                            e.target.src = cur.replace('sddefault', 'hqdefault');
+                          } else {
+                            e.target.src = `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`;
+                            e.target.onerror = () => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; };
+                          }
+                        }}
                       />
                       <div className="lib-thumb-fallback"><Film size={28} /></div>
                       <div className="lib-card-shade" />
@@ -265,10 +276,20 @@ export default function LibraryModal({ historyData, onClose, onSendToCutter }) {
                     className="lib-list-row"
                   >
                     <img
-                      src={item.thumbnail && item.thumbnail !== 'undefined' ? item.thumbnail : `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
+                      src={item.thumbnail && item.thumbnail !== 'undefined' ? getBestYtThumbnail(item.thumbnail) : `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`}
                       alt=""
                       className="lib-list-thumb"
-                      onError={(e) => { e.target.style.display = 'none'; }}
+                      onError={(e) => {
+                        const cur = e.target.src;
+                        if (cur.includes('maxresdefault')) {
+                          e.target.src = cur.replace('maxresdefault', 'sddefault');
+                        } else if (cur.includes('sddefault')) {
+                          e.target.src = cur.replace('sddefault', 'hqdefault');
+                        } else {
+                          e.target.src = `/api/ytdl/local-thumbnail?file=${encodeURIComponent(item.filename)}`;
+                          e.target.onerror = () => { e.target.style.display = 'none'; };
+                        }
+                      }}
                     />
                     <div className="lib-list-info">
                       <p className="lib-list-title">{item.title}</p>

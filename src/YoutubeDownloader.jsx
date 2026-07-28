@@ -31,7 +31,7 @@ import {
   Check,
   LayoutGrid,
 } from "lucide-react";
-import { getAverageColor } from "./utils/colorUtils";
+import { getAverageColor, getBestYtThumbnail } from "./utils/colorUtils";
 import WaveformBg from "./WaveformBg";
 import "./YoutubeDownloader.css";
 
@@ -312,7 +312,7 @@ function generateJobId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
-const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
+const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
   const [url, setUrl] = useState("");
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -538,7 +538,7 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
         const videos = gHist.filter(i => String(i.format).toLowerCase().includes("video")).length;
         const audios = gHist.filter(i => String(i.format).toLowerCase().includes("audio")).length;
         setLifetimeStats({ videos, audio: audios, total: gHist.length });
-      } catch (e) {}
+      } catch (e) { }
     };
     calcStats();
     window.addEventListener("history_updated", calcStats);
@@ -1766,7 +1766,7 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
                     >
                       {h.thumbnail ? (
                         <img
-                          src={h.thumbnail}
+                          src={getBestYtThumbnail(h.thumbnail)}
                           alt=""
                           style={{
                             width: 24,
@@ -1902,12 +1902,15 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
                       }
                     >
                       <img
-                        src={info.playlist?.thumbnail || info.thumbnail}
+                        src={getBestYtThumbnail(info.playlist?.thumbnail || info.thumbnail)}
                         alt="thumbnail"
                         className="ytdl-thumbnail"
                         onError={(e) => {
-                          if (e.target.src.includes("maxresdefault.jpg")) {
-                            e.target.src = e.target.src.replace("maxresdefault.jpg", "hqdefault.jpg");
+                          const cur = e.target.src;
+                          if (cur.includes('maxresdefault')) {
+                            e.target.src = cur.replace('maxresdefault', 'sddefault');
+                          } else if (cur.includes('sddefault')) {
+                            e.target.src = cur.replace('sddefault', 'hqdefault');
                           }
                         }}
                       />
@@ -2850,13 +2853,13 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
 
                                 {/* Floating music note particles */}
                                 <div className="ytmusic-particles">
-                                  {['♪','♫','♩','♬','♭','♪','♫'].map((note, i) => (
+                                  {['♪', '♫', '♩', '♬', '♭', '♪', '♫'].map((note, i) => (
                                     <span key={i} className="ytm-particle" style={{
                                       left: `${10 + i * 13}%`,
                                       animationDuration: `${4 + i * 0.7}s`,
                                       animationDelay: `${i * 0.6}s`,
                                       fontSize: `${11 + (i % 3) * 3}px`,
-                                      color: ['rgba(255,80,80,0.5)','rgba(255,140,40,0.4)','rgba(255,50,120,0.45)'][i % 3],
+                                      color: ['rgba(255,80,80,0.5)', 'rgba(255,140,40,0.4)', 'rgba(255,50,120,0.45)'][i % 3],
                                     }}>{note}</span>
                                   ))}
                                 </div>
@@ -2901,7 +2904,7 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => {} }) => {
                                           {/* Animated waveform — only while active */}
                                           {ytMusicFallbackStatus.stage !== 'failed' && (
                                             <div className="ytmusic-waveform" style={{ marginLeft: 'auto' }}>
-                                              {[1,2,3,4,5,6,7].map(i => (
+                                              {[1, 2, 3, 4, 5, 6, 7].map(i => (
                                                 <div key={i} className="ytmusic-waveform-bar" />
                                               ))}
                                             </div>

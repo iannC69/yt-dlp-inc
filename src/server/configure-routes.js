@@ -1,4 +1,4 @@
-﻿import fs from 'fs'
+import fs from 'fs'
 import path from 'path'
 import { spawn, spawnSync } from 'child_process'
 import os from 'os'
@@ -41,9 +41,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   function isYouTubeUrl(url) { return /^(https?:\/\/)?(www\.|music\.)?(youtube\.com|youtu\.be|soundcloud\.com)\/.+/.test(url) }
   function parseYtDlpError(s) {
     if (!s) return null
-    if (s.includes('HTTP Error 429') || s.includes('Too Many Requests')) return 'YouTube Rate Limit. Încearcă mai târziu sau folosește un VPN.'
-    if (s.includes("Sign in to confirm") || s.includes('bot protection')) return 'YouTube a limitat temporar adresa ta IP (Rate Limit / Anti-Bot). Folosește setarea PO Token (din System & Engine) sau actualizează cookie-urile.'
-    if (s.includes('No space left')) return 'Nu mai este spațiu pe disc!'
+    if (s.includes('HTTP Error 429') || s.includes('Too Many Requests')) return 'YouTube Rate Limit. ÃŽncearcÄƒ mai tÃ¢rziu sau foloseÈ™te un VPN.'
+    if (s.includes("Sign in to confirm") || s.includes('bot protection')) return 'YouTube a limitat temporar adresa ta IP (Rate Limit / Anti-Bot). FoloseÈ™te setarea PO Token (din System & Engine) sau actualizeazÄƒ cookie-urile.'
+    if (s.includes('No space left')) return 'Nu mai este spaÈ›iu pe disc!'
     if (s.includes('Video unavailable') || s.includes('Private video')) return 'Videoclipul nu este disponibil sau este privat.'
     if (s.includes('members on level')) return 'Disponibil doar pentru membrii canalului.'
     return null
@@ -85,7 +85,10 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   function finishJob(id, d) {
     if (d.error) metrics.failedDownloads++; else metrics.successfulDownloads++
     const j = activeJobs.get(id)
-    if (!d.error && j && d.finalFilename) d.jobInfo = { title: j.state.title || d.finalFilename, thumbnail: j.state.thumbnail, format: j.type === 'single' ? (j.state.format || 'unknown') : 'playlist', filename: d.finalFilename, isArchive: d.isArchive, source: 'youtube', date: new Date().toISOString(), id: Date.now().toString() }
+    const upgradedThumb = (j?.state.thumbnail && j.state.thumbnail.includes('ytimg.com'))
+      ? j.state.thumbnail.replace(/(\/vi(?:_webp)?\/[^/]+\/)([^/?#]+)(\.(?:jpg|webp))/i, '$1maxresdefault$3')
+      : j?.state.thumbnail;
+    if (!d.error && j && d.finalFilename) d.jobInfo = { title: j.state.title || d.finalFilename, thumbnail: upgradedThumb, format: j.type === 'single' ? (j.state.format || 'unknown') : 'playlist', filename: d.finalFilename, isArchive: d.isArchive, source: 'youtube', date: new Date().toISOString(), id: Date.now().toString() }
     broadcast(id, { ...d, done: true })
     if (j) { j.clients.forEach(c => c.end()); j.clients.clear(); setTimeout(() => activeJobs.delete(id), 10 * 60 * 1000) }
   }
@@ -100,7 +103,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         const m = text.match(/Downloading item\s+(\d+)\s+of\s+(\d+)/i), mp = text.match(/\[download\]\s+([\d.]+)%/)
         if (m) { curItem = Number(m[1]); totItems = Number(m[2]) }
         const prog = totItems ? ((curItem - 1) / totItems) * 100 + ((mp ? Number(mp[1]) : 0) / totItems) : 0
-        broadcast(jobId, { progress: Math.min(prog, 95), currentItem: curItem, totalItems: totItems, status: totItems ? `Se descarcă piesa ${curItem} din ${totItems}` : 'Se pregătește...' })
+        broadcast(jobId, { progress: Math.min(prog, 95), currentItem: curItem, totalItems: totItems, status: totItems ? `Se descarcÄƒ piesa ${curItem} din ${totItems}` : 'Se pregÄƒteÈ™te...' })
       } else {
         const dm = text.match(/Destination:\s*(.*)/), am = text.match(/\]\s+(.*?)\s*has already been downloaded/), mm = text.match(/Merging formats into "(.*)"/), pm = text.match(/\[download\]\s+([\d.]+)%/)
         if (dm?.[1]) finalFn = path.basename(dm[1].trim()); if (am?.[1]) finalFn = path.basename(am[1].trim()); if (mm?.[1]) finalFn = path.basename(mm[1].trim())
@@ -117,7 +120,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       if (job.isCancelled || job.isPaused) return
       if (code !== 0) { const ke = parseYtDlpError(fullStderr); if (ke) { if (job.collectionDir) { try { fs.rmSync(job.collectionDir, { recursive: true, force: true }) } catch { } } return finishJob(jobId, { error: ke }) } }
       if (job.type === 'single') {
-        if (code !== 0) finishJob(jobId, { error: 'Eroare la descărcare. Cod: ' + code })
+        if (code !== 0) finishJob(jobId, { error: 'Eroare la descÄƒrcare. Cod: ' + code })
         else {
           const fp = path.join(job.downloadsDir, finalFn);
           if (fp.endsWith('.mp3')) { try { await augmentYtTags(fp); } catch (e) { console.error('[tags] single augment error:', e.message); } }
@@ -125,11 +128,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         }
       } else {
         const dlf = fs.existsSync(job.collectionDir) ? fs.readdirSync(job.collectionDir) : []
-        if (!dlf.length) { try { fs.rmSync(job.collectionDir, { recursive: true, force: true }) } catch { }; finishJob(jobId, { error: 'Nu s-a descărcat niciun fișier.' }); return }
-        broadcast(jobId, { progress: 96, status: 'Se configurează folderul...' })
+        if (!dlf.length) { try { fs.rmSync(job.collectionDir, { recursive: true, force: true }) } catch { }; finishJob(jobId, { error: 'Nu s-a descÄƒrcat niciun fiÈ™ier.' }); return }
+        broadcast(jobId, { progress: 96, status: 'Se configureazÄƒ folderul...' })
         if (job.state.thumbnail) {
           try {
-            const cb = Buffer.from(await (await fetch(job.state.thumbnail)).arrayBuffer());
+            // Upgrade thumbnail URL to highest available resolution before fetching
+            const thumbVideoId = extractYtVideoId(job.state.thumbnail);
+            const cb = await fetchHDCoverBuffer(thumbVideoId, job.state.thumbnail) || Buffer.from(await (await fetch(job.state.thumbnail)).arrayBuffer());
             const metaDir = path.join(job.collectionDir, '.metadata')
             if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir)
             if (os.platform() === 'win32') { try { spawnSync('attrib', ['+h', metaDir], { windowsHide: true }); } catch (e) { } }
@@ -137,7 +142,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             const rawJp = path.join(metaDir, 'raw_folder.jpg'); fs.writeFileSync(rawJp, cb)
             const jp = path.join(metaDir, 'folder.jpg');
 
-            await new Promise(r => { spawn(ffmpegBin, ['-y', '-i', rawJp, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)', jp], { windowsHide: true }).on('close', r) })
+            await new Promise(r => { spawn(ffmpegBin, ['-y', '-i', rawJp, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos', jp], { windowsHide: true }).on('close', r) })
             let finalCb = cb;
             if (fs.existsSync(jp)) { finalCb = fs.readFileSync(jp); } else { fs.writeFileSync(jp, cb); }
             try { fs.unlinkSync(rawJp); } catch (e) { }
@@ -181,13 +186,120 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   function isGoodMatch(a, b) { if (!a || !b) return false; const x = a.toLowerCase().trim(), y = b.toLowerCase().trim(); if (x.includes(y) || y.includes(x)) return true; const wa = x.split(/\s+/), wb = y.split(/\s+/); return wa.filter(w => w.length > 3 && wb.includes(w)).length > 0 }
   function httpsGet(url) { return new Promise((res, rej) => { https.get(url, r => { let b = ''; r.on('data', c => b += c); r.on('end', () => { try { res(JSON.parse(b)) } catch { res({}) } }) }).on('error', rej) }) }
-  async function fetchItunesMetadata(title, artist) { try { const d = await httpsGet(`https://itunes.apple.com/search?term=${encodeURIComponent(title + ' ' + artist)}&entity=song&limit=5&country=US`); for (const r of (d.results || [])) { if (isGoodMatch(artist, r.artistName)) return { title: r.trackName, artist: r.artistName, album: r.collectionName, year: r.releaseDate?.substring(0, 4) || '', coverUrl: r.artworkUrl100?.replace('100x100bb', '640x640bb') || null, source: 'itunes' } } } catch { }; return null }
+  async function fetchItunesMetadata(title, artist) { try { const d = await httpsGet(`https://itunes.apple.com/search?term=${encodeURIComponent(title + ' ' + artist)}&entity=song&limit=5&country=US`); for (const r of (d.results || [])) { if (isGoodMatch(artist, r.artistName)) return { title: r.trackName, artist: r.artistName, album: r.collectionName, year: r.releaseDate?.substring(0, 4) || '', coverUrl: r.artworkUrl100?.replace('100x100bb', '3000x3000bb') || null, source: 'itunes' } } } catch { }; return null }
   async function fetchYouTubeMusicMetadata(title, artist) { const q = `${title} ${artist} Topic`; return new Promise(resolve => { const p = spawn(binPath, ['--dump-json', '--no-playlist', '--no-warnings', `ytsearch1:${q}`], { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } }); let s = ''; p.stdout.on('data', c => s += c); p.on('close', () => { try { const i = JSON.parse(s); const u = i.uploader || i.channel || ''; if (!isGoodMatch(artist, u.replace(' - Topic', ''))) return resolve(null); resolve({ title: i.title, artist, album: i.album || '', year: i.release_year?.toString() || i.upload_date?.substring(0, 4) || '', coverUrl: i.thumbnail || null, source: 'youtube_music' }) } catch { resolve(null) } }); p.on('error', () => resolve(null)); setTimeout(() => { try { p.kill() } catch { }; resolve(null) }, 10000) }) }
 
-  const scheduledJobTimer = setInterval(() => { const j = getScheduled(); const now = new Date(); let ch = false; j.forEach(job => { if (!job.started && job.runAt && new Date(job.runAt) <= now) { job.started = true; ch = true; try { const id = job.id; const td = ensureDownloadsDir(null); if (job.type === 'single') { const bf = path.join(td, `batch-${id}.txt`); fs.writeFileSync(bf, (job.items || []).join('\n'), 'utf8'); const args = ['--batch-file', bf, '--paths', td, '--embed-metadata', '--embed-thumbnail']; if (job.format === 'audio') args.push('-x', '--audio-format', (job.formatStr || 'mp3').split(':')[0] || 'mp3', '--audio-quality', '0'); else args.push('-f', job.formatStr || 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b'); args.push('-o', '%(title)s.%(ext)s'); activeJobs.set(id, { id, type: 'single', args, clients: new Set(), downloadsDir: td, state: { progress: 0, status: 'Se pregătește...', currentItem: 0, totalItems: 1 } }); enqueueJob(id) } } catch (err) { console.error('Scheduled job failed:', err) } } }); if (ch) saveScheduled(j) }, 60000)
+  /**
+   * Transform any ytimg.com thumbnail URL to the highest available resolution.
+   * Replaces the quality token (e.g. hqdefault, mqdefault, sddefault, maxresdefault)
+   * with maxresdefault so callers always request the best quality.
+   */
+  function upgradeYtThumbnailUrl(url) {
+    if (!url) return url;
+    // Upgrade Google User Content / yt3 (true square covers) to 2000x2000
+    if (url.includes('lh3.googleusercontent.com') || url.includes('yt3.ggpht.com')) {
+      return url.replace(/([=\\-])[ws]\d+(?:-h\d+)?([^?]*)/, '$1w2000-h2000$2');
+    }
+    // Replace known resolution tokens with maxresdefault
+    return url.replace(/(\/(vi|vi_webp)\/[^/]+\/)([^/?#]+)(\.(jpg|webp))/i, '$1maxresdefault$4');
+  }
+
+  /**
+   * Extract a YouTube video ID from a URL string (watch?v=, youtu.be/, /vi/ in ytimg, etc.)
+   */
+  function extractYtVideoId(str) {
+    if (!str) return null;
+    // ytimg.com URL: /vi/<id>/ or /vi_webp/<id>/
+    let m = str.match(/\/vi(?:_webp)?\/([a-zA-Z0-9_-]{11})\//);
+    if (m) return m[1];
+    // Standard YouTube watch URL
+    m = str.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    // youtu.be short URL
+    m = str.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    // youtube.com/shorts/<id>
+    m = str.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    return null;
+  }
+
+  /**
+   * Fetch the highest-resolution thumbnail available for a YouTube video.
+   * Priority order: maxresdefault (1280px) â†’ sddefault (640px) â†’ hqdefault (480px) â†’ fallbackUrl.
+   * Returns a Buffer or null.
+   */
+  async function fetchHDCoverBuffer(videoId, fallbackUrl) {
+    const fetchBuf = (url) => new Promise((resolve) => {
+      const mod = url.startsWith('https') ? https : require('http');
+      const req = mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (r) => {
+        if (r.statusCode === 301 || r.statusCode === 302) {
+          if (r.headers.location) return resolve(fetchBuf(r.headers.location));
+          return resolve(null);
+        }
+        if (r.statusCode !== 200) return resolve(null);
+        const chunks = [];
+        r.on('data', c => chunks.push(c));
+        r.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          // ytimg returns a tiny placeholder (~1-3KB) for unavailable sizes
+          resolve(buf.length > 5000 ? buf : null);
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+    });
+
+    // Check if fallback URL is a native square Google image
+    const isNativeSquare = fallbackUrl && (fallbackUrl.includes('lh3.googleusercontent.com') || fallbackUrl.includes('yt3.ggpht.com'));
+
+    // Try native square FIRST, before maxresdefault
+    if (isNativeSquare) {
+      const upgradedUrl = upgradeYtThumbnailUrl(fallbackUrl);
+      const buf = await fetchBuf(upgradedUrl);
+      if (buf && buf.length > 10000) { // Native covers should be sizable
+        console.log(`[cover] Native square cover fetched (${buf.length} bytes) from ${upgradedUrl}`);
+        return buf;
+      }
+    }
+
+    if (videoId) {
+      // Try candidates in quality order
+      const candidates = [
+        `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+        `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
+        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      ];
+      for (const url of candidates) {
+        const buf = await fetchBuf(url);
+        if (buf) {
+          console.log(`[cover] HD thumbnail fetched (${buf.length} bytes) from ${url}`);
+          return buf;
+        }
+      }
+    }
+
+    // Fall back to whatever URL was provided (e.g. from playlist JSON)
+    if (fallbackUrl) {
+      const upgradedUrl = upgradeYtThumbnailUrl(fallbackUrl);
+      // Try upgraded URL first, then original
+      for (const url of [upgradedUrl, fallbackUrl]) {
+        if (!url) continue;
+        const buf = await fetchBuf(url);
+        if (buf) {
+          console.log(`[cover] Fallback thumbnail fetched (${buf.length} bytes) from ${url}`);
+          return buf;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  const scheduledJobTimer = setInterval(() => { const j = getScheduled(); const now = new Date(); let ch = false; j.forEach(job => { if (!job.started && job.runAt && new Date(job.runAt) <= now) { job.started = true; ch = true; try { const id = job.id; const td = ensureDownloadsDir(null); if (job.type === 'single') { const bf = path.join(td, `batch-${id}.txt`); fs.writeFileSync(bf, (job.items || []).join('\n'), 'utf8'); const args = ['--batch-file', bf, '--paths', td, '--embed-metadata', '--embed-thumbnail']; if (job.format === 'audio') args.push('-x', '--audio-format', (job.formatStr || 'mp3').split(':')[0] || 'mp3', '--audio-quality', '0'); else args.push('-f', job.formatStr || 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b'); args.push('-o', '%(title)s.%(ext)s'); activeJobs.set(id, { id, type: 'single', args, clients: new Set(), downloadsDir: td, state: { progress: 0, status: 'Se pregÄƒteÈ™te...', currentItem: 0, totalItems: 1 } }); enqueueJob(id) } } catch (err) { console.error('Scheduled job failed:', err) } } }); if (ch) saveScheduled(j) }, 60000)
   scheduledJobTimer.unref?.()
 
-  // ── Setup wizard endpoints ───────────────────────────────────────────────
+  // â”€â”€ Setup wizard endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const setupMarker = path.join(appDir, 'setup_complete')
 
   middlewares.use('/api/setup/status', (req, res, next) => {
@@ -220,7 +332,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     }
   })
 
-  // ── Routes ──────────────────────────────────────────────────────────────
+  // â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   middlewares.use('/api/ytdl', (req, res, next) => { metrics.totalHits++; next() })
 
@@ -352,13 +464,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     } catch (e) { }
   };
 
-  middlewares.use('/api/ytdl/job-action', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const j = activeJobs.get(u.searchParams.get('jobId')); const a = u.searchParams.get('action'); if (!j) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'Job not found' })) }; if (a === 'pause') { if (!j.isPaused && !j.state.done && j.process) { j.isPaused = true; killProcessTree(j.process); broadcast(u.searchParams.get('jobId'), { isPaused: true, status: 'Pauză.' }) } } else if (a === 'resume') { if (j.isPaused && !j.state.done) { j.isPaused = false; broadcast(u.searchParams.get('jobId'), { isPaused: false, status: 'Se reia...' }); spawnYtDlp(u.searchParams.get('jobId')) } } else if (a === 'cancel') { j.isCancelled = true; if (j.process) killProcessTree(j.process); if (j.collectionDir) { try { fs.rmSync(j.collectionDir, { recursive: true, force: true }) } catch { } }; finishJob(u.searchParams.get('jobId'), { error: 'Anulat.' }); activeJobs.delete(u.searchParams.get('jobId')) } else { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Invalid action' })) }; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true })) })
+  middlewares.use('/api/ytdl/job-action', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const j = activeJobs.get(u.searchParams.get('jobId')); const a = u.searchParams.get('action'); if (!j) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'Job not found' })) }; if (a === 'pause') { if (!j.isPaused && !j.state.done && j.process) { j.isPaused = true; killProcessTree(j.process); broadcast(u.searchParams.get('jobId'), { isPaused: true, status: 'PauzÄƒ.' }) } } else if (a === 'resume') { if (j.isPaused && !j.state.done) { j.isPaused = false; broadcast(u.searchParams.get('jobId'), { isPaused: false, status: 'Se reia...' }); spawnYtDlp(u.searchParams.get('jobId')) } } else if (a === 'cancel') { j.isCancelled = true; if (j.process) killProcessTree(j.process); if (j.collectionDir) { try { fs.rmSync(j.collectionDir, { recursive: true, force: true }) } catch { } }; finishJob(u.searchParams.get('jobId'), { error: 'Anulat.' }); activeJobs.delete(u.searchParams.get('jobId')) } else { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Invalid action' })) }; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true })) })
 
   middlewares.use('/api/ytdl/info', async (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const vid = u.searchParams.get('url'); if (!vid) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'No URL' })) }; if (!fs.existsSync(binPath)) { res.statusCode = 500; return res.end(JSON.stringify({ error: 'yt-dlp not found.' })) }; const extArgs = getExtractorArgs(); let args = ['--dump-json', '--no-playlist', '--playlist-items', '1', '--extractor-args', extArgs, vid]; const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; const child = spawn(binPath, args); let ds = '', es = ''; child.stdout.on('data', c => ds += c); child.stderr.on('data', c => es += c); const kt = setTimeout(() => { try { child.kill() } catch { }; if (!res.headersSent) { res.statusCode = 500; res.end(JSON.stringify({ error: 'Timeout.' })) } }, 30000); child.on('close', async code => { clearTimeout(kt); if (res.headersSent) return; if (code !== 0) { res.statusCode = 500; return res.end(JSON.stringify({ error: parseYtDlpError(es) || 'yt-dlp failed.', details: es })) }; try { const info = JSON.parse(ds); const ah = new Set(); (info.formats || []).forEach(f => { if (f.height && f.height >= 360) ah.add(f.height) }); let at = info.channel_thumbnail || info.uploader_thumbnail || null; if (!at && (info.channel_url || info.uploader_url)) { try { const cr = await fetch(info.channel_url || info.uploader_url, { headers: { 'User-Agent': 'Mozilla/5.0' } }); const ch = await cr.text(); const am = ch.match(/"avatar"\s*:\s*\{\s*"thumbnails"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)"/i) || ch.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i); at = am?.[1]?.replace(/\\u0026/g, '&').replace(/&amp;/g, '&') || null } catch { } }; const isM = /music\.youtube\.com/i.test(vid) || /youtube:music|music/i.test(info.extractor_key || ''); const hasC = Boolean(info.playlist_count || info.n_entries || info._type === 'playlist' || info.playlist_id); const isP = /[?&]list=/i.test(vid); const isAlbum = isM && info.playlist_id && String(info.playlist_id).startsWith('OLAK5uy_'); const ct = hasC || isP ? (isAlbum ? 'album' : 'playlist') : (isM ? 'track' : 'video'); const cleanPlaylistTitle = info.playlist_title ? info.playlist_title.replace(/^(Album|EP|Single)\s*-\s*/i, '') : null; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ title: (hasC || isP) && cleanPlaylistTitle ? cleanPlaylistTitle : info.title, thumbnail: info.thumbnail, duration: info.duration, uploader: (hasC || isP) ? (info.playlist_uploader || info.playlist_channel || info.uploader || info.channel || null) : (info.uploader || info.channel || null), artistThumbnail: at, contentType: ct, platform: isM ? 'youtube_music' : 'youtube', album: info.album || cleanPlaylistTitle || null, albumArtist: info.album_artist || info.artist || info.uploader || info.channel || null, trackNumber: Number(info.track_number || info.playlist_index) || null, trackCount: Number(info.playlist_count || info.n_entries) || null, releaseYear: info.release_year || (info.release_date ? String(info.release_date).slice(0, 4) : null), viewCount: info.view_count || null, uploadDate: info.upload_date || null, availableHeights: Array.from(ah).sort((a, b) => b - a) })) } catch { res.statusCode = 500; res.end(JSON.stringify({ error: 'Parse error' })) } }) })
 
-  middlewares.use('/api/ytdl/smart-download', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed') }; let b = ''; req.on('data', c => b += c); req.on('end', () => { try { const d = JSON.parse(b); const { items, format, scope, title, scheduleTime, formatStr, prependNumbers } = d; if (!items?.length) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'No items' })) }; if (scheduleTime) { const [sh, sm] = scheduleTime.split(':').map(Number); let r = new Date(); r.setHours(sh, sm, 0, 0); if (r <= new Date()) r.setDate(r.getDate() + 1); addScheduledJob({ type: 'single', items, format, scope, title, formatStr, runAt: r.toISOString() }); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ scheduled: true, runAt: r.toISOString() })) }; const jid = Date.now().toString(); const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const cd = path.join(dl, title ? sanitizeFilename(title) : `youtube-playlist-${jid}`); const td = scope === 'playlist' ? cd : dl; if (!fs.existsSync(td)) fs.mkdirSync(td, { recursive: true }); const bf = path.join(td, `batch-${jid}.txt`); fs.writeFileSync(bf, items.join('\n'), 'utf8'); const ot = path.join(td, scope === 'playlist' && prependNumbers !== false ? '%(autonumber)03d - %(artist,uploader)s - %(title)s.%(ext)s' : '%(artist,uploader)s - %(title)s.%(ext)s'); let args = format === 'audio' ? ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', ot, '--ffmpeg-location', ffmpegDir] : ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', ot, '--ffmpeg-location', ffmpegDir]; if (format === 'audio') args.push('--convert-thumbnails', 'jpg', '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)'); args.push('-a', bf, '--newline', '--embed-metadata', '--embed-thumbnail', '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9',); const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.push('--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.push('--cookies', cp) }; activeJobs.set(jid, { id: jid, type: scope === 'playlist' ? 'playlist' : 'single', args, downloadsDir: dl, collectionDir: scope === 'playlist' ? cd : undefined, batchFile: bf, clients: new Set(), isPaused: false, isCancelled: false, state: { progress: 0, status: 'Se pregătește...', done: false, isPaused: false, totalItems: items.length, title, thumbnail: d.thumbnail } }); spawnYtDlp(jid); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ jobId: jid })) } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) } }) })
+  middlewares.use('/api/ytdl/smart-download', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed') }; let b = ''; req.on('data', c => b += c); req.on('end', () => { try { const d = JSON.parse(b); const { items, format, scope, title, scheduleTime, formatStr, prependNumbers } = d; if (!items?.length) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'No items' })) }; if (scheduleTime) { const [sh, sm] = scheduleTime.split(':').map(Number); let r = new Date(); r.setHours(sh, sm, 0, 0); if (r <= new Date()) r.setDate(r.getDate() + 1); addScheduledJob({ type: 'single', items, format, scope, title, formatStr, runAt: r.toISOString() }); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ scheduled: true, runAt: r.toISOString() })) }; const jid = Date.now().toString(); const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const cd = path.join(dl, title ? sanitizeFilename(title) : `youtube-playlist-${jid}`); const td = scope === 'playlist' ? cd : dl; if (!fs.existsSync(td)) fs.mkdirSync(td, { recursive: true }); const bf = path.join(td, `batch-${jid}.txt`); fs.writeFileSync(bf, items.join('\n'), 'utf8'); const ot = path.join(td, scope === 'playlist' && prependNumbers !== false ? '%(autonumber)03d - %(artist,uploader)s - %(title)s.%(ext)s' : '%(artist,uploader)s - %(title)s.%(ext)s'); let args = format === 'audio' ? ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', ot, '--ffmpeg-location', ffmpegDir] : ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', ot, '--ffmpeg-location', ffmpegDir]; if (format === 'audio') args.push('--convert-thumbnails', 'jpg', '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos'); args.push('-a', bf, '--newline', '--embed-metadata', '--embed-thumbnail', '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9',); const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.push('--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.push('--cookies', cp) }; activeJobs.set(jid, { id: jid, type: scope === 'playlist' ? 'playlist' : 'single', args, downloadsDir: dl, collectionDir: scope === 'playlist' ? cd : undefined, batchFile: bf, clients: new Set(), isPaused: false, isCancelled: false, state: { progress: 0, status: 'Se pregÄƒteÈ™te...', done: false, isPaused: false, totalItems: items.length, title, thumbnail: d.thumbnail } }); spawnYtDlp(jid); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ jobId: jid })) } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) } }) })
 
-  middlewares.use('/api/ytdl/download', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const jid = u.searchParams.get('jobId'); if (!jid) { res.statusCode = 400; return res.end('Missing jobId') }; if (activeJobs.has(jid)) { res.statusCode = 400; return res.end('Job exists.') }; const vid = u.searchParams.get('url'); const fmt = u.searchParams.get('format') || 'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'; const sched = u.searchParams.get('scheduleTime'); const title = u.searchParams.get('title') || ''; const thumb = u.searchParams.get('thumbnail') || ''; const preset = u.searchParams.get('preset'); const hwaccel = u.searchParams.get('hwaccel') || 'NONE'; const lac = getOptimalDownloadConfig(preset === 'AUTO' ? null : preset); if (!vid) { res.statusCode = 400; return res.end('No URL') }; if (sched) { const [sh, sm] = sched.split(':').map(Number); let r = new Date(); r.setHours(sh, sm, 0, 0); if (r <= new Date()) r.setDate(r.getDate() + 1); addScheduledJob({ type: 'single', url: vid, format: fmt, scheduleTime: sched, runAt: r.toISOString(), title, thumbnail: thumb }); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ scheduled: true })) }; res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const dl = ensureDownloadsDir(u.searchParams.get('customPath')); let args; if (fmt.startsWith('audio:')) { const [, af, aq] = fmt.split(':'); args = af === 'wav' ? ['-x', '--audio-format', 'wav', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] : af === 'vorbis' ? ['-x', '--audio-format', 'vorbis', '--audio-quality', aq || '0', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] : ['-x', '--audio-format', 'mp3', '--audio-quality', aq || '0', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] } else if (fmt.startsWith('video:')) { args = ['-f', fmt.substring(6), '--merge-output-format', 'mp4', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] } else { args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] }; if (fmt.startsWith('audio:')) args.push('--convert-thumbnails', 'jpg', '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)'); args.push('--no-playlist', '--newline', '--embed-metadata', '--embed-thumbnail', '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', '-N', String(lac.ytdlpConcurrentFragments)); let fa = `-threads ${lac.ffmpegThreads}`; if (hwaccel === 'AUTO') fa = '-hwaccel auto ' + fa; else if (hwaccel === 'CUDA') fa = '-hwaccel cuda ' + fa; else if (hwaccel === 'AMF') fa = '-hwaccel d3d11va ' + fa; else if (hwaccel === 'QSV') fa = '-hwaccel qsv ' + fa; args.push('--postprocessor-args', `ffmpeg:-id3v2_version 3 ${fa}`); const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.push('--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.push('--cookies', cp) }; activeJobs.set(jid, { id: jid, type: 'single', args, downloadsDir: dl, clients: new Set([res]), isPaused: false, isCancelled: false, state: { progress: 0, status: 'Se pregătește...', done: false, isPaused: false, title, thumbnail: thumb } }); spawnYtDlp(jid); req.on('close', () => { const j = activeJobs.get(jid); if (j) j.clients.delete(res) }) })
+  middlewares.use('/api/ytdl/download', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const jid = u.searchParams.get('jobId'); if (!jid) { res.statusCode = 400; return res.end('Missing jobId') }; if (activeJobs.has(jid)) { res.statusCode = 400; return res.end('Job exists.') }; const vid = u.searchParams.get('url'); const fmt = u.searchParams.get('format') || 'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'; const sched = u.searchParams.get('scheduleTime'); const title = u.searchParams.get('title') || ''; const thumb = u.searchParams.get('thumbnail') || ''; const preset = u.searchParams.get('preset'); const hwaccel = u.searchParams.get('hwaccel') || 'NONE'; const lac = getOptimalDownloadConfig(preset === 'AUTO' ? null : preset); if (!vid) { res.statusCode = 400; return res.end('No URL') }; if (sched) { const [sh, sm] = sched.split(':').map(Number); let r = new Date(); r.setHours(sh, sm, 0, 0); if (r <= new Date()) r.setDate(r.getDate() + 1); addScheduledJob({ type: 'single', url: vid, format: fmt, scheduleTime: sched, runAt: r.toISOString(), title, thumbnail: thumb }); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ scheduled: true })) }; res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const dl = ensureDownloadsDir(u.searchParams.get('customPath')); let args; if (fmt.startsWith('audio:')) { const [, af, aq] = fmt.split(':'); args = af === 'wav' ? ['-x', '--audio-format', 'wav', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] : af === 'vorbis' ? ['-x', '--audio-format', 'vorbis', '--audio-quality', aq || '0', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] : ['-x', '--audio-format', 'mp3', '--audio-quality', aq || '0', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] } else if (fmt.startsWith('video:')) { args = ['-f', fmt.substring(6), '--merge-output-format', 'mp4', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] } else { args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(dl, '%(artist,uploader)s - %(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, vid] }; if (fmt.startsWith('audio:')) args.push('--convert-thumbnails', 'jpg', '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos'); args.push('--no-playlist', '--newline', '--embed-metadata', '--embed-thumbnail', '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', '-N', String(lac.ytdlpConcurrentFragments)); let fa = `-threads ${lac.ffmpegThreads}`; if (hwaccel === 'AUTO') fa = '-hwaccel auto ' + fa; else if (hwaccel === 'CUDA') fa = '-hwaccel cuda ' + fa; else if (hwaccel === 'AMF') fa = '-hwaccel d3d11va ' + fa; else if (hwaccel === 'QSV') fa = '-hwaccel qsv ' + fa; args.push('--postprocessor-args', `ffmpeg:-id3v2_version 3 ${fa}`); const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.push('--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.push('--cookies', cp) }; activeJobs.set(jid, { id: jid, type: 'single', args, downloadsDir: dl, clients: new Set([res]), isPaused: false, isCancelled: false, state: { progress: 0, status: 'Se pregÄƒteÈ™te...', done: false, isPaused: false, title, thumbnail: thumb } }); spawnYtDlp(jid); req.on('close', () => { const j = activeJobs.get(jid); if (j) j.clients.delete(res) }) })
 
   middlewares.use('/api/ytdl/collection-info', async (req, res, next) => {
     const u = new URL(req.url, 'http://' + req.headers.host); if (u.pathname !== '/') return next(); const vid = u.searchParams.get('url'); if (!vid || !isYouTubeUrl(vid)) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Link YouTube invalid.' })) }; try {
@@ -379,13 +491,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         pt = en[0].thumbnails ? en[0].thumbnails[en[0].thumbnails.length - 1]?.url : (en[0].thumbnail || null);
       }
 
-      res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ title: plTitle, uploader: pl.uploader || pl.channel || null, thumbnail: pt, count: cnt, downloadableCount: Math.min(cnt || en.length, COLLECTION_LIMIT), isTruncated: cnt > COLLECTION_LIMIT, entries: en.slice(0, COLLECTION_LIMIT).map((e, i) => ({ id: e.id, index: i + 1, title: e.title || 'Video fără titlu', uploader: e.uploader || e.channel || null, duration: e.duration || null, album: e.album || extractedAlbum || null, thumbnail: e.thumbnails ? e.thumbnails[e.thumbnails.length - 1]?.url : (e.thumbnail || null) })) }))
+      res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ title: plTitle, uploader: pl.uploader || pl.channel || null, thumbnail: pt, count: cnt, downloadableCount: Math.min(cnt || en.length, COLLECTION_LIMIT), isTruncated: cnt > COLLECTION_LIMIT, entries: en.slice(0, COLLECTION_LIMIT).map((e, i) => ({ id: e.id, index: i + 1, title: e.title || 'Video fÄƒrÄƒ titlu', uploader: e.uploader || e.channel || null, duration: e.duration || null, album: e.album || extractedAlbum || null, thumbnail: e.thumbnails ? e.thumbnails[e.thumbnails.length - 1]?.url : (e.thumbnail || null) })) }))
     } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) }
   })
 
-  middlewares.use('/api/ytdl/collection-download', (req, res, next) => { const u = new URL(req.url, 'http://' + req.headers.host); if (u.pathname !== '/') return next(); const jid = u.searchParams.get('jobId'); if (!jid) { res.statusCode = 400; return res.end('Missing jobId') }; if (activeJobs.has(jid)) { res.statusCode = 400; return res.end('Job exists.') }; const vid = u.searchParams.get('url'); const fmt = u.searchParams.get('format') || 'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'; const sel = u.searchParams.get('selectedItems'); const sched = u.searchParams.get('scheduleTime'); const title = u.searchParams.get('title') || ''; const thumb = u.searchParams.get('thumbnail') || ''; const hwaccel = u.searchParams.get('hwaccel') || 'NONE'; const prependNumbers = u.searchParams.get('prependNumbers') !== 'false'; if (!vid || !isYouTubeUrl(vid) || !sel) { res.statusCode = 400; return res.end('Invalid.') }; if (sched) { const [sh, sm] = sched.split(':').map(Number); let r = new Date(); r.setHours(sh, sm, 0, 0); if (r <= new Date()) r.setDate(r.getDate() + 1); addScheduledJob({ type: 'playlist', url: vid, format: fmt, selectedItems: sel, scheduleTime: sched, runAt: r.toISOString(), title, thumbnail: thumb }); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ scheduled: true })) }; res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const cd = path.join(dl, title ? sanitizeFilename(title) : 'youtube-playlist-' + jid); fs.mkdirSync(cd, { recursive: true }); const ot = path.join(cd, prependNumbers ? '%(playlist_index)03d - %(artist,uploader)s - %(title)s.%(ext)s' : '%(artist,uploader)s - %(title)s.%(ext)s'); let args; if (fmt.startsWith('audio:')) { const [, af, aq] = fmt.split(':'); const vaf = ['mp3', 'wav', 'vorbis'].includes(af) ? af : 'mp3'; const vaq = /^\d+$/.test(aq || '') ? aq : '0'; args = ['-x', '--audio-format', vaf, '-o', ot, '--ffmpeg-location', ffmpegDir]; if (vaf !== 'wav') args.splice(3, 0, '--audio-quality', vaq) } else { const vf = fmt.startsWith('video:') ? fmt.substring(6) : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'; args = ['-f', vf, '--merge-output-format', 'mp4', '-o', ot, '--ffmpeg-location', ffmpegDir] }; if (fmt.startsWith('audio:')) args.push('--convert-thumbnails', 'jpg', '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\\\,ih):min(iw\\\\,ih)'); args.push('-i', '--yes-playlist', '--playlist-items', sel, '--newline', '--embed-metadata', '--embed-thumbnail', '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', '-N', String(aiConfig.ytdlpConcurrentFragments)); let fa = `-threads ${aiConfig.ffmpegThreads}`; if (hwaccel === 'AUTO') fa = '-hwaccel auto ' + fa; else if (hwaccel === 'CUDA') fa = '-hwaccel cuda ' + fa; else if (hwaccel === 'AMF') fa = '-hwaccel d3d11va ' + fa; else if (hwaccel === 'QSV') fa = '-hwaccel qsv ' + fa; args.push('--postprocessor-args', `ffmpeg:-id3v2_version 3 ${fa}`, vid); const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; activeJobs.set(jid, { id: jid, type: 'playlist', args, downloadsDir: dl, collectionDir: cd, expectedCount: sel.split(',').length, clients: new Set([res]), isPaused: false, isCancelled: false, state: { progress: 0, status: 'Se pregătește playlistul...', done: false, isPaused: false, title, thumbnail: thumb } }); spawnYtDlp(jid); req.on('close', () => { const j = activeJobs.get(jid); if (j) j.clients.delete(res) }) })
+  middlewares.use('/api/ytdl/collection-download', (req, res, next) => { const u = new URL(req.url, 'http://' + req.headers.host); if (u.pathname !== '/') return next(); const jid = u.searchParams.get('jobId'); if (!jid) { res.statusCode = 400; return res.end('Missing jobId') }; if (activeJobs.has(jid)) { res.statusCode = 400; return res.end('Job exists.') }; const vid = u.searchParams.get('url'); const fmt = u.searchParams.get('format') || 'video:bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'; const sel = u.searchParams.get('selectedItems'); const sched = u.searchParams.get('scheduleTime'); const title = u.searchParams.get('title') || ''; const thumb = u.searchParams.get('thumbnail') || ''; const hwaccel = u.searchParams.get('hwaccel') || 'NONE'; const prependNumbers = u.searchParams.get('prependNumbers') !== 'false'; if (!vid || !isYouTubeUrl(vid) || !sel) { res.statusCode = 400; return res.end('Invalid.') }; if (sched) { const [sh, sm] = sched.split(':').map(Number); let r = new Date(); r.setHours(sh, sm, 0, 0); if (r <= new Date()) r.setDate(r.getDate() + 1); addScheduledJob({ type: 'playlist', url: vid, format: fmt, selectedItems: sel, scheduleTime: sched, runAt: r.toISOString(), title, thumbnail: thumb }); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ scheduled: true })) }; res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const cd = path.join(dl, title ? sanitizeFilename(title) : 'youtube-playlist-' + jid); fs.mkdirSync(cd, { recursive: true }); const ot = path.join(cd, prependNumbers ? '%(playlist_index)03d - %(artist,uploader)s - %(title)s.%(ext)s' : '%(artist,uploader)s - %(title)s.%(ext)s'); let args; if (fmt.startsWith('audio:')) { const [, af, aq] = fmt.split(':'); const vaf = ['mp3', 'wav', 'vorbis'].includes(af) ? af : 'mp3'; const vaq = /^\d+$/.test(aq || '') ? aq : '0'; args = ['-x', '--audio-format', vaf, '-o', ot, '--ffmpeg-location', ffmpegDir]; if (vaf !== 'wav') args.splice(3, 0, '--audio-quality', vaq) } else { const vf = fmt.startsWith('video:') ? fmt.substring(6) : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'; args = ['-f', vf, '--merge-output-format', 'mp4', '-o', ot, '--ffmpeg-location', ffmpegDir] }; if (fmt.startsWith('audio:')) args.push('--convert-thumbnails', 'jpg', '--ppa', 'ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos'); args.push('-i', '--yes-playlist', '--playlist-items', sel, '--newline', '--embed-metadata', '--embed-thumbnail', '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', '-N', String(aiConfig.ytdlpConcurrentFragments)); let fa = `-threads ${aiConfig.ffmpegThreads}`; if (hwaccel === 'AUTO') fa = '-hwaccel auto ' + fa; else if (hwaccel === 'CUDA') fa = '-hwaccel cuda ' + fa; else if (hwaccel === 'AMF') fa = '-hwaccel d3d11va ' + fa; else if (hwaccel === 'QSV') fa = '-hwaccel qsv ' + fa; args.push('--postprocessor-args', `ffmpeg:-id3v2_version 3 ${fa}`, vid); const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; activeJobs.set(jid, { id: jid, type: 'playlist', args, downloadsDir: dl, collectionDir: cd, expectedCount: sel.split(',').length, clients: new Set([res]), isPaused: false, isCancelled: false, state: { progress: 0, status: 'Se pregÄƒteÈ™te playlistul...', done: false, isPaused: false, title, thumbnail: thumb } }); spawnYtDlp(jid); req.on('close', () => { const j = activeJobs.get(jid); if (j) j.clients.delete(res) }) })
 
-  // ── YouTube Music per-track fallback download (10-attempt chain) ────────────
+  // â”€â”€ YouTube Music per-track fallback download (10-attempt chain) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // 100% download rate goal: tries 10 sources per track before giving up.
   // Each failed track is logged to pending_manual.json with full attempt history.
 
@@ -393,7 +505,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   function levenshtein(a, b) {
     const m = a.length, n = b.length;
     const dp = Array.from({ length: m + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0));
-    for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
     return dp[m][n];
   }
   function stringSimilarity(a, b) {
@@ -405,7 +517,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     return (maxLen - levenshtein(s1, s2)) / maxLen;
   }
 
-  // Rate limit state — shared across concurrent downloads for a session
+  // Rate limit state â€” shared across concurrent downloads for a session
   let yt429PauseUntil = 0;
 
   middlewares.use('/api/ytdl/ytmusic-playlist-download', (req, res, next) => {
@@ -430,11 +542,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`) } catch { } };
     const dlState = { cancelled: false, procs: new Set() };
 
-    // ── Parse format ─────────────────────────────────────────────────────────
+    // â”€â”€ Parse format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [, audioFmt = 'mp3'] = fmtParam.startsWith('audio:') ? fmtParam.split(':') : ['audio', 'mp3'];
     const safeAudioFmt = ['mp3', 'm4a', 'wav', 'vorbis'].includes(audioFmt) ? audioFmt : 'mp3';
 
-    // ── Error classifiers ─────────────────────────────────────────────────────
+    // â”€â”€ Error classifiers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const PREMIUM_MARKERS = ['Music Premium', 'Premium members', 'Premium-only', 'YouTube Premium', 'available to Music Premium'];
     const RECOVERABLE_MARKERS = [
       'Video unavailable', 'Private video', 'HTTP Error 403', 'HTTP Error 404', 'HTTP Error 410',
@@ -449,7 +561,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     const isRecoverableError = s => RECOVERABLE_MARKERS.some(m => s.toLowerCase().includes(m.toLowerCase()));
     const isRateLimited = s => RATE_LIMIT_MARKERS.some(m => s.includes(m));
 
-    // ── Candidate scoring ─────────────────────────────────────────────────────
+    // â”€â”€ Candidate scoring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const cleanStr = s => (s || '').toLowerCase()
       .replace(/\(official.*?\)/gi, '').replace(/\[official.*?\]/gi, '')
       .replace(/\s*-\s*topic\s*$/i, '').replace(/vevo$/i, '')
@@ -500,10 +612,10 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       return score;
     };
 
-    // ── Sleep helper ──────────────────────────────────────────────────────────
+    // â”€â”€ Sleep helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    // ── Run yt-dlp and return {ok, stderr, stdout} ────────────────────────────
+    // â”€â”€ Run yt-dlp and return {ok, stderr, stdout} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const runYtdlp = (args, { timeout = 90000 } = {}) => new Promise(resolve => {
       if (dlState.cancelled) return resolve({ ok: false, stderr: 'cancelled' });
       const cookiesPath = path.resolve(appDir, 'cookies.txt');
@@ -520,7 +632,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       let stdout = '', stderr = '';
       proc.stdout.on('data', c => { stdout += c.toString(); });
       proc.stderr.on('data', c => { stderr += c.toString(); });
-      const timer = setTimeout(() => { try { proc.kill(); } catch {} }, timeout);
+      const timer = setTimeout(() => { try { proc.kill(); } catch { } }, timeout);
       proc.on('close', code => {
         clearTimeout(timer);
         dlState.procs.delete(proc);
@@ -529,7 +641,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       proc.on('error', e => { clearTimeout(timer); dlState.procs.delete(proc); resolve({ ok: false, stderr: e.message }); });
     });
 
-    // ── Run spotdl for Spotify fallback ───────────────────────────────────────
+    // â”€â”€ Run spotdl for Spotify fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const runSpotdl = (artist, trackTitle, outputDir) => new Promise(resolve => {
       if (dlState.cancelled) return resolve({ ok: false, stderr: 'cancelled' });
       if (!fs.existsSync(spotdlBin)) return resolve({ ok: false, stderr: 'spotdl not found' });
@@ -542,7 +654,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       let stdout = '', stderr = '';
       proc.stdout.on('data', c => { stdout += c.toString(); });
       proc.stderr.on('data', c => { stderr += c.toString(); });
-      const timer = setTimeout(() => { try { proc.kill(); } catch {} }, 120000);
+      const timer = setTimeout(() => { try { proc.kill(); } catch { } }, 120000);
       proc.on('close', code => {
         clearTimeout(timer);
         dlState.procs.delete(proc);
@@ -551,7 +663,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       proc.on('error', e => { clearTimeout(timer); dlState.procs.delete(proc); resolve({ ok: false, stderr: e.message }); });
     });
 
-    // ── Build base yt-dlp audio-download args ─────────────────────────────────
+    // â”€â”€ Build base yt-dlp audio-download args â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const buildDownloadArgs = (videoUrl, outputTemplate, extraArgs = []) => {
       const baseArgs = [
         videoUrl,
@@ -579,13 +691,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       return baseArgs;
     };
 
-    // ── Download a single track URL ───────────────────────────────────────────
+    // â”€â”€ Download a single track URL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const downloadSingleTrack = async (videoUrl, outputTemplate, extraArgs = []) => {
       const args = buildDownloadArgs(videoUrl, outputTemplate, extraArgs);
       return runYtdlp(args);
     };
 
-    // ── Search yt-dlp for candidates and score them ───────────────────────────
+    // â”€â”€ Search yt-dlp for candidates and score them â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const searchAndScore = async (query, origTitle, origArtist, durationSec, extraArgs = []) => {
       await sleep(2000); // 2s delay between search requests
       if (dlState.cancelled) return null;
@@ -620,35 +732,35 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       return null;
     };
 
-    // ── Log helpers ───────────────────────────────────────────────────────────
+    // â”€â”€ Log helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const appendSessionLog = (logsDir, entry, attemptNum, source, result, reason) => {
       try {
         const line = `[${new Date().toISOString()}] Track: "${entry.title}" | Artist: "${entry.artist}" | Attempt: ${attemptNum}/10 | Source: ${source} | Result: ${result}${reason ? ' | Reason: ' + reason : ''}\n`;
         fs.appendFileSync(path.join(logsDir, 'session_log.txt'), line, 'utf8');
-      } catch {}
+      } catch { }
     };
 
     const writeDownloadedLog = (logsDir, entry, source, attemptNum, quality) => {
       try {
         const logPath = path.join(logsDir, 'downloaded.json');
         let log = [];
-        try { log = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch {}
+        try { log = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch { }
         log.push({ track: entry.title, artist: entry.artist, source, attempt_number: attemptNum, quality, timestamp: new Date().toISOString() });
         fs.writeFileSync(logPath, JSON.stringify(log, null, 2), 'utf8');
-      } catch {}
+      } catch { }
     };
 
     const writePendingManual = (logsDir, entry, attemptLog) => {
       try {
         const logPath = path.join(logsDir, 'pending_manual.json');
         let log = [];
-        try { log = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch {}
+        try { log = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch { }
         log.push({ track: entry.title, artist: entry.artist, url: entry.url, timestamp: new Date().toISOString(), attempts: attemptLog });
         fs.writeFileSync(logPath, JSON.stringify(log, null, 2), 'utf8');
-      } catch {}
+      } catch { }
     };
 
-    // ── Main runner ───────────────────────────────────────────────────────────
+    // â”€â”€ Main runner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const runDownload = async () => {
       const downloadsDir = ensureDownloadsDir(customPath);
       const safeTitle = title ? sanitizeFilename(title) : `ytmusic-playlist-${Date.now()}`;
@@ -685,7 +797,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             album: j.album || null,
             trackNumber: j.playlist_index ?? j.track_number ?? null,
           });
-        } catch {}
+        } catch { }
       }
 
       const totalTracksCount = allEntries.length;
@@ -741,7 +853,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
           const attemptLog = []; // record each attempt for pending_manual.json
 
-          // ── Find a downloaded file in outputDir matching baseName ─────────
+          // â”€â”€ Find a downloaded file in outputDir matching baseName â”€â”€â”€â”€â”€â”€â”€â”€â”€
           const findDownloadedFile = () => {
             const finalPath = path.join(outputDir, `${baseName}.${safeAudioFmt}`);
             if (fs.existsSync(finalPath)) return finalPath;
@@ -749,11 +861,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const all = fs.readdirSync(outputDir);
               const match = all.find(f => f.startsWith(baseName) && !f.endsWith('.part') && !f.endsWith('.ytdl'));
               if (match) return path.join(outputDir, match);
-            } catch {}
+            } catch { }
             return null;
           };
 
-          // ── Attempt 1: Direct YTM URL + geo-bypass ────────────────────────
+          // â”€â”€ Attempt 1: Direct YTM URL + geo-bypass â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           send({
             currentTrack: trackIndex, totalTracks,
             trackTitle: entry.title, trackArtist: entry.artist,
@@ -770,7 +882,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           if (yt429PauseUntil > Date.now()) {
             const waitMs = yt429PauseUntil - Date.now();
             send({ rateLimited: true, waitSeconds: Math.ceil(waitMs / 1000), trackTitle: entry.title });
-            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'rate-limited', `429 pause for ${Math.ceil(waitMs/1000)}s`);
+            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'rate-limited', `429 pause for ${Math.ceil(waitMs / 1000)}s`);
             await sleep(waitMs);
           }
 
@@ -779,7 +891,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           if (isRateLimited(lastError)) {
             yt429PauseUntil = Date.now() + 60000;
             send({ rateLimited: true, waitSeconds: 60, trackTitle: entry.title });
-            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'rate-limited', '429 — pausing 60s');
+            appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'rate-limited', '429 â€” pausing 60s');
             await sleep(60000);
             // Retry attempt 1 after pause
             result1 = await downloadSingleTrack(entry.url, outputTemplate);
@@ -795,13 +907,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             appendSessionLog(logsDir, entry, 1, 'YouTube Music', 'failed', lastError.slice(0, 200));
           }
 
-          // ── Attempt 2: YT search v1 — "{artist} {title}" ─────────────────
+          // â”€â”€ Attempt 2: YT search v1 â€” "{artist} {title}" â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (2/10 — YouTube search)...`,
+              status: `Retrying (2/10 â€” YouTube search)...`,
               attemptNumber: 2, attemptSource: 'YouTube',
               progress: calcProgress(),
             });
@@ -823,13 +935,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 3: YT search v2 — "{title} audio" ────────────────────
+          // â”€â”€ Attempt 3: YT search v2 â€” "{title} audio" â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (3/10 — YouTube audio search)...`,
+              status: `Retrying (3/10 â€” YouTube audio search)...`,
               attemptNumber: 3, attemptSource: 'YouTube',
               progress: calcProgress(),
             });
@@ -851,13 +963,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 4: YT with US geo-spoof ──────────────────────────────
+          // â”€â”€ Attempt 4: YT with US geo-spoof â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (4/10 — YouTube US geo-spoof)...`,
+              status: `Retrying (4/10 â€” YouTube US geo-spoof)...`,
               attemptNumber: 4, attemptSource: 'YouTube (US)',
               progress: calcProgress(),
             });
@@ -880,18 +992,18 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 5: YouTube with browser cookies (Premium bypass) ─────
+          // â”€â”€ Attempt 5: YouTube with browser cookies (Premium bypass) â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (5/10 — YouTube Premium bypass via cookies)...`,
+              status: `Retrying (5/10 â€” YouTube Premium bypass via cookies)...`,
               attemptNumber: 5, attemptSource: 'YouTube (cookies)',
               progress: calcProgress(),
             });
             if (yt429PauseUntil > Date.now()) await sleep(yt429PauseUntil - Date.now());
-            // Build args manually here — force cookies-from-browser chrome even if config differs
+            // Build args manually here â€” force cookies-from-browser chrome even if config differs
             const cookieArgs = ['--cookies-from-browser', 'chrome', '--geo-bypass'];
             const r5 = await runYtdlp([
               entry.url,
@@ -916,13 +1028,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 6: SoundCloud search ──────────────────────────────────
+          // â”€â”€ Attempt 6: SoundCloud search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (6/10 — SoundCloud)...`,
+              status: `Retrying (6/10 â€” SoundCloud)...`,
               attemptNumber: 6, attemptSource: 'SoundCloud',
               progress: calcProgress(),
             });
@@ -957,13 +1069,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 7: Spotify via spotdl ────────────────────────────────
+          // â”€â”€ Attempt 7: Spotify via spotdl â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (7/10 — Spotify / spotdl)...`,
+              status: `Retrying (7/10 â€” Spotify / spotdl)...`,
               attemptNumber: 7, attemptSource: 'Spotify',
               progress: calcProgress(),
             });
@@ -980,7 +1092,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   const targetPath = path.join(outputDir, `${baseName}.${safeAudioFmt}`);
                   if (downloadedFile !== targetPath) fs.renameSync(downloadedFile, targetPath);
                   downloadedFile = fs.existsSync(targetPath) ? targetPath : downloadedFile;
-                } catch {}
+                } catch { }
               }
             }
             if (downloadedFile) {
@@ -992,13 +1104,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 8: Internet Archive ───────────────────────────────────
+          // â”€â”€ Attempt 8: Internet Archive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (8/10 — Internet Archive)...`,
+              status: `Retrying (8/10 â€” Internet Archive)...`,
               attemptNumber: 8, attemptSource: 'Archive.org',
               progress: calcProgress(),
             });
@@ -1020,7 +1132,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   }
                 }
               }
-            } catch {}
+            } catch { }
             if (archiveFallbackUrl && !dlState.cancelled) {
               const r8 = await downloadSingleTrack(archiveFallbackUrl, outputTemplate);
               lastError = r8.stderr || '';
@@ -1035,13 +1147,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 9: YouTube cover/live version ─────────────────────────
+          // â”€â”€ Attempt 9: YouTube cover/live version â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (9/10 — YouTube cover/live)...`,
+              status: `Retrying (9/10 â€” YouTube cover/live)...`,
               attemptNumber: 9, attemptSource: 'YouTube (cover/live)',
               progress: calcProgress(),
             });
@@ -1091,13 +1203,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             }
           }
 
-          // ── Attempt 10: Deezer via yt-dlp ────────────────────────────────
+          // â”€â”€ Attempt 10: Deezer via yt-dlp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (!downloadedFile && !dlState.cancelled) {
             send({
               currentTrack: trackIndex, totalTracks,
               trackTitle: entry.title, trackArtist: entry.artist,
               trackThumbnail: entry.thumbnail || null,
-              status: `Retrying (10/10 — Deezer)...`,
+              status: `Retrying (10/10 â€” Deezer)...`,
               attemptNumber: 10, attemptSource: 'Deezer',
               progress: calcProgress(),
             });
@@ -1118,58 +1230,46 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
           if (dlState.cancelled) return;
 
-          // ── Check success ─────────────────────────────────────────────────
+          // â”€â”€ Check success â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (downloadedFile && fs.existsSync(downloadedFile)) {
             const successfulAttempt = attemptLog.find(a => a.result === 'success');
             const attemptNum = successfulAttempt?.attempt || 1;
             const sourceName = successfulAttempt?.source || 'YouTube Music';
 
-            // ── Write ID3 metadata ────────────────────────────────────────
+            // â”€â”€ Write ID3 metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             try {
               const existing = NodeID3.read(downloadedFile) || {};
               const tags = {
-                title:       entry.title || existing.title || '',
-                artist:      entry.artist || existing.artist || '',
-                allArtists:  entry.artist || existing.performerInfo || '',
-                album:       entry.album || existing.album || '',
-                year:        existing.year || '',
-                genre:       existing.genre || '',
+                title: entry.title || existing.title || '',
+                artist: entry.artist || existing.artist || '',
+                allArtists: entry.artist || existing.performerInfo || '',
+                album: entry.album || existing.album || '',
+                year: existing.year || '',
+                genre: existing.genre || '',
                 trackNumber: entry.trackNumber || (prependNumbers ? trackIndex : null) || existing.trackNumber || '',
                 totalTracks: entry.totalTracks || null,
-                discNumber:  existing.partOfSet || '',
-                isrc:        existing.isrc || '',
+                discNumber: existing.partOfSet || '',
+                isrc: existing.isrc || '',
               };
 
               let coverBuffer = null;
-              if (entry.thumbnail) {
-                try {
-                  const fetchThumb = (url) => new Promise((resolve, reject) => {
-                    const mod = url.startsWith('https') ? https : require('http');
-                    mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (r) => {
-                      if ((r.statusCode === 301 || r.statusCode === 302) && r.headers.location) {
-                        return resolve(fetchThumb(r.headers.location));
-                      }
-                      if (r.statusCode >= 400) return reject(new Error(`HTTP ${r.statusCode}`));
-                      const chunks = [];
-                      r.on('data', c => chunks.push(c));
-                      r.on('end', () => resolve(Buffer.concat(chunks)));
-                    }).on('error', reject);
-                  });
-                  const rawBuf = await fetchThumb(entry.thumbnail);
-                  if (rawBuf && rawBuf.length > 1000) {
-                    const tempImg = downloadedFile + '.cover.jpg';
-                    try {
-                      spawnSync(ffmpegBin, ['-y', '-i', 'pipe:0', '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)', '-frames:v', '1', tempImg], { input: rawBuf, windowsHide: true });
-                      if (fs.existsSync(tempImg) && fs.statSync(tempImg).size > 1000) {
-                        coverBuffer = fs.readFileSync(tempImg);
-                      } else {
-                        coverBuffer = rawBuf;
-                      }
-                    } catch (_) { coverBuffer = rawBuf; }
-                    finally { try { if (fs.existsSync(tempImg)) fs.unlinkSync(tempImg); } catch (_) {} }
-                  }
-                } catch (_) {}
-              }
+              // Fetch HD cover: use video ID (entry.id) for maxresdefault â†’ sddefault â†’ hqdefault chain
+              // This avoids the low-quality 16:9 video thumbnail from flat-playlist JSON
+              try {
+                const rawBuf = await fetchHDCoverBuffer(entry.id, entry.thumbnail);
+                if (rawBuf && rawBuf.length > 5000) {
+                  const tempImg = downloadedFile + '.cover.jpg';
+                  try {
+                    spawnSync(ffmpegBin, ['-y', '-i', 'pipe:0', '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos', '-frames:v', '1', '-q:v', '1', tempImg], { input: rawBuf, windowsHide: true });
+                    if (fs.existsSync(tempImg) && fs.statSync(tempImg).size > 1000) {
+                      coverBuffer = fs.readFileSync(tempImg);
+                    } else {
+                      coverBuffer = rawBuf;
+                    }
+                  } catch (_) { coverBuffer = rawBuf; }
+                  finally { try { if (fs.existsSync(tempImg)) fs.unlinkSync(tempImg); } catch (_) { } }
+                }
+              } catch (_) { }
 
               await writeAndVerifyTags(downloadedFile, tags, coverBuffer);
             } catch (tagErr) {
@@ -1191,7 +1291,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               progress: Math.round(3 + ((completedCount + pendingManualCount) / totalTracks) * 90),
             });
           } else {
-            // ── All 10 attempts failed → pending manual ───────────────────
+            // â”€â”€ All 10 attempts failed â†’ pending manual â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             pendingManualCount++;
             pendingManualTracksData.push({ title: entry.title, artist: entry.artist, url: entry.url, attempts: attemptLog });
             writePendingManual(logsDir, entry, attemptLog);
@@ -1216,7 +1316,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       await Promise.all(activePromises);
       if (dlState.cancelled) return;
 
-      // ── Apply folder thumbnail + Windows folder icon ───────────────────────
+      // â”€â”€ Apply folder thumbnail + Windows folder icon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (thumbnail) {
         try {
           const cb = Buffer.from(await (await fetch(thumbnail)).arrayBuffer());
@@ -1228,13 +1328,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           fs.writeFileSync(rawJp, cb);
           const jp = path.join(metaDir, 'folder.jpg');
 
-          await new Promise(r => { spawn(ffmpegBin, ['-y', '-i', rawJp, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)', jp], { windowsHide: true }).on('close', r); });
+          await new Promise(r => { spawn(ffmpegBin, ['-y', '-i', rawJp, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos', jp], { windowsHide: true }).on('close', r); });
           if (!fs.existsSync(jp)) fs.writeFileSync(jp, cb);
-          try { fs.unlinkSync(rawJp); } catch {}
+          try { fs.unlinkSync(rawJp); } catch { }
 
           const rootJp = path.join(outputDir, 'folder.jpg');
           fs.copyFileSync(fs.existsSync(jp) ? jp : rawJp, rootJp);
-          if (os.platform() === 'win32') { try { spawnSync('attrib', ['+h', rootJp], { windowsHide: true }); } catch {} }
+          if (os.platform() === 'win32') { try { spawnSync('attrib', ['+h', rootJp], { windowsHide: true }); } catch { } }
 
           if (process.platform === 'win32') {
             const ip = path.join(metaDir, 'album.ico');
@@ -1278,7 +1378,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         try {
           if (process.platform === 'win32') require('child_process').spawnSync('taskkill', ['/pid', p.pid, '/f', '/t']);
           else p.kill('SIGKILL');
-        } catch {}
+        } catch { }
       }
     });
 
@@ -1376,16 +1476,16 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/mass/ytdl-playlist-info', async (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const pu = u.searchParams.get('url'); if (!pu) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing url' })) }; const cached = cacheGet(pu); if (cached) { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ ...cached, _cached: true })) }; try { const extArgs = getExtractorArgs(); let args = ['--flat-playlist', '--dump-json', '--no-warnings', '--playlist-end', '2000', '--extractor-args', extArgs, pu]; const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; const p = spawn(binPath, args, { env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }, windowsHide: true }); let so = '', se = ''; p.stdout.on('data', c => so += c); p.stderr.on('data', c => se += c); p.on('close', code => { if (code !== 0 && !so.trim()) { res.statusCode = 500; return res.end(JSON.stringify({ error: `yt-dlp failed (${code}): ${se.slice(0, 300)}` })) }; const items = []; let pt = ''; for (const l of so.split('\n')) { if (!l.trim()) continue; try { const j = JSON.parse(l); if (!pt && j.playlist_title) pt = j.playlist_title; items.push({ id: j.id, url: j.url || `https://www.youtube.com/watch?v=${j.id}`, title: j.title || j.id, channel: j.channel || j.uploader || '', duration: j.duration || 0, thumbnail: j.thumbnails?.[0]?.url || j.thumbnail || null, durationMs: (j.duration || 0) * 1000 }) } catch { } }; const r = { title: pt || 'YouTube Playlist', totalItems: items.length, items }; cacheSet(pu, r); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(r)) }); p.on('error', e => { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) }) } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) } })
 
-  middlewares.use('/api/mass/start-ytdl', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const did = u.searchParams.get('downloadId'); if (!did) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing downloadId' })) }; const fmtStr = u.searchParams.get('format') || 'mp3'; const rc = Math.min(24, Math.max(1, parseInt(u.searchParams.get('concurrency') || '3', 10))); const sm = u.searchParams.get('speedMode') === 'MAXIMUM' ? 'MAXIMUM' : 'BALANCED'; const profile = getBatchPerformanceProfile(rc, sm); res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`) } catch { } }; const runDownload = async bodyData => { const items = (bodyData?.items || []).map((item, i) => ({ ...item, index: item.index || i + 1 })); if (!items.length) { send({ done: true, error: 'No items' }); return res.end() }; const pn = sanitizeFilename(bodyData?.playlistName || 'mass-download') || 'mass-download'; const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const td = path.join(dl, `mass-ytdl-${pn}-${did}`); fs.mkdirSync(td, { recursive: true }); send({ current: 0, total: items.length, status: `Starting ${items.length} tracks with ${profile.concurrency} workers…`, performanceProfile: profile }); let cc = 0, fc = 0; const downloadItem = async (entry, ctx) => { const { item, index } = entry; const isSp = item.type === 'spotify' || !!item.spotifyUrl; const qStr = isSp ? `ytsearch5:${item.channel || item.artist || ''} ${item.title}` : (item.url || `https://www.youtube.com/watch?v=${item.id}`); const sTitle = sanitizeFilename(item.title || `track-${index}`); const sArtist = sanitizeFilename(item.channel || item.artist || ''); const outName = sArtist ? `${sArtist} - ${sTitle}` : sTitle; const op = path.join(td, `${outName}.%(ext)s`); let args = []; if (fmtStr === 'mp3') { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] } else if (fmtStr === 'm4a') { args = ['-x', '--audio-format', 'm4a', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] } else { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] }; const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; return new Promise(resolve => { const p = spawn(binPath, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }); ctx.registerProcess(p); ctx.unregisterProcess && (p.on('close', () => ctx.unregisterProcess(p))); let se = ''; p.stdout.on('data', c => { const t = c.toString(); const m = t.match(/\[download\]\s+([\d.]+)%/); if (m) send({ current: cc, total: items.length, currentTrack: index, trackTitle: item.title, trackProgress: parseFloat(m[1]) }) }); p.stderr.on('data', c => se += c); p.on('close', code => { if (state?.cancelled) return resolve({ ok: false, error: 'cancelled' }); if (code !== 0) return resolve({ ok: false, error: `yt-dlp failed (${code}): ${se.slice(-200)}`, title: item.title }); const pattern = new RegExp(`^${outName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.[a-zA-Z0-9]+$`); const files = fs.existsSync(td) ? fs.readdirSync(td).filter(f => pattern.test(f)) : []; const fn = files[0] || null; if (!fn) return resolve({ ok: false, error: `No output for ${item.title || index}` }); resolve({ ok: true, output: fn }) }); p.on('error', e => resolve({ ok: false, error: e.message })) }) }; const jobsDir = path.join(os.tmpdir(), 'mediadl-jobs'); fs.mkdirSync(jobsDir, { recursive: true }); const batch = createBatchEngine({ jobsDirectory: jobsDir, jobId: did, items, profile, onEvent: evt => { if (evt.trackDone) { cc++; send({ current: cc, total: items.length, status: `Completed ${cc}/${items.length}`, currentTrack: evt.current, trackDone: true, percent: Math.round(cc / items.length * 100) }) } else if (evt.trackError) { fc++; send({ current: cc, total: items.length, trackError: evt.trackError, currentTrack: evt.current, percent: Math.round(cc / items.length * 100) }) } else if (evt.current !== undefined) { send({ current: evt.current, total: items.length, percent: Math.round((evt.completedCount || 0) / items.length * 100) }) } } }); activeMassYtdlDownloads.set(did, batch.controls); try { await batch.run(downloadItem) } finally { activeMassYtdlDownloads.delete(did) }; send({ done: true, progress: 100, completedTracks: cc, failedTracks: fc, outputDir: td }); res.end() }; const consume = async () => { let body = ''; req.on('data', c => body += c); req.on('end', async () => { try { const bd = JSON.parse(body || '{}'); await runDownload(bd) } catch (e) { send({ done: true, error: e.message }); res.end() } }); req.on('close', () => { const b = activeMassYtdlDownloads.get(did); if (b && b.cancel) b.cancel() }) }; consume() })
+  middlewares.use('/api/mass/start-ytdl', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const did = u.searchParams.get('downloadId'); if (!did) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing downloadId' })) }; const fmtStr = u.searchParams.get('format') || 'mp3'; const rc = Math.min(24, Math.max(1, parseInt(u.searchParams.get('concurrency') || '3', 10))); const sm = u.searchParams.get('speedMode') === 'MAXIMUM' ? 'MAXIMUM' : 'BALANCED'; const profile = getBatchPerformanceProfile(rc, sm); res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`) } catch { } }; const runDownload = async bodyData => { const items = (bodyData?.items || []).map((item, i) => ({ ...item, index: item.index || i + 1 })); if (!items.length) { send({ done: true, error: 'No items' }); return res.end() }; const pn = sanitizeFilename(bodyData?.playlistName || 'mass-download') || 'mass-download'; const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const td = path.join(dl, `mass-ytdl-${pn}-${did}`); fs.mkdirSync(td, { recursive: true }); send({ current: 0, total: items.length, status: `Starting ${items.length} tracks with ${profile.concurrency} workersâ€¦`, performanceProfile: profile }); let cc = 0, fc = 0; const downloadItem = async (entry, ctx) => { const { item, index } = entry; const isSp = item.type === 'spotify' || !!item.spotifyUrl; const qStr = isSp ? `ytsearch5:${item.channel || item.artist || ''} ${item.title}` : (item.url || `https://www.youtube.com/watch?v=${item.id}`); const sTitle = sanitizeFilename(item.title || `track-${index}`); const sArtist = sanitizeFilename(item.channel || item.artist || ''); const outName = sArtist ? `${sArtist} - ${sTitle}` : sTitle; const op = path.join(td, `${outName}.%(ext)s`); let args = []; if (fmtStr === 'mp3') { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] } else if (fmtStr === 'm4a') { args = ['-x', '--audio-format', 'm4a', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] } else { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] }; const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; return new Promise(resolve => { const p = spawn(binPath, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }); ctx.registerProcess(p); ctx.unregisterProcess && (p.on('close', () => ctx.unregisterProcess(p))); let se = ''; p.stdout.on('data', c => { const t = c.toString(); const m = t.match(/\[download\]\s+([\d.]+)%/); if (m) send({ current: cc, total: items.length, currentTrack: index, trackTitle: item.title, trackProgress: parseFloat(m[1]) }) }); p.stderr.on('data', c => se += c); p.on('close', code => { if (state?.cancelled) return resolve({ ok: false, error: 'cancelled' }); if (code !== 0) return resolve({ ok: false, error: `yt-dlp failed (${code}): ${se.slice(-200)}`, title: item.title }); const pattern = new RegExp(`^${outName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.[a-zA-Z0-9]+$`); const files = fs.existsSync(td) ? fs.readdirSync(td).filter(f => pattern.test(f)) : []; const fn = files[0] || null; if (!fn) return resolve({ ok: false, error: `No output for ${item.title || index}` }); resolve({ ok: true, output: fn }) }); p.on('error', e => resolve({ ok: false, error: e.message })) }) }; const jobsDir = path.join(os.tmpdir(), 'mediadl-jobs'); fs.mkdirSync(jobsDir, { recursive: true }); const batch = createBatchEngine({ jobsDirectory: jobsDir, jobId: did, items, profile, onEvent: evt => { if (evt.trackDone) { cc++; send({ current: cc, total: items.length, status: `Completed ${cc}/${items.length}`, currentTrack: evt.current, trackDone: true, percent: Math.round(cc / items.length * 100) }) } else if (evt.trackError) { fc++; send({ current: cc, total: items.length, trackError: evt.trackError, currentTrack: evt.current, percent: Math.round(cc / items.length * 100) }) } else if (evt.current !== undefined) { send({ current: evt.current, total: items.length, percent: Math.round((evt.completedCount || 0) / items.length * 100) }) } } }); activeMassYtdlDownloads.set(did, batch.controls); try { await batch.run(downloadItem) } finally { activeMassYtdlDownloads.delete(did) }; send({ done: true, progress: 100, completedTracks: cc, failedTracks: fc, outputDir: td }); res.end() }; const consume = async () => { let body = ''; req.on('data', c => body += c); req.on('end', async () => { try { const bd = JSON.parse(body || '{}'); await runDownload(bd) } catch (e) { send({ done: true, error: e.message }); res.end() } }); req.on('close', () => { const b = activeMassYtdlDownloads.get(did); if (b && b.cancel) b.cancel() }) }; consume() })
 
   middlewares.use('/api/mass/cancel', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const did = u.searchParams.get('downloadId'); if (did && activeMassYtdlDownloads.has(did)) activeMassYtdlDownloads.get(did).cancel(); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true })) })
 
-  middlewares.use('/api/spotify-info', async (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const su = u.searchParams.get('url'); const cid = req.headers['x-spotify-client-id']; const cs = req.headers['x-spotify-client-secret']; const at = req.headers['x-spotify-access-token']; if (!su) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing url' })) }; try { res.setHeader('Content-Type', 'application/json'); let md; try { md = await resolveSpotifyMetadata(su, cid, cs, at) } catch (e) { if (/^(SPOTIFY_(401|403|404)|Spotify auth failed|Missing SPOTIFY)/.test(e.message || '')) throw e; console.log(`resolveSpotifyMetadata failed (${e.message}), fallback…`); try { md = await resolveSpotifyFallback(su) } catch (fe) { throw new Error(e.message) } }; return res.end(JSON.stringify(md)) } catch (e) { console.error('Spotify info error:', e); res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) } })
+  middlewares.use('/api/spotify-info', async (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const su = u.searchParams.get('url'); const cid = req.headers['x-spotify-client-id']; const cs = req.headers['x-spotify-client-secret']; const at = req.headers['x-spotify-access-token']; if (!su) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing url' })) }; try { res.setHeader('Content-Type', 'application/json'); let md; try { md = await resolveSpotifyMetadata(su, cid, cs, at) } catch (e) { if (/^(SPOTIFY_(401|403|404)|Spotify auth failed|Missing SPOTIFY)/.test(e.message || '')) throw e; console.log(`resolveSpotifyMetadata failed (${e.message}), fallbackâ€¦`); try { md = await resolveSpotifyFallback(su) } catch (fe) { throw new Error(e.message) } }; return res.end(JSON.stringify(md)) } catch (e) { console.error('Spotify info error:', e); res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) } })
 
   middlewares.use('/api/spotdl-extract', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const su = u.searchParams.get('url'); if (!su) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing url' })) }; res.setHeader('Content-Type', 'application/json'); const tf = path.join(os.tmpdir(), `spotdl_extract_${Date.now()}.spotdl`); const spotdlCmd = process.platform === 'win32' ? 'cmd.exe' : spotdlBin; const spotdlArgs = process.platform === 'win32' ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotdlBin, 'save', su, '--save-file', tf] : ['save', su, '--save-file', tf]; const p = spawn(spotdlCmd, spotdlArgs, { env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }); p.stdout.on('data', () => { }); p.stderr.on('data', () => { }); p.on('close', code => { if (fs.existsSync(tf)) { try { const tracks = JSON.parse(fs.readFileSync(tf, 'utf8')); fs.unlinkSync(tf); res.end(JSON.stringify({ type: 'playlist', title: tracks[0]?.list_name || 'Spotify Playlist', trackCount: tracks.length, totalTracks: tracks.length, totalDurationMs: 0, tracks: tracks.map((t, i) => ({ trackNumber: i + 1, title: t.name, artist: t.artist, allArtists: t.artists.join(', '), durationMs: t.duration * 1000, spotifyUrl: t.url, coverUrl: t.cover_url })) })) } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) } } else { res.statusCode = 500; res.end(JSON.stringify({ error: 'spotdl failed' })) } }) })
 
 
-  // ── Spotify Download (SSE, Multi-Track) ──
+  // â”€â”€ Spotify Download (SSE, Multi-Track) â”€â”€
   middlewares.use('/api/spotify-download', (req, res, next) => {
     const urlObj = new URL(req.url, `http://${req.headers.host}`)
     if (urlObj.pathname !== '/') return next()
@@ -1457,7 +1557,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         throw new Error('No tracks found to download (or all selected tracks were invalid).')
       }
 
-      send({ status: `Found ${totalTracks} track${totalTracks > 1 ? 's' : ''} — starting download...`, progress: 5, totalTracks })
+      send({ status: `Found ${totalTracks} track${totalTracks > 1 ? 's' : ''} â€” starting download...`, progress: 5, totalTracks })
 
       let outputDir = downloadsDir
       let collectionDir = null
@@ -1508,7 +1608,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           send({
             currentTrack: 0,
             totalTracks: totalTracks,
-            status: 'Se scanează și se asociază melodiile pe YouTube...',
+            status: 'Se scaneazÄƒ È™i se asociazÄƒ melodiile pe YouTube...',
             progress: 5
           });
 
@@ -1606,7 +1706,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             let files = fs.readdirSync(outputDir).filter(f => f.endsWith('.mp3'));
             const expectedCount = result.nativeTotalTracks || totalTracks;
 
-            // ── Smart rescue: identify EXACTLY which tracks are missing ──
+            // â”€â”€ Smart rescue: identify EXACTLY which tracks are missing â”€â”€
             const norm = s => (s || '').toLowerCase()
               .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -1641,7 +1741,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
                 const durationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
 
-                // Search strategies — NO "official audio" suffix (that returns clean/radio versions)
+                // Search strategies â€” NO "official audio" suffix (that returns clean/radio versions)
                 // We rely on duration matching to pick the explicit studio version
                 const searchStrategies = [
                   `ytsearch10:${track.artist} ${track.title}`,
@@ -1655,11 +1755,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   if (dlState.cancelled || rescued) break;
 
                   send({
-                    status: `Rescuing: ${track.title} — ${track.artist} (${mi + 1}/${missingTracks.length})`,
+                    status: `Rescuing: ${track.title} â€” ${track.artist} (${mi + 1}/${missingTracks.length})`,
                     progress: 88 + Math.round((mi / missingTracks.length) * 7)
                   });
 
-                  // Tight ±20s duration window to avoid radio edits or live versions
+                  // Tight Â±20s duration window to avoid radio edits or live versions
                   const matchFilter = durationSec > 0
                     ? `!is_live & duration>${Math.max(30, durationSec - 35)} & duration<${durationSec + 35}`
                     : '!is_live & duration>30';
@@ -1695,7 +1795,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                   if (ok) {
                     rescued = true;
                     downloadedNorms.add(norm(`${safeArtist} - ${safeTitle}`));
-                    console.log(`[spotdl-rescue] ✓ Rescued: ${track.title}`);
+                    console.log(`[spotdl-rescue] âœ“ Rescued: ${track.title}`);
 
                     const trackRealIdx = tracks.findIndex(t => t.title === track.title && t.artist === track.artist);
                     if (trackRealIdx !== -1) {
@@ -1729,13 +1829,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                       NodeID3.write(tags, finalOutputPath);
                     } catch (e) { console.error('[rescue-tags]', e.message); }
                   } else {
-                    console.log(`[spotdl-rescue] ✗ Strategy failed: "${track.title}" | query: ${query.substring(0, 60)}`);
+                    console.log(`[spotdl-rescue] âœ— Strategy failed: "${track.title}" | query: ${query.substring(0, 60)}`);
                     if (!ok) await new Promise(r => setTimeout(r, 800));
                   }
                 }
 
                 if (!rescued) {
-                  console.log(`[spotdl-rescue] Could not rescue: ${track.title} — ${track.artist}`);
+                  console.log(`[spotdl-rescue] Could not rescue: ${track.title} â€” ${track.artist}`);
                   failedTracks.push({ title: track.title, artist: track.artist, error: 'No matching video found on YouTube' });
                 }
                 if (mi < missingTracks.length - 1) await new Promise(r => setTimeout(r, 600));
@@ -1756,15 +1856,15 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         }
 
       } else {
-        // ── yt-dlp download engine ─────────────────────────────────────────────────
-        // All tracks → yt-dlp searching YouTube Music (ytmsearch) for exact studio version
-        // Cover art  → always from track.coverUrl (Spotify album art), written via NodeID3
+        // â”€â”€ yt-dlp download engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // All tracks â†’ yt-dlp searching YouTube Music (ytmsearch) for exact studio version
+        // Cover art  â†’ always from track.coverUrl (Spotify album art), written via NodeID3
 
-        const SPOTDL_LIMIT = 0; // spotdl disabled — yt-dlp with YouTube Music search for all tracks
+        const SPOTDL_LIMIT = 0; // spotdl disabled â€” yt-dlp with YouTube Music search for all tracks
         const isWin = process.platform === 'win32';
         const safeLimit = Math.max(3, limit || 3); // minimum 3 concurrent tracks
 
-        // ── Helper: fetch cover buffer from Spotify album art ──────────────────
+        // â”€â”€ Helper: fetch cover buffer from Spotify album art â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const fetchCoverBuffer = async (coverUrl, retries = 3) => {
           if (!coverUrl) return null;
           try {
@@ -1795,9 +1895,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           }
         };
 
-        // ── Helper: write ID3 tags (Removed, using writeAndVerifyTags from tag-utils) ──
+        // â”€â”€ Helper: write ID3 tags (Removed, using writeAndVerifyTags from tag-utils) â”€â”€
 
-        // ── Helper: download one track via spotdl (per-track, not playlist) ──
+        // â”€â”€ Helper: download one track via spotdl (per-track, not playlist) â”€â”€
         const downloadViaSpotdl = (track, trackIndex, retryCount = 0, provider = 'youtube-music', embedLyrics = true) => new Promise((resolve) => {
           if (dlState.cancelled) return resolve({ skipped: true });
           const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
@@ -1897,7 +1997,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
             if (isRateLimited) {
               const delay = retryCount === 0 ? 2 : (retryCount === 1 ? 5 : 10);
-              send({ status: `Rate limited — waiting ${delay} seconds before retry`, currentTrack: trackIndex + 1 });
+              send({ status: `Rate limited â€” waiting ${delay} seconds before retry`, currentTrack: trackIndex + 1 });
               await new Promise(r => setTimeout(r, delay * 1000));
               return resolve(await downloadViaSpotdl(track, trackIndex, retryCount + 1, provider));
             }
@@ -1916,7 +2016,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           proc.on('error', err => { dlState.procs.delete(proc); resolve({ error: `spotdl spawn error: ${err.message}`, trackTitle: track.title }) });
         });
 
-        // ── Helper: download one track via yt-dlp with bestaudio ───────────────
+        // â”€â”€ Helper: download one track via yt-dlp with bestaudio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const downloadViaYtdlp = (track, trackIndex, currentAttempt = 1) => new Promise((resolve) => {
           if (dlState.cancelled) return resolve({ skipped: true });
           const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_');
@@ -1935,13 +2035,13 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             if (attempt === 1) return `ytsearch5:${artist} ${cleanTitle} audio`;
             if (attempt === 2) return `ytsearch5:"${cleanTitle}" "${artist}"`;
 
-            // Păcălim YouTube Premium (jump to attempt 3)
-            // Căutăm versiuni fan-made (lyric videos) sau excludem oficialele
+            // PÄƒcÄƒlim YouTube Premium (jump to attempt 3)
+            // CÄƒutÄƒm versiuni fan-made (lyric videos) sau excludem oficialele
             if (attempt === 3) return `ytsearch5:${artist} ${cleanTitle} lyric video`;
             return `ytsearch10:${cleanTitle} ${artist} audio -official -topic`;
           };
 
-          // Build duration match-filter: ±20s window to pick studio version (wider = fewer misses)
+          // Build duration match-filter: Â±20s window to pick studio version (wider = fewer misses)
           // This eliminates obvious radio edits, live versions, extended mixes, etc.
           const durationSec = track.durationMs ? Math.round(track.durationMs / 1000) : 0;
           const durationFilter = durationSec > 30
@@ -1958,7 +2058,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
           const ytDlpArgs = [
             searchQuery,
-            // Duration filter — only on first 2 attempts; attempts 3+ search without restriction
+            // Duration filter â€” only on first 2 attempts; attempts 3+ search without restriction
             ...(durationFilter && track.spotifyUrl && currentAttempt <= 2 ? ['--match-filter', durationFilter] : []),
             '--format', 'bestaudio',
             '--extract-audio',
@@ -2011,14 +2111,14 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             if (pctMatch) send({ trackProgress: Math.min(parseFloat(pctMatch[1]), 95), currentTrack: trackIndex + 1, status: `Downloading: ${track.title}` });
           });
           proc.stderr.on('data', c => { stderr += c.toString(); });
-          proc.on('close', code => {
+          proc.on('close', async code => {
             clearTimeout(timeoutId);
             dlState.procs.delete(proc);
             if (dlState.cancelled) return resolve({ skipped: true });
 
-            // Premium-only pe YouTube Music → sari direct la ytsearch (attempt 3+)
+            // Premium-only pe YouTube Music â†’ sari direct la ytsearch (attempt 3+)
             if (stderr.includes('Music Premium') || stderr.includes('Premium members')) {
-              console.warn(`[yt-dlp] Premium-only track on YT Music: ${track.title} — switching to ytsearch`);
+              console.warn(`[yt-dlp] Premium-only track on YT Music: ${track.title} â€” switching to ytsearch`);
               return resolve({ error: 'PREMIUM_SKIP', trackTitle: track.title });
             }
 
@@ -2044,22 +2144,43 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
             if (!resolvedFilename) return resolve({ error: `Could not find downloaded file for ${track.title}`, trackTitle: track.title });
 
-            // Find thumbnail fallback (yt-dlp generates .webp or .jpg)
+            // â”€â”€ Cover art: try HD YouTube thumbnail first, fall back to write-thumbnail â”€â”€
             let coverFile = null;
             try {
               const baseName = finalOutputName.replace(/\.mp3$/, '');
               const files = fs.readdirSync(outputDir);
               const thumbFile = files.find(f => f.startsWith(baseName) && (f.endsWith('.webp') || f.endsWith('.jpg') || f.endsWith('.png')));
 
-              if (thumbFile) {
+              // Try to get video ID from track URL or the written thumbnail filename
+              const trackVideoId = track.url ? extractYtVideoId(track.url) :
+                (thumbFile ? extractYtVideoId(thumbFile) : null);
+
+              // Attempt 1: fetch maxresdefault directly from YouTube
+              const hdBuf = await fetchHDCoverBuffer(trackVideoId, null);
+
+              if (hdBuf && hdBuf.length > 5000) {
+                const croppedThumb = path.join(outputDir, `${baseName}-cropped.jpg`);
+                spawnSync(path.join(ffmpegDir, 'ffmpeg' + (isWin ? '.exe' : '')), [
+                  '-y', '-i', 'pipe:0',
+                  '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos',
+                  '-frames:v', '1', '-q:v', '1', croppedThumb
+                ], { input: hdBuf, windowsHide: true });
+                if (fs.existsSync(croppedThumb) && fs.statSync(croppedThumb).size > 5000) {
+                  coverFile = croppedThumb;
+                  console.log(`[cover] HD cover used for mass download: ${track.title} (${fs.statSync(croppedThumb).size} bytes)`);
+                }
+              }
+
+              // Attempt 2 (fallback): use write-thumbnail from yt-dlp
+              if (!coverFile && thumbFile) {
                 const thumbPath = path.join(outputDir, thumbFile);
                 const croppedThumb = path.join(outputDir, `${baseName}-cropped.jpg`);
 
                 // Crop YouTube 16:9 thumbnail to 1:1 square for ID3 tags
                 spawnSync(path.join(ffmpegDir, 'ffmpeg' + (isWin ? '.exe' : '')), [
                   '-i', thumbPath,
-                  '-vf', 'crop=min(iw\\,ih):min(iw\\,ih)',
-                  '-frames:v', '1',
+                  '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos',
+                  '-frames:v', '1', '-q:v', '1',
                   '-y', croppedThumb
                 ], { windowsHide: true });
 
@@ -2074,11 +2195,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             resolve({ filename: resolvedFilename, provider: 'yt-dlp', coverFile });
           });
           proc.on('error', err => { dlState.procs.delete(proc); resolve({ error: `yt-dlp spawn error: ${err.message}`, trackTitle: track.title }) });
+
         });
 
         let successfulTags = 0;
         const tagFailedTracks = [];
-        // ── Main download loop ────────────────────────────────────────────────
+        // â”€â”€ Main download loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         for (let i = 0; i < tracks.length; i++) {
           if (dlState.cancelled) {
             if (collectionDir) try { fs.rmSync(collectionDir, { recursive: true, force: true }) } catch { }
@@ -2102,7 +2224,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
           const downloadTask = (async () => {
             send({
-              status: `Downloading: ${track.title} — ${track.artist} (YouTube Music)`,
+              status: `Downloading: ${track.title} â€” ${track.artist} (YouTube Music)`,
               progress: Math.round(5 + ((completedTracks.length + failedTracks.length) / totalTracks) * 85),
               currentTrack: trackIndex + 1,
               totalTracks,
@@ -2123,7 +2245,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 // Always use yt-dlp with YouTube Music search
                 result = await downloadViaYtdlp(track, trackIndex, currentAttemptForTrack);
 
-                // Premium pe YT Music → sari direct la attempt 3 (ytsearch)
+                // Premium pe YT Music â†’ sari direct la attempt 3 (ytsearch)
                 if (result.error === 'PREMIUM_SKIP') {
                   currentAttemptForTrack = 3;
                   result = await downloadViaYtdlp(track, trackIndex, currentAttemptForTrack);
@@ -2160,9 +2282,9 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                     coverBuffer = fs.readFileSync(result.coverFile);
                   }
                   // Note: if coverBuffer is still null, writeAndVerifyTags will preserve
-                  // any cover already embedded by spotdl — no need for explicit fallback here.
+                  // any cover already embedded by spotdl â€” no need for explicit fallback here.
 
-                  // Fix album: never fall back to track title — leave it as empty string
+                  // Fix album: never fall back to track title â€” leave it as empty string
                   const tagTrack = { ...track };
                   if (!tagTrack.artist) tagTrack.artist = 'Unknown Artist';
                   // tagTrack.album left as-is (may be empty, that's fine)
@@ -2171,7 +2293,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
                   if (tagResult.success) {
                     successfulTags++;
-                    console.log(`[tags] ✓ Verified Spotify tags for: ${track.artist} - ${track.title}`);
+                    console.log(`[tags] âœ“ Verified Spotify tags for: ${track.artist} - ${track.title}`);
                   } else {
                     tagFailedTracks.push({ title: track.title, filePath });
                     if (result.coverFile && fs.existsSync(result.coverFile)) {
@@ -2186,7 +2308,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
                 }
 
                 completedTracks.push(finalFilename);
-                // Use real array lengths for progress — no race condition with concurrent downloads
+                // Use real array lengths for progress â€” no race condition with concurrent downloads
                 const doneProgress = Math.round(5 + ((completedTracks.length + failedTracks.length) / totalTracks) * 85);
                 send({
                   trackDone: true,
@@ -2215,7 +2337,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         console.log(`Total tracks processed: ${totalTracks}`);
         console.log(`Successfully tagged: ${successfulTags}`);
         if (tagFailedTracks.length > 0) {
-          console.log(`⚠️ ${tagFailedTracks.length} track${tagFailedTracks.length > 1 ? 's' : ''} fără tag-uri corecte:`);
+          console.log(`âš ï¸ ${tagFailedTracks.length} track${tagFailedTracks.length > 1 ? 's' : ''} fÄƒrÄƒ tag-uri corecte:`);
           tagFailedTracks.forEach(t => console.log(`  - ${t.title} (${t.filePath}) ${t.error ? 'Error: ' + t.error : ''}`));
         }
         console.log(`=======================\n`);
@@ -2344,7 +2466,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/spotify-cancel', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const did = u.searchParams.get('downloadId'); if (!did) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing downloadId' })) }; const dl = spotifyActiveDownloads.get(did); if (dl) { dl.cancelled = true; if (dl.procs) { for (const p of dl.procs) { try { if (process.platform === 'win32') { require('child_process').spawnSync('taskkill', ['/pid', p.pid, '/f', '/t']) } else { p.kill('SIGKILL') } } catch { } } }; if (dl.proc) { try { dl.proc.kill() } catch { } }; spotifyActiveDownloads.delete(did) }; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true })) })
 
-  // ── Enrich tracks: instant Spotify lookup for playlist UI display ──────────
+  // â”€â”€ Enrich tracks: instant Spotify lookup for playlist UI display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   middlewares.use('/api/ytdl/enrich-tracks', (req, res, next) => {
     const u = new URL(req.url, `http://${req.headers.host}`);
     if (u.pathname !== '/') return next();
@@ -2386,11 +2508,11 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     });
   });
 
-  // ── Tag augmentation: enrich MP3 with Spotify official metadata ───────────
+  // â”€â”€ Tag augmentation: enrich MP3 with Spotify official metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function augmentYtTags(filePath, playlistIndex = null, playlistLength = null, coverBuffer = null) {
     try {
       // 1. Read ALL fields yt-dlp already embedded via --embed-metadata
-      //    These are our baseline — we only override with better data, never destroy.
+      //    These are our baseline â€” we only override with better data, never destroy.
       const existingTags = NodeID3.read(filePath) || {};
 
       // Derive title/artist from filename as last resort
@@ -2406,20 +2528,20 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       // 2. Build a complete tagTrack from yt-dlp's embedded data as the baseline
       //    node-id3 field names: performerInfo = album artist (TPE2), partOfSet = disc number
       const tagTrack = {
-        title:       title || '',
-        artist:      artist || '',
-        allArtists:  existingTags.performerInfo || artist || '',
-        album:       existingTags.album || '',
-        year:        existingTags.year || '',
-        genre:       existingTags.genre || '',
+        title: title || '',
+        artist: artist || '',
+        allArtists: existingTags.performerInfo || artist || '',
+        album: existingTags.album || '',
+        year: existingTags.year || '',
+        genre: existingTags.genre || '',
         trackNumber: existingTags.trackNumber || '',
-        discNumber:  existingTags.partOfSet || '',
-        isrc:        existingTags.isrc || '',
-        copyright:   existingTags.copyright || '',
-        label:       existingTags.publisher || '',
+        discNumber: existingTags.partOfSet || '',
+        isrc: existingTags.isrc || '',
+        copyright: existingTags.copyright || '',
+        label: existingTags.publisher || '',
       };
 
-      // 3. Try to enrich with Spotify — overlay only the fields Spotify provides
+      // 3. Try to enrich with Spotify â€” overlay only the fields Spotify provides
       const cfg = getConfig();
       const cid = cfg.SPOTIFY_CLIENT_ID || process.env.VITE_SPOTIFY_CLIENT_ID || null;
       const cs = cfg.SPOTIFY_CLIENT_SECRET || process.env.VITE_SPOTIFY_CLIENT_SECRET || null;
@@ -2429,28 +2551,52 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
           const q = `${artist ? artist + ' ' : ''}${title}`;
           const spotMetadata = await searchSpotifyAPI(q, cid, cs, null);
           if (spotMetadata) {
-            // Overlay Spotify fields — Spotify data is authoritative for these
-            if (spotMetadata.title)       tagTrack.title      = spotMetadata.title;
-            if (spotMetadata.artist)      tagTrack.artist     = spotMetadata.artist;
-            if (spotMetadata.allArtists)  tagTrack.allArtists = spotMetadata.allArtists;
-            if (spotMetadata.album)       tagTrack.album      = spotMetadata.album;
-            if (spotMetadata.year)        tagTrack.year       = String(spotMetadata.year);
-            if (spotMetadata.genre)       tagTrack.genre      = spotMetadata.genre;
+            // Overlay Spotify fields â€” Spotify data is authoritative for these
+            if (spotMetadata.title) tagTrack.title = spotMetadata.title;
+            if (spotMetadata.artist) tagTrack.artist = spotMetadata.artist;
+            if (spotMetadata.allArtists) tagTrack.allArtists = spotMetadata.allArtists;
+            if (spotMetadata.album) tagTrack.album = spotMetadata.album;
+            if (spotMetadata.year) tagTrack.year = String(spotMetadata.year);
+            if (spotMetadata.genre) tagTrack.genre = spotMetadata.genre;
             if (spotMetadata.trackNumber) tagTrack.trackNumber = spotMetadata.trackNumber;
             if (spotMetadata.totalTracks) tagTrack.totalTracks = spotMetadata.totalTracks;
-            if (spotMetadata.discNumber)  tagTrack.discNumber = spotMetadata.discNumber;
-            if (spotMetadata.totalDiscs)  tagTrack.totalDiscs = spotMetadata.totalDiscs;
-            if (spotMetadata.isrc)        tagTrack.isrc       = spotMetadata.isrc;
+            if (spotMetadata.discNumber) tagTrack.discNumber = spotMetadata.discNumber;
+            if (spotMetadata.totalDiscs) tagTrack.totalDiscs = spotMetadata.totalDiscs;
+            if (spotMetadata.isrc) tagTrack.isrc = spotMetadata.isrc;
             if (spotMetadata.releaseDate) tagTrack.releaseDate = spotMetadata.releaseDate;
-            if (spotMetadata.label)       tagTrack.label      = spotMetadata.label;
-            if (spotMetadata.copyright)   tagTrack.copyright  = spotMetadata.copyright;
+            if (spotMetadata.label) tagTrack.label = spotMetadata.label;
+            if (spotMetadata.copyright) tagTrack.copyright = spotMetadata.copyright;
 
-            // Fetch Spotify cover ONLY if the file has no embedded cover already
-            if (!coverBuffer && !existingTags.image && spotMetadata.coverUrl) {
+            // Fetch Spotify cover art (640Ã—640) â€” higher quality than YouTube thumbnails.
+            // Always fetch when Spotify has a cover URL, so we can compare with any existing
+            // yt-dlp embedded thumbnail and keep the best one.
+            if (spotMetadata.coverUrl) {
               try {
                 const resp = await fetch(spotMetadata.coverUrl);
-                if (resp.ok) coverBuffer = Buffer.from(await resp.arrayBuffer());
+                if (resp.ok) {
+                  const spotBuf = Buffer.from(await resp.arrayBuffer());
+                  // Use Spotify cover if: no existing cover, OR Spotify's is substantially larger
+                  const existingSize = existingTags.image?.imageBuffer?.length || 0;
+                  if (!coverBuffer && (!existingTags.image || spotBuf.length > existingSize * 1.2)) {
+                    coverBuffer = spotBuf;
+                  }
+                }
               } catch (_) { }
+            }
+
+            // If still no cover (or existing is tiny), try YouTube maxresdefault
+            if (!coverBuffer || (existingTags.image?.imageBuffer?.length || 0) < 50000) {
+              const ytVideoId = extractYtVideoId(
+                existingTags.comment?.text || existingTags.comment || ''
+              );
+              if (ytVideoId) {
+                try {
+                  const hdBuf = await fetchHDCoverBuffer(ytVideoId, null);
+                  if (hdBuf && hdBuf.length > (coverBuffer?.length || 0)) {
+                    coverBuffer = hdBuf;
+                  }
+                } catch (_) { }
+              }
             }
           }
         } catch (e) {
@@ -2462,7 +2608,39 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       //    (only if no track number was found from Spotify or yt-dlp)
       const tagConfig = { playlistIndex, playlistLength, clearComments: true };
 
-      // 5. Write tags — writeAndVerifyTags preserves the yt-dlp embedded cover if coverBuffer is null
+      // 4b. HD cover upgrade â€” runs even when Spotify is not configured.
+      //     If we have no cover yet, or the existing embedded cover is tiny (< 50 KB),
+      //     try to fetch maxresdefault from YouTube using the video ID stored in the
+      //     comment tag by yt-dlp (e.g. "https://www.youtube.com/watch?v=XXXXXXXXXXX").
+      if (!coverBuffer || (existingTags.image?.imageBuffer?.length || 0) < 50000) {
+        const commentText = existingTags.comment?.text || (typeof existingTags.comment === 'string' ? existingTags.comment : '') || '';
+        const ytVideoId = extractYtVideoId(commentText);
+        if (ytVideoId) {
+          try {
+            const hdBuf = await fetchHDCoverBuffer(ytVideoId, null);
+            if (hdBuf && hdBuf.length > (coverBuffer?.length || 0)) {
+              // Square-crop and scale to 1400Ã—1400 via ffmpeg for best quality
+              const tempCrop = filePath + '.hdcover.jpg';
+              try {
+                spawnSync(ffmpegBin, [
+                  '-y', '-i', 'pipe:0',
+                  '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=1920:1920:flags=lanczos',
+                  '-frames:v', '1', '-q:v', '1', tempCrop
+                ], { input: hdBuf, windowsHide: true });
+                if (fs.existsSync(tempCrop) && fs.statSync(tempCrop).size > 5000) {
+                  coverBuffer = fs.readFileSync(tempCrop);
+                } else {
+                  coverBuffer = hdBuf;
+                }
+              } catch (_) { coverBuffer = hdBuf; }
+              finally { try { if (fs.existsSync(tempCrop)) fs.unlinkSync(tempCrop); } catch (_) { } }
+              console.log(`[cover] HD YouTube cover applied (${coverBuffer.length} bytes) for "${tagTrack.title}"`);
+            }
+          } catch (_) { }
+        }
+      }
+
+      // 5. Write tags â€” writeAndVerifyTags preserves the yt-dlp embedded cover if coverBuffer is null
       await writeAndVerifyTags(filePath, tagTrack, coverBuffer, tagConfig);
       console.log(`[tags] Tagged: ${tagTrack.title} | Artist: ${tagTrack.artist} | Album: ${tagTrack.album || '(none)'} | Year: ${tagTrack.year || '?'} | Genre: ${tagTrack.genre || '?'} | Track: ${tagTrack.trackNumber || playlistIndex || '?'}`);
     } catch (e) {
@@ -2471,5 +2649,6 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   }
 
 }
+
 
 

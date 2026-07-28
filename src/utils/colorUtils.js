@@ -1,3 +1,21 @@
+/**
+ * Upgrades a YouTube thumbnail URL to the highest available quality.
+ * YouTube thumbnail quality ladder (by resolution):
+ *   maxresdefault.jpg  → 1280×720  (not always available)
+ *   sddefault.jpg      → 640×480
+ *   hqdefault.jpg      → 480×360   (always available)
+ *   mqdefault.jpg      → 320×180
+ *   default.jpg        → 120×90
+ */
+export function getBestYtThumbnail(url) {
+  if (!url || !url.includes('ytimg.com')) return url;
+  // Replace any quality variant with maxresdefault
+  return url.replace(
+    /(\/vi(?:_webp)?\/[^/]+\/)([^/?#]+)(\.(?:jpg|webp))/i,
+    '$1maxresdefault$3'
+  );
+}
+
 export async function getAverageColor(src) {
   return new Promise((resolve) => {
     const img = new Image();
