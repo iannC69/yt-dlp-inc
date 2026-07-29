@@ -417,6 +417,10 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
     const saved = localStorage.getItem("ytdl_prepend_numbers");
     return saved !== null ? JSON.parse(saved) : true;
   });
+  const [prefixAlbumFolders, setPrefixAlbumFolders] = useState(() => {
+    const saved = localStorage.getItem("ytdl_prefix_album_folders");
+    return saved !== null ? JSON.parse(saved) : true;
+  });
   const [pendingScope, setPendingScope] = useState("single");
   const [currentVinylImage, setCurrentVinylImage] = useState(null);
   const [localCustomPath, setLocalCustomPath] = useState("");
@@ -1055,6 +1059,7 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
             preset: localStorage.getItem("download_preset") || "AUTO",
             hwaccel: localStorage.getItem("hardware_acceleration") || "NONE",
             prependNumbers,
+            prefixAlbumFolders,
             collectionType: info.contentType || "playlist",
           }),
         });
@@ -1086,7 +1091,9 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
           selectedItems,
           customPath: localCustomPath || localStorage.getItem("customPath") || "",
           prependNumbers: prependNumbers.toString(),
+          prefixAlbumFolders: prefixAlbumFolders.toString(),
           concurrency: "3",
+          collectionType: info.contentType || "playlist",
         });
 
         // Reset YTMusic-specific state
@@ -2414,11 +2421,13 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
                         </div>
 
                         {info.playlist.entries.length > 10 && (
-                          <div
-                            className="ytdl-playlist-utility"
-                            style={{ opacity: 0.7, cursor: "default" }}
-                          >
-                            + {info.playlist.entries.length - 10} mai multe melodii (vor fi descărcate toate)
+                          <div className="ytdl-more-tracks-pill">
+                            <span className="ytdl-more-tracks-pill__count">
+                              +{info.playlist.entries.length - 10}
+                            </span>
+                            <span className="ytdl-more-tracks-pill__label">
+                              {info.playlist.entries.length - 10 === 1 ? "melodie în plus" : "melodii în plus"} &mdash; toate vor fi descărcate
+                            </span>
                           </div>
                         )}
                       </div>
@@ -2531,6 +2540,7 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
                                 cursor: "pointer",
                                 color: "#cbd5e1",
                                 fontSize: "0.9rem",
+                                marginBottom: "0.5rem",
                               }}
                             >
                               <input
@@ -2552,6 +2562,36 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
                               Adaugă numărul piesei în numele fișierului (ex:
                               001 - Nume Piesă)
                             </label>
+                            {info.contentType === "album" && (
+                              <label
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                  cursor: "pointer",
+                                  color: "#cbd5e1",
+                                  fontSize: "0.9rem",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={prefixAlbumFolders}
+                                  onChange={(e) => {
+                                    setPrefixAlbumFolders(e.target.checked);
+                                    localStorage.setItem(
+                                      "ytdl_prefix_album_folders",
+                                      JSON.stringify(e.target.checked),
+                                    );
+                                  }}
+                                  style={{
+                                    accentColor: "var(--theme-primary)",
+                                    width: "16px",
+                                    height: "16px",
+                                  }}
+                                />
+                                Adaugă prefixul "Album -" la numele folderului
+                              </label>
+                            )}
                           </div>
                         )}
 
@@ -2716,6 +2756,17 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
                             ? `${info.playlist.downloadableCount} ${appMode === "music" ? "tracks" : "videos"} available`
                             : `${mediaType === "audio" ? "Audio" : "Video"} · Choose your preferred quality`}
                         </span>
+                        {info.playlist && (info.contentType === "album" || info.contentType === "playlist") && (
+                          <div className="ytdl-dl-copy-collection-name">
+                            <span className="ytdl-dl-copy-collection-type">
+                              {info.contentType === "album" ? "Album" : "Playlist"}
+                            </span>
+                            <span className="ytdl-dl-copy-collection-sep">·</span>
+                            <span className="ytdl-dl-copy-collection-title" title={(info.playlist.title || info.title || "").replace(/^(Album|EP|Single)\s*-\s*/i, "")}>
+                              {(info.playlist.title || info.title || "").replace(/^(Album|EP|Single)\s*-\s*/i, "")}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div className="ytdl-dl-btn-group">
                         <button
@@ -3345,13 +3396,26 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
         )}
 
         <footer className="ytdl-footer">
-          <div className="ytdl-footer-brand">
-            <span className="ytdl-footer-dot" /> MediaDL YouTube
-          </div>
-          <div className="ytdl-footer-details">
-            <span>Video & audio</span>
-            <span>Playlist-aware</span>
-            <span>Powered by yt-dlp + FFmpeg</span>
+          <div className="ytdl-footer-inner">
+            <div className="ytdl-footer-top">
+              <div className="ytdl-footer-brand">
+                <span className="ytdl-footer-dot" />
+                <span className="ytdl-footer-brand-name">MediaDL</span>
+                <span className="ytdl-footer-brand-sep">&middot;</span>
+                <span className="ytdl-footer-brand-sub">YouTube</span>
+              </div>
+              <div className="ytdl-footer-badges">
+                <span className="ytdl-footer-badge ytdl-footer-badge--engine">yt-dlp</span>
+                <span className="ytdl-footer-badge ytdl-footer-badge--ffmpeg">FFmpeg</span>
+                <span className="ytdl-footer-badge ytdl-footer-badge--hd">Ultra HD</span>
+                <span className="ytdl-footer-badge ytdl-footer-badge--playlist">Playlist</span>
+              </div>
+            </div>
+            <div className="ytdl-footer-divider" />
+            <div className="ytdl-footer-bottom">
+              <span className="ytdl-footer-copy">&copy; 2026 MediaDL &nbsp;&middot;&nbsp; v1.0.69</span>
+              <span className="ytdl-footer-tagline">For personal use only &middot; Respect creators &amp; their work</span>
+            </div>
           </div>
         </footer>
       </div>
@@ -3360,3 +3424,4 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
 };
 
 export default YoutubeDownloader;
+

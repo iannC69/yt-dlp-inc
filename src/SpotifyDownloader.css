@@ -2768,80 +2768,155 @@
   transform: scale(1.1);
 }
 
-/* FOOTER — compact, scrolls with content */
+/* FOOTER — premium glassmorphic panel */
 .sp-footer {
   position: relative;
   z-index: 1;
   width: 100%;
-  background: transparent;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 0.75rem 2rem;
+  padding: 0.75rem 2rem 1.25rem;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  flex-direction: column;
   flex-shrink: 0;
   margin-top: auto;
-  flex-wrap: wrap;
 }
 
 .sp-footer-inner {
-  display: contents;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.015) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+/* ─ Top row ─ */
+.sp-footer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  flex-wrap: wrap;
 }
 
 .sp-footer-brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.4);
-  font-weight: 600;
+  gap: 0.55rem;
 }
 
 .sp-footer-brand-dot {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   background: var(--sp-green);
   border-radius: 50%;
-  opacity: 0.5;
+  box-shadow: 0 0 8px var(--sp-green);
+  animation: sp-footer-pulse 2.5s ease-in-out infinite;
 }
 
-.sp-footer-links {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
+@keyframes sp-footer-pulse {
+  0%, 100% { box-shadow: 0 0 6px var(--sp-green); opacity: 1; }
+  50%       { box-shadow: 0 0 14px var(--sp-green), 0 0 28px rgba(29,185,84,0.35); opacity: 0.8; }
 }
 
-.sp-footer-link {
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.3);
+.sp-footer-brand-name {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: rgba(241, 245, 249, 0.9);
+  letter-spacing: -0.01em;
+}
+
+.sp-footer-brand-sep {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.sp-footer-brand-sub {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(29, 185, 84, 0.85);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ─ Badge strip ─ */
+.sp-footer-badges {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-weight: 500;
+  gap: 0.45rem;
+  flex-wrap: wrap;
 }
 
 .sp-footer-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: rgba(29, 185, 84, 0.1);
-  border: 1px solid rgba(29, 185, 84, 0.25);
-  color: var(--sp-green);
-  padding: 0.25rem 0.65rem;
+  padding: 0.22rem 0.65rem;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background 0.2s;
+}
+
+.sp-footer-badge--green {
+  background: rgba(29, 185, 84, 0.1);
+  border: 1px solid rgba(29, 185, 84, 0.28);
+  color: rgba(29, 185, 84, 0.9);
+}
+
+.sp-footer-badge--dim {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(148, 163, 184, 0.65);
+}
+
+/* ─ Divider ─ */
+.sp-footer-divider {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 20%,
+    rgba(255, 255, 255, 0.07) 80%,
+    transparent 100%
+  );
+}
+
+/* ─ Bottom row ─ */
+.sp-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 1.25rem;
+  flex-wrap: wrap;
 }
 
 .sp-footer-copy {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.6);
+  letter-spacing: 0.02em;
+}
+
+.sp-footer-tagline {
+  font-size: 0.68rem;
+  color: rgba(100, 116, 139, 0.7);
+  font-style: italic;
+}
+
+/* Legacy aliases kept for compatibility */
+.sp-footer-link {
   display: none;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.2);
-  text-align: center;
-  width: 100%;
-  max-width: 800px;
 }
 
 @media (max-width:600px) {
@@ -2863,7 +2938,14 @@
   }
 
   .sp-footer {
-    padding: 1rem 1rem;
+    padding: 0.5rem 0.75rem 0.75rem;
+  }
+
+  .sp-footer-top,
+  .sp-footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
 }
 
