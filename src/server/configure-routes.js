@@ -491,7 +491,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         pt = en[0].thumbnails ? en[0].thumbnails[en[0].thumbnails.length - 1]?.url : (en[0].thumbnail || null);
       }
 
-      res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ title: plTitle, uploader: pl.uploader || pl.channel || null, thumbnail: pt, count: cnt, downloadableCount: Math.min(cnt || en.length, COLLECTION_LIMIT), isTruncated: cnt > COLLECTION_LIMIT, entries: en.slice(0, COLLECTION_LIMIT).map((e, i) => ({ id: e.id, index: i + 1, title: e.title || 'Video fÄƒrÄƒ titlu', uploader: e.uploader || e.channel || null, duration: e.duration || null, album: e.album || extractedAlbum || null, thumbnail: e.thumbnails ? e.thumbnails[e.thumbnails.length - 1]?.url : (e.thumbnail || null) })) }))
+      res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ title: plTitle, uploader: pl.uploader || pl.channel || null, thumbnail: pt, count: cnt, downloadableCount: Math.min(cnt || en.length, COLLECTION_LIMIT), isTruncated: cnt > COLLECTION_LIMIT, entries: en.slice(0, COLLECTION_LIMIT).map((e, i) => ({ id: e.id, index: i + 1, title: e.title || 'Video fÄƒrÄƒ titlu', uploader: e.uploader || e.channel || null, duration: e.duration || null, album: e.album || extractedAlbum || null, thumbnail: e.thumbnails ? e.thumbnails[e.thumbnails.length - 1]?.url : (e.thumbnail || null), view_count: e.view_count || e.popularity || 0 })) }))
     } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) }
   })
 

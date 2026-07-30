@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback, useRef, lazy } from 'react';
+import { useEffect, useState, useCallback, useRef, lazy } from 'react';
 import SetupWizard from './SetupWizard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Settings, X, HelpCircle, ExternalLink, Palette, Library, FolderOpen, RefreshCw, ListVideo, CheckCircle2, Leaf, Scale, Zap, Rocket, Bot, Scissors, Layers, SlidersHorizontal, Cpu, Music2, Filter, Terminal, LayoutGrid, Globe, Check, Music, Folder, Link, Link2, Download, Upload } from 'lucide-react';
@@ -6,6 +6,7 @@ import YoutubeDownloader from './YoutubeDownloader';
 import SpotifyDownloader from './SpotifyDownloader';
 import AudioCutter from './AudioCutter';
 import MassDownloader from './MassDownloader';
+import PlaylistAnalyzer from './PlaylistAnalyzer';
 import LibraryModal from './LibraryModal';
 import QueueModal from './QueueModal';
 import LogsTab from './LogsTab';
@@ -50,6 +51,12 @@ const PLATFORMS = [
     label: 'Mass DL',
     color: '#a855f7',
     icon: <Layers size={18} />,
+  },
+  {
+    id: 'analyzer',
+    label: 'Analyzer',
+    color: '#8B5CF6',
+    icon: <Globe size={18} />,
   },
 ];
 
@@ -563,6 +570,7 @@ export default function App() {
             {activeIdx === 1 && <SpotifyDownloader activeDownloadId={activeSpotifyJob} />}
             {activeIdx === 2 && <AudioCutter initialPayload={cutterPayload} />}
             {activeIdx === 3 && <MassDownloader />}
+            {activeIdx === 4 && <PlaylistAnalyzer />}
           </motion.div>
         </AnimatePresence>
       </div>

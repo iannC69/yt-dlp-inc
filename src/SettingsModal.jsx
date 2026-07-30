@@ -128,6 +128,9 @@ export default function SettingsModal({
 
   /* New settings stored locally */
   const [autoOpenFolder, setAutoOpenFolder] = useState(() => storage.getItem('auto_open_folder') !== 'false');
+  const [artistZoomLevel, setArtistZoomLevel] = useState(() => parseFloat(storage.getItem('pa_artist_zoom_level')) || 0.6);
+  const [artistBlurLevel, setArtistBlurLevel] = useState(() => parseFloat(storage.getItem('pa_artist_blur_level')) || 0);
+  const [artistCustomBgUrl, setArtistCustomBgUrl] = useState(() => storage.getItem('pa_artist_custom_bg_url') || '');
   const [desktopNotif, setDesktopNotif]     = useState(() => storage.getItem('desktop_notif') !== 'false');
   const [proxyUrl, setProxyUrl]             = useState(() => storage.getItem('proxy_url') || '');
   const [maxDlSpeed, setMaxDlSpeed]         = useState(() => parseInt(storage.getItem('max_dl_speed') || '0'));
@@ -390,6 +393,53 @@ export default function SettingsModal({
 
                       <div className="sm-card">
                         <div className="sm-card-title"><Zap size={12} />Effects</div>
+                        <div className="sm-field">
+                          <label className="sm-label">Artist Background Zoom — <strong style={{ color: '#f4f4f5' }}>{Math.round(artistZoomLevel * 100)}%</strong></label>
+                          <div className="sm-slider-row">
+                            <input type="range" className="sm-slider" min="0.2" max="3.0" step="0.1"
+                              value={artistZoomLevel}
+                              onChange={e => {
+                                const v = parseFloat(e.target.value);
+                                setArtistZoomLevel(v);
+                                storage.setItem('pa_artist_zoom_level', String(v));
+                                window.dispatchEvent(new Event('settings-updated'));
+                              }}
+                            />
+                            <span className="sm-slider-val">{Math.round(artistZoomLevel * 100)}%</span>
+                          </div>
+                          <div className="sm-hint">Adjust the size of the artist in the background.</div>
+                        </div>
+                        <div className="sm-field">
+                          <label className="sm-label">Artist Background Blur — <strong style={{ color: '#f4f4f5' }}>{artistBlurLevel}px</strong></label>
+                          <div className="sm-slider-row">
+                            <input type="range" className="sm-slider" min="0" max="50" step="1"
+                              value={artistBlurLevel}
+                              onChange={e => {
+                                const v = parseFloat(e.target.value);
+                                setArtistBlurLevel(v);
+                                storage.setItem('pa_artist_blur_level', String(v));
+                                window.dispatchEvent(new Event('settings-updated'));
+                              }}
+                            />
+                            <span className="sm-slider-val">{artistBlurLevel}px</span>
+                          </div>
+                          <div className="sm-hint">Add a blur effect to the artist background if desired.</div>
+                        </div>
+                        <div className="sm-field">
+                          <label className="sm-label">Custom Background Image URL</label>
+                          <input 
+                            type="text" 
+                            className="sm-input" 
+                            placeholder="https://example.com/image.jpg"
+                            value={artistCustomBgUrl}
+                            onChange={e => {
+                              setArtistCustomBgUrl(e.target.value);
+                              storage.setItem('pa_artist_custom_bg_url', e.target.value);
+                              window.dispatchEvent(new Event('settings-updated'));
+                            }}
+                          />
+                          <div className="sm-hint">Leave blank to use the artist's YouTube thumbnail.</div>
+                        </div>
                         <ToggleRow
                           label="Live Aurora Background"
                           desc="Animated gradient background that reacts to the current platform."
