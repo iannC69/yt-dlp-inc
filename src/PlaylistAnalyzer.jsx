@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactECharts from 'echarts-for-react';
 import {
   Link2, Sparkles, Clock, Users, Disc, Hash, Layers,
-  BarChart2, Activity, ShieldAlert, Cpu, Check, Music, Star, Flame, Calendar, X
+  BarChart2, Activity, ShieldAlert, Cpu, Check, Music, Star, Flame, Calendar, X,
+  Play, BrainCircuit, BarChart3, Music4, PlayCircle, Coffee
 } from 'lucide-react';
 import { storage } from './storage';
 import './PlaylistAnalyzer.css';
@@ -16,6 +17,15 @@ const MOOD_KEYWORDS = {
   Nostalgic: ['retro', 'vintage', 'classic', 'memory', 'remember', 'old', '90s', '80s', 'childhood'],
   Upbeat: ['happy', 'upbeat', 'sun', 'smile', 'joy', 'good', 'day', 'bright', 'shine'],
   Chill: ['chill', 'lofi', 'lo-fi', 'relax', 'study', 'sleep', 'ambient', 'vibe', 'smooth', 'slow']
+};
+
+
+const getComputedColor = (varName, fallback) => {
+  if (typeof window !== 'undefined') {
+    const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    if (val) return val;
+  }
+  return fallback;
 };
 
 const stringToColor = (str) => {
@@ -276,7 +286,7 @@ export default function PlaylistAnalyzer() {
         trackCount: tracks.length
       };
       setHistory(prev => {
-        const h = [newHistoryItem, ...prev.filter(x => x.url !== targetUrl)].slice(0, 10);
+        const h = [newHistoryItem, ...prev.filter(x => x.title !== newHistoryItem.title)].slice(0, 10);
         localStorage.setItem('pa-history', JSON.stringify(h));
         return h;
       });
@@ -492,9 +502,9 @@ export default function PlaylistAnalyzer() {
       tooltip: {
         trigger: 'item',
         backgroundColor: 'rgba(21, 21, 34, 0.9)',
-        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`,
         textStyle: { color: '#F5F3FF' },
-        formatter: '{b}: {c} tracks ({d}%)'
+        formatter: '{b}: {d}%'
       },
       legend: {
         orient: 'vertical',
@@ -514,7 +524,7 @@ export default function PlaylistAnalyzer() {
           borderWidth: 2
         },
         label: { show: false },
-        color: ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B'],
+        color: ['#3B82F6', getComputedColor('--pa-accent-1', '#8B5CF6'), getComputedColor('--pa-accent-2', '#EC4899'), getComputedColor('--pa-accent-3', '#10B981'), '#F59E0B'],
         data: top.map(a => ({ name: a.name || 'Unknown', value: a.count }))
       }]
     };
@@ -528,7 +538,7 @@ export default function PlaylistAnalyzer() {
       tooltip: {
         trigger: 'axis',
         backgroundColor: 'rgba(21, 21, 34, 0.9)',
-        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`,
         textStyle: { color: '#F5F3FF' },
         formatter: (params) => {
           const val = params[0];
@@ -552,7 +562,7 @@ export default function PlaylistAnalyzer() {
         itemStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
-            colorStops: [{ offset: 0, color: '#3B82F6' }, { offset: 1, color: '#8B5CF6' }]
+            colorStops: [{ offset: 0, color: '#3B82F6' }, { offset: 1, color: getComputedColor('--pa-accent-1', '#8B5CF6') }]
           },
           borderRadius: [0, 4, 4, 0]
         },
@@ -577,7 +587,7 @@ export default function PlaylistAnalyzer() {
       tooltip: {
         trigger: 'axis',
         backgroundColor: 'rgba(21, 21, 34, 0.9)',
-        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`,
         textStyle: { color: '#F5F3FF' }
       },
       xAxis: { type: 'value', show: false },
@@ -594,7 +604,7 @@ export default function PlaylistAnalyzer() {
         itemStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
-            colorStops: [{ offset: 0, color: '#8B5CF6' }, { offset: 1, color: '#EC4899' }]
+            colorStops: [{ offset: 0, color: getComputedColor('--pa-accent-1', '#8B5CF6') }, { offset: 1, color: getComputedColor('--pa-accent-2', '#EC4899') }]
           },
           borderRadius: [0, 4, 4, 0]
         },
@@ -615,7 +625,7 @@ export default function PlaylistAnalyzer() {
       tooltip: {
         trigger: 'item',
         backgroundColor: 'rgba(21, 21, 34, 0.9)',
-        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`,
         textStyle: { color: '#F5F3FF' },
         formatter: '{b}: {d}%'
       },
@@ -637,7 +647,7 @@ export default function PlaylistAnalyzer() {
           borderWidth: 2
         },
         label: { show: false },
-        color: ['#8B5CF6', '#EC4899', '#4F46E5', '#10B981', '#F59E0B'],
+        color: [getComputedColor('--pa-accent-1', '#8B5CF6'), getComputedColor('--pa-accent-2', '#EC4899'), '#4F46E5', getComputedColor('--pa-accent-3', '#10B981'), '#F59E0B'],
         data: analysisResult.genreSlices
       }]
     };
@@ -648,7 +658,7 @@ export default function PlaylistAnalyzer() {
     return {
       tooltip: {
         backgroundColor: 'rgba(21, 21, 34, 0.9)',
-        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`,
         textStyle: { color: '#F5F3FF' }
       },
       radar: {
@@ -658,18 +668,18 @@ export default function PlaylistAnalyzer() {
         shape: 'polygon',
         splitNumber: 4,
         axisName: { color: 'rgba(245, 243, 255, 0.9)', fontSize: 12, fontWeight: 500 },
-        splitLine: { lineStyle: { color: 'rgba(139, 92, 246, 0.3)' } },
+        splitLine: { lineStyle: { color: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)` } },
         splitArea: { show: false },
-        axisLine: { lineStyle: { color: 'rgba(139, 92, 246, 0.2)' } }
+        axisLine: { lineStyle: { color: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.2)` } }
       },
       series: [{
         type: 'radar',
         data: [{
           value: analysisResult.normalizedMood.map(m => m.value),
           name: 'Mood Score',
-          areaStyle: { color: 'rgba(236, 72, 153, 0.2)' },
-          lineStyle: { color: '#EC4899', width: 2 },
-          itemStyle: { color: '#EC4899' }
+          areaStyle: { color: `rgba(${getComputedColor('--pa-accent-2-rgb', '236, 72, 153')}, 0.2)` },
+          lineStyle: { color: getComputedColor('--pa-accent-2', '#EC4899'), width: 2 },
+          itemStyle: { color: getComputedColor('--pa-accent-2', '#EC4899') }
         }]
       }]
     };
@@ -684,7 +694,7 @@ export default function PlaylistAnalyzer() {
       tooltip: {
         trigger: 'axis',
         backgroundColor: 'rgba(21, 21, 34, 0.9)',
-        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`,
         textStyle: { color: '#F5F3FF' }
       },
       xAxis: {
@@ -704,7 +714,7 @@ export default function PlaylistAnalyzer() {
         itemStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: '#4F46E5' }, { offset: 1, color: '#8B5CF6' }]
+            colorStops: [{ offset: 0, color: '#4F46E5' }, { offset: 1, color: getComputedColor('--pa-accent-1', '#8B5CF6') }]
           },
           borderRadius: [4, 4, 0, 0]
         },
@@ -723,7 +733,7 @@ export default function PlaylistAnalyzer() {
       tooltip: {
         trigger: 'axis',
         backgroundColor: 'rgba(21, 21, 34, 0.9)',
-        borderColor: 'rgba(139, 92, 246, 0.3)',
+        borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`,
         textStyle: { color: '#F5F3FF' }
       },
       xAxis: {
@@ -745,11 +755,11 @@ export default function PlaylistAnalyzer() {
         areaStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: 'rgba(139, 92, 246, 0.5)' }, { offset: 1, color: 'rgba(139, 92, 246, 0)' }]
+            colorStops: [{ offset: 0, color: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.5)` }, { offset: 1, color: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0)` }]
           }
         },
-        lineStyle: { color: '#8B5CF6', width: 3 },
-        itemStyle: { color: '#8B5CF6' }
+        lineStyle: { color: getComputedColor('--pa-accent-1', '#8B5CF6'), width: 3 },
+        itemStyle: { color: getComputedColor('--pa-accent-1', '#8B5CF6') }
       }]
     };
   };
@@ -763,14 +773,14 @@ export default function PlaylistAnalyzer() {
     });
 
     return {
-      tooltip: { trigger: 'item', backgroundColor: 'rgba(21, 21, 34, 0.9)', borderColor: 'rgba(139, 92, 246, 0.3)', textStyle: { color: '#F5F3FF' } },
+      tooltip: { trigger: 'item', backgroundColor: 'rgba(21, 21, 34, 0.9)', borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.3)`, textStyle: { color: '#F5F3FF' } },
       series: [{
         type: 'pie',
         radius: ['45%', '75%'],
         itemStyle: { borderRadius: 8, borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 2 },
         data: Object.keys(decades).map((d, i) => ({
           name: d, value: decades[d],
-          itemStyle: { color: ['#8B5CF6', '#EC4899', '#4F46E5', '#10B981', '#F59E0B'][i % 5] }
+          itemStyle: { color: [getComputedColor('--pa-accent-1', '#8B5CF6'), getComputedColor('--pa-accent-2', '#EC4899'), '#4F46E5', getComputedColor('--pa-accent-3', '#10B981'), '#F59E0B'][i % 5] }
         }))
       }]
     };
@@ -890,43 +900,123 @@ export default function PlaylistAnalyzer() {
         </motion.div>
       ) : !analysisResult ? (
         <div className="pa-empty-state">
-          <div className="pa-empty-icon-wrapper">
-            <Sparkles className="pa-empty-icon" />
+          <div className="pa-empty-hero">
+            <div className="pa-empty-icon-wrapper">
+              <Sparkles className="pa-empty-icon" />
+            </div>
+            <h2 className="pa-empty-title">
+              Deep Playlist <span className="pa-text-gradient">Analytics</span>
+            </h2>
+            <p className="pa-empty-subtitle">
+              Paste any YouTube or Spotify playlist link above to uncover hidden insights.
+              Discover your top artists, dominant genres, acoustic profiles, and more.
+            </p>
+            <button className="pa-empty-cta" onClick={() => {
+              const input = document.querySelector('.pa-input');
+              if (input) input.focus();
+            }}>
+              <Play size={18} /> Get Started Now
+            </button>
           </div>
-          <h2 className="pa-empty-title">Deep Playlist Analytics</h2>
-          <p className="pa-empty-subtitle">
-            Paste any YouTube or Spotify playlist link above to uncover hidden insights.
-            Discover your top artists, dominant genres, acoustic profiles, and more.
-          </p>
-          <button className="pa-empty-cta" onClick={() => {
-            const input = document.querySelector('.pa-input');
-            if (input) input.focus();
-          }}>
-            Paste Playlist URL
-          </button>
-          <div className="pa-history-section">
-            <h3 className="pa-history-title"><Clock size={16} /> Recent Analyses</h3>
-            {history.length > 0 ? (
-              <div className="pa-history-list">
-                {history.map(item => (
-                  <div className="pa-history-item" key={item.date} onClick={() => { setUrl(item.url); analyzePlaylist(item.url); }}>
-                    <div className="pa-history-cover" style={{ backgroundImage: `url(${item.cover})` }}>
-                      {!item.cover && <Disc size={20} />}
+
+          <div className="pa-empty-features">
+            <h3 className="pa-section-header">Unlock Insane Insights</h3>
+            <div className="pa-features-grid">
+              <div className="pa-feature-card">
+                <div className="pa-feature-icon" style={{ background: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.15)`, color: '#c4b5fd' }}>
+                  <BrainCircuit size={24} />
+                </div>
+                <h4>AI Auto-Tagging</h4>
+                <p>We use smart heuristics to group genres and extract hidden moods from your tracks.</p>
+              </div>
+              <div className="pa-feature-card">
+                <div className="pa-feature-icon" style={{ background: `rgba(${getComputedColor('--pa-accent-2-rgb', '236, 72, 153')}, 0.15)`, color: '#f9a8d4' }}>
+                  <BarChart3 size={24} />
+                </div>
+                <h4>Deep Data Visuals</h4>
+                <p>Explore gorgeous, interactive charts detailing your eras, track lengths, and top artists.</p>
+              </div>
+              <div className="pa-feature-card">
+                <div className="pa-feature-icon" style={{ background: `rgba(${getComputedColor('--pa-accent-3-rgb', '16, 185, 129')}, 0.15)`, color: '#6ee7b7' }}>
+                  <Music4 size={24} />
+                </div>
+                <h4>Acoustic Profiling</h4>
+                <p>Identify the dominant key, tempo variations, and energy levels across your entire playlist.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="pa-empty-bottom-grid">
+            <div className="pa-history-section">
+              <h3 className="pa-history-title"><Clock size={16} /> Recent Analyses</h3>
+              {history.length > 0 ? (
+                <div className="pa-history-list">
+                  {history.map(item => (
+                    <div className="pa-history-item" key={item.date} onClick={() => { setUrl(item.url); analyzePlaylist(item.url); }}>
+                      <div className="pa-history-cover" style={{ backgroundImage: `url(${item.cover})` }}>
+                        {!item.cover && <Disc size={20} />}
+                      </div>
+                      <div className="pa-history-info">
+                        <h4>{item.title}</h4>
+                        <span>{item.author} • {item.trackCount} tracks</span>
+                      </div>
+                      <button 
+                        className="pa-history-delete" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setHistory(prev => {
+                            const h = prev.filter(x => x.url !== item.url);
+                            localStorage.setItem('pa-history', JSON.stringify(h));
+                            return h;
+                          });
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
-                    <div className="pa-history-info">
-                      <h4>{item.title}</h4>
-                      <span>{item.author} • {item.trackCount} tracks</span>
-                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="pa-history-empty">
+                  <Clock size={24} style={{ color: 'rgba(255,255,255,0.2)', marginBottom: 12 }} />
+                  <p>No recent playlists found.</p>
+                  <span>Paste a link above to build your history!</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pa-samples-section">
+              <h3 className="pa-history-title"><PlayCircle size={16} /> Try a Sample</h3>
+              <div className="pa-samples-list">
+                <div className="pa-sample-card" onClick={() => { setUrl('https://music.youtube.com/playlist?list=PLZS9va6NjCDA&si=JIsGEKAjLbtadv6z'); analyzePlaylist('https://music.youtube.com/playlist?list=PLZS9va6NjCDA&si=JIsGEKAjLbtadv6z'); }}>
+                  <div className="pa-sample-cover" style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}>
+                    <Music size={24} color="#FFF" />
                   </div>
-                ))}
+                  <div className="pa-history-info">
+                    <h4>iannC's Playlist</h4>
+                    <span>Curated vibes</span>
+                  </div>
+                </div>
+                <div className="pa-sample-card" onClick={() => { setUrl('https://music.youtube.com/playlist?list=PLcYmh2nqwzcPX4cnj1gvpQY0LcSrXF-ly&si=t7cBKfXnRkP_RWq6'); analyzePlaylist('https://music.youtube.com/playlist?list=PLcYmh2nqwzcPX4cnj1gvpQY0LcSrXF-ly&si=t7cBKfXnRkP_RWq6'); }}>
+                  <div className="pa-sample-cover" style={{ background: 'linear-gradient(135deg, #EC4899, #f43f5e)' }}>
+                    <Star size={24} color="#FFF" />
+                  </div>
+                  <div className="pa-history-info">
+                    <h4>V1ccX's Playlist</h4>
+                    <span>Top selections</span>
+                  </div>
+                </div>
+                <div className="pa-sample-card" onClick={() => { setUrl('https://music.youtube.com/playlist?list=PLT0CWl9ZGu0w&si=M5W0FlC8qkFKlHPh'); analyzePlaylist('https://music.youtube.com/playlist?list=PLT0CWl9ZGu0w&si=M5W0FlC8qkFKlHPh'); }}>
+                  <div className="pa-sample-cover" style={{ background: 'linear-gradient(135deg, #10B981, #14b8a6)' }}>
+                    <Activity size={24} color="#FFF" />
+                  </div>
+                  <div className="pa-history-info">
+                    <h4>Streaming</h4>
+                    <span>Daily rotation</span>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '30px 10px', background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px dashed rgba(255,255,255,0.1)' }}>
-                <Clock size={24} style={{ color: 'rgba(255,255,255,0.2)', marginBottom: 12 }} />
-                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, margin: 0 }}>No recent playlists found.</p>
-                <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, margin: '4px 0 0 0' }}>Paste a link above and analyze it to build your history!</p>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       ) : (
@@ -1015,7 +1105,7 @@ export default function PlaylistAnalyzer() {
                   transition={{ duration: 0.3, delay: 0.1 }}
                   className="pa-highlight-card"
                 >
-                  <div className="pa-highlight-icon-wrapper" style={{ color: '#10B981', overflow: 'hidden', padding: analysisResult.hiddenGemList[highlightIndex % analysisResult.hiddenGemList.length].cover ? '0' : '12px' }}>
+                  <div className="pa-highlight-icon-wrapper" style={{ color: getComputedColor('--pa-accent-3', '#10B981'), overflow: 'hidden', padding: analysisResult.hiddenGemList[highlightIndex % analysisResult.hiddenGemList.length].cover ? '0' : '12px' }}>
                     {analysisResult.hiddenGemList[highlightIndex % analysisResult.hiddenGemList.length].cover ? (
                       <img src={analysisResult.hiddenGemList[highlightIndex % analysisResult.hiddenGemList.length].cover} alt="Cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
@@ -1033,7 +1123,7 @@ export default function PlaylistAnalyzer() {
 
             {analysisResult.averageYear && (
               <div className="pa-highlight-card">
-                <div className="pa-highlight-icon-wrapper" style={{ color: '#8B5CF6' }}>
+                <div className="pa-highlight-icon-wrapper" style={{ color: getComputedColor('--pa-accent-1', '#8B5CF6') }}>
                   <Calendar size={24} />
                 </div>
                 <div className="pa-highlight-info">
@@ -1147,9 +1237,9 @@ export default function PlaylistAnalyzer() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
               {/* AI Insights */}
-              <div className="pa-card" style={{ background: 'linear-gradient(180deg, rgba(21, 21, 34, 0.8), rgba(21, 21, 34, 0.4))', borderColor: 'rgba(139, 92, 246, 0.2)' }}>
+              <div className="pa-card" style={{ background: 'linear-gradient(180deg, rgba(21, 21, 34, 0.8), rgba(21, 21, 34, 0.4))', borderColor: `rgba(${getComputedColor('--pa-accent-1-rgb', '139, 92, 246')}, 0.2)` }}>
                 <div className="pa-card-header">
-                  <Sparkles className="pa-card-icon" size={20} color="#EC4899" style={{ background: 'rgba(236, 72, 153, 0.1)' }} />
+                  <Sparkles className="pa-card-icon" size={20} color="#EC4899" style={{ background: `rgba(${getComputedColor('--pa-accent-2-rgb', '236, 72, 153')}, 0.1)` }} />
                   <h3 className="pa-card-title">Automatic AI Insights</h3>
                 </div>
                 <div className="pa-ai-insights">

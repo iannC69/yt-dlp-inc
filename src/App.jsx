@@ -125,6 +125,12 @@ export default function App() {
     acBg: '#060910',
     acAccent: '#22d3ee',
     acText: '#d8e4f0',
+    // Playlist Analyzer panel
+    paBg: '#09090F',
+    paAccent1: '#8B5CF6',
+    paAccent2: '#EC4899',
+    paAccent3: '#10B981',
+    paText: '#F5F3FF',
   });
   const [showHelp, setShowHelp] = useState(false);
   const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
@@ -340,6 +346,14 @@ export default function App() {
     root.style.setProperty('--ac-accent', customTheme.acAccent || '#22d3ee');
     root.style.setProperty('--ac-accent-rgb', hexToRgb(customTheme.acAccent || '#22d3ee'));
     root.style.setProperty('--ac-text', customTheme.acText || '#d8e4f0');
+    // Playlist Analyzer
+    root.style.setProperty('--pa-bg', applyBg(customTheme.paBg || '#09090F'));
+    root.style.setProperty('--pa-accent-1', customTheme.paAccent1 || '#8B5CF6');
+    root.style.setProperty('--pa-accent-1-rgb', hexToRgb(customTheme.paAccent1 || '#8B5CF6'));
+    root.style.setProperty('--pa-accent-2', customTheme.paAccent2 || '#EC4899');
+    root.style.setProperty('--pa-accent-2-rgb', hexToRgb(customTheme.paAccent2 || '#EC4899'));
+    root.style.setProperty('--pa-accent-3', customTheme.paAccent3 || '#10B981');
+    root.style.setProperty('--pa-text', customTheme.paText || '#F5F3FF');
   }, [customTheme]);
 
   const saveSettings = () => {

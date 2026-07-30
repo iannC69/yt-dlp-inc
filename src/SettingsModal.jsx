@@ -5,7 +5,7 @@ import {
   Filter, Terminal, RefreshCw, FolderOpen, Globe, Zap, Music, Download,
   Upload, Shield, BarChart2, CheckCircle2, Server, HardDrive, Gauge,
   Wifi, AlertTriangle, Trash2, RotateCcw, Eye, EyeOff, Bell, BellOff,
-  MonitorDown, Package, ExternalLink
+  MonitorDown, Package, ExternalLink, Activity
 } from 'lucide-react';
 import LogsTab from './LogsTab';
 import UpdatesTab from './UpdatesTab';
@@ -188,7 +188,15 @@ export default function SettingsModal({
     ytBg: '#080a0f', ytAccent: '#ef4444', ytSecondary: '#3b82f6', ytText: '#f1f5f9',
     spBg: '#060a06', spAccent: '#1DB954', spText: '#f8fafc',
     mdBg: '#07060f', mdAccent: '#a855f7', mdSecondary: '#d946ef', mdText: '#e2d9f3',
-    acBg: '#060910', acAccent: '#22d3ee', acText: '#d8e4f0',
+    acBg: '#060910',
+    acAccent: '#22d3ee',
+    acText: '#d8e4f0',
+    // Playlist Analyzer panel
+    paBg: '#09090F',
+    paAccent1: '#8B5CF6',
+    paAccent2: '#EC4899',
+    paAccent3: '#10B981',
+    paText: '#F5F3FF',
   };
 
   const PRESETS = [
@@ -237,10 +245,12 @@ export default function SettingsModal({
     </div>
   );
 
-  const ColorSection = ({ title, icon, keys }) => (
+  const renderColorSection = (title, icon, keys) => (
     <div className="sm-card">
       <div className="sm-card-title">{icon}{title}</div>
-      <div className="sm-color-grid">{keys.map(([k, l]) => renderColorPicker(k, l))}</div>
+      <div className="sm-color-grid">
+        {keys.map(([k, l]) => renderColorPicker(k, l))}
+      </div>
     </div>
   );
 
@@ -498,23 +508,26 @@ export default function SettingsModal({
                         )}
                       </div>
 
-                      <ColorSection title="Global Colors" icon={<Globe size={12} />} keys={[
+                      {renderColorSection("Global Colors", <Globe size={12} />, [
                         ['primary','Accent / Buttons'],['bgBase','App Background'],
                         ['panelColor','Panel / Cards'],['navColor','Navbar'],
                         ['textColor','Primary Text'],['borderColor','Borders & Glow'],
-                      ]} />
-                      <ColorSection title="YouTube Panel" icon={<Play size={12} />} keys={[
+                      ])}
+                      {renderColorSection("YouTube Panel", <Play size={12} />, [
                         ['ytBg','Background'],['ytAccent','Accent'],['ytSecondary','Secondary'],['ytText','Text'],
-                      ]} />
-                      <ColorSection title="Spotify Panel" icon={<Music2 size={12} />} keys={[
+                      ])}
+                      {renderColorSection("Spotify Panel", <Music2 size={12} />, [
                         ['spBg','Background'],['spAccent','Accent'],['spText','Text'],
-                      ]} />
-                      <ColorSection title="Mass DL Panel" icon={<Layers size={12} />} keys={[
+                      ])}
+                      {renderColorSection("Mass DL Panel", <Layers size={12} />, [
                         ['mdBg','Background'],['mdAccent','Purple Accent'],['mdSecondary','Magenta'],['mdText','Text'],
-                      ]} />
-                      <ColorSection title="Audio Cutter Panel" icon={<Scissors size={12} />} keys={[
+                      ])}
+                      {renderColorSection("Audio Cutter Panel", <Scissors size={12} />, [
                         ['acBg','Background'],['acAccent','Cyan Accent'],['acText','Text'],
-                      ]} />
+                      ])}
+                      {renderColorSection("Playlist Analyzer Panel", <Activity size={12} />, [
+                        ['paBg','Background'],['paAccent1','Purple Accent'],['paAccent2','Magenta Accent'],['paAccent3','Green Accent'],['paText','Text'],
+                      ])}
 
                       <div className="sm-btn-row">
                         <button className="sm-btn sm-btn-ghost" onClick={() => setCustomTheme(THEME_DEFAULTS)}><RotateCcw size={13} />Reset All</button>
