@@ -54,16 +54,37 @@ function drawTimeline(canvas, { peaks, trimStart, trimEnd, playhead, fadeIn, fad
 
   // Bars
   const bw = W / peaks.length;
+  const barWidth = Math.max(bw - (bw > 2 ? 1 : 0.2), 1);
+  
+  // Create waveform gradients
+  const activeGrad = ctx2d.createLinearGradient(0, H/2 - 50, 0, H/2 + 50);
+  activeGrad.addColorStop(0, 'rgba(34,211,238, 0.8)');
+  activeGrad.addColorStop(0.5, 'rgba(34,211,238, 1)');
+  activeGrad.addColorStop(0.51, 'rgba(14,165,233, 0.8)');
+  activeGrad.addColorStop(1, 'rgba(14,165,233, 0.4)');
+
+  const inactiveGrad = ctx2d.createLinearGradient(0, H/2 - 50, 0, H/2 + 50);
+  inactiveGrad.addColorStop(0, 'rgba(71,85,105, 0.5)');
+  inactiveGrad.addColorStop(0.5, 'rgba(71,85,105, 0.8)');
+  inactiveGrad.addColorStop(0.51, 'rgba(51,65,85, 0.6)');
+  inactiveGrad.addColorStop(1, 'rgba(51,65,85, 0.3)');
+
   for (let i = 0; i < peaks.length; i++) {
     const x = i * bw;
     const t = (i / peaks.length) * duration;
     const inSel = t >= trimStart && t <= trimEnd;
     const h = peaks[i] * H * 0.90;
     const y = (H - h) / 2;
-    ctx2d.fillStyle = inSel
-      ? `rgba(34,211,238,${0.55 + peaks[i] * 0.45})`
-      : `rgba(55,70,95,${0.2 + peaks[i] * 0.2})`;
-    ctx2d.fillRect(x + 0.5, y, Math.max(bw - 0.8, 0.8), h);
+    
+    ctx2d.fillStyle = inSel ? activeGrad : inactiveGrad;
+    
+    if (ctx2d.roundRect && barWidth > 1.5) {
+      ctx2d.beginPath();
+      ctx2d.roundRect(x + (bw - barWidth)/2, y, barWidth, Math.max(h, 2), 2);
+      ctx2d.fill();
+    } else {
+      ctx2d.fillRect(x + (bw - barWidth)/2, y, barWidth, Math.max(h, 2));
+    }
   }
 
   // Fade In gradient
@@ -128,16 +149,18 @@ function drawTimeline(canvas, { peaks, trimStart, trimEnd, playhead, fadeIn, fad
   // ── Playhead ──
   if (playhead >= 0 && playhead <= duration) {
     const px = toX(playhead);
-    ctx2d.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx2d.lineWidth = 1.5;
-    ctx2d.setLineDash([5, 3]);
+    ctx2d.strokeStyle = '#38bdf8';
+    ctx2d.lineWidth = 2;
     ctx2d.beginPath(); ctx2d.moveTo(px, 0); ctx2d.lineTo(px, H); ctx2d.stroke();
-    ctx2d.setLineDash([]);
-    // Triangle cap
-    ctx2d.fillStyle = '#fff';
+    
+    // Glowing cap
+    ctx2d.fillStyle = '#38bdf8';
+    ctx2d.shadowColor = '#38bdf8';
+    ctx2d.shadowBlur = 10;
     ctx2d.beginPath();
-    ctx2d.moveTo(px - 6, 0); ctx2d.lineTo(px + 6, 0); ctx2d.lineTo(px, 11); ctx2d.closePath();
+    ctx2d.moveTo(px - 7, 0); ctx2d.lineTo(px + 7, 0); ctx2d.lineTo(px, 12); ctx2d.closePath();
     ctx2d.fill();
+    ctx2d.shadowBlur = 0;
   }
 }
 
@@ -145,11 +168,13 @@ function drawTimeline(canvas, { peaks, trimStart, trimEnd, playhead, fadeIn, fad
 function VUMeter({ analyserRef, isPlaying }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
+  const peakRef = useRef(0);
+  const peakHoldTimeRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const draw = () => {
+    const draw = (time) => {
       const analyser = analyserRef.current;
       const ctx = canvas.getContext('2d');
       const dpr = window.devicePixelRatio || 1;
@@ -159,7 +184,7 @@ function VUMeter({ analyserRef, isPlaying }) {
       canvas.height = H * dpr;
       ctx.scale(dpr, dpr);
 
-      ctx.fillStyle = '#050810';
+      ctx.fillStyle = '#05070a';
       ctx.fillRect(0, 0, W, H);
 
       let rms = 0;
@@ -168,25 +193,37 @@ function VUMeter({ analyserRef, isPlaying }) {
         analyser.getFloatTimeDomainData(data);
         let sum = 0;
         for (let v of data) sum += v * v;
-        rms = Math.min(1, Math.sqrt(sum / data.length) * 6);
+        rms = Math.min(1, Math.sqrt(sum / data.length) * 5); // boosted for visibility
+      } else {
+        // fade out smooth
+        peakRef.current = Math.max(0, peakRef.current - 0.05);
       }
 
-      const SEGMENTS = 22;
+      if (rms > peakRef.current) {
+        peakRef.current = rms;
+        peakHoldTimeRef.current = time;
+      } else if (time - peakHoldTimeRef.current > 1000) {
+        peakRef.current = Math.max(0, peakRef.current - 0.02);
+      }
+
+      const SEGMENTS = 24;
       const segH = (H - SEGMENTS) / SEGMENTS;
       for (let i = 0; i < SEGMENTS; i++) {
         const y = i * (segH + 1);
         const level = (SEGMENTS - 1 - i) / SEGMENTS;
-        const active = rms > level * 0.85;
+        const active = rms > level;
+        const isPeak = Math.abs(peakRef.current - level) < (1/SEGMENTS);
+        
         let base, glow;
         if (i < 3) { base = 'rgba(239,68,68,'; glow = '#ef4444'; }
-        else if (i < 6) { base = 'rgba(251,146,60,'; glow = '#fb923c'; }
+        else if (i < 7) { base = 'rgba(251,146,60,'; glow = '#fb923c'; }
         else { base = 'rgba(34,211,238,'; glow = '#22d3ee'; }
 
-        if (active) {
-          ctx.fillStyle = base + '1)';
-          ctx.shadowBlur = 8; ctx.shadowColor = glow;
+        if (active || isPeak) {
+          ctx.fillStyle = base + (isPeak ? '0.9)' : '1)');
+          ctx.shadowBlur = 6; ctx.shadowColor = glow;
         } else {
-          ctx.fillStyle = base + '0.1)';
+          ctx.fillStyle = base + '0.15)';
           ctx.shadowBlur = 0;
         }
         ctx.beginPath();
@@ -230,7 +267,7 @@ export default function AudioCutter({ initialPayload }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [loop, setLoop] = useState(false);
 
-  const [effects, setEffects] = useState({ fadeIn: 0, fadeOut: 0, volume: 0, speed: 1.0, normalize: false });
+  const [effects, setEffects] = useState({ fadeIn: 0, fadeOut: 0, volume: 0, speed: 1.0, bass: 0, treble: 0, normalize: false });
   const setFx = (k, v) => setEffects(p => ({ ...p, [k]: v }));
 
   const [meta, setMeta] = useState({ title: '', artist: '', album: '', track: '' });
@@ -322,12 +359,25 @@ export default function AudioCutter({ initialPayload }) {
     const currentSpeed = effects.speed || 1.0;
     node.playbackRate.value = currentSpeed;
 
-    // 2. Apply Volume & Fades via GainNode
+    // 2. Apply EQ (Bass & Treble)
+    const bassNode = ctx.createBiquadFilter();
+    bassNode.type = 'lowshelf';
+    bassNode.frequency.value = 250;
+    bassNode.gain.value = effects.bass || 0;
+
+    const trebleNode = ctx.createBiquadFilter();
+    trebleNode.type = 'highshelf';
+    trebleNode.frequency.value = 4000;
+    trebleNode.gain.value = effects.treble || 0;
+
+    // 3. Apply Volume & Fades via GainNode
     const gainNode = ctx.createGain();
     const baseGain = Math.pow(10, (effects.volume || 0) / 20);
     gainNode.gain.value = baseGain;
 
-    node.connect(gainNode);
+    node.connect(bassNode);
+    bassNode.connect(trebleNode);
+    trebleNode.connect(gainNode);
     gainNode.connect(analyser);
     analyser.connect(ctx.destination);
 
@@ -598,8 +648,103 @@ export default function AudioCutter({ initialPayload }) {
             <span className="ac-dz-btn">Browse files</span>
           </motion.div>
         ) : (
-          <>
-            {/* Time info row */}
+          <div className="ac-editor-layout">
+            {/* Sidebar for Effects/Metadata */}
+            <div className="ac-sidebar">
+              {/* Tabs */}
+              <div className="ac-tabs">
+                {TABS.map(t => (
+                  <button key={t} className={`ac-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+                    {t === 'Effects' && <Sliders size={13} />}
+                    {t === 'Metadata' && <Tag size={13} />}
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <div className="ac-sidebar-content">
+                <AnimatePresence mode="wait">
+                  {activeTab === 'Effects' && (
+                    <motion.div key="fx" className="ac-panel" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={spring}>
+                      <div className="ac-fx-grid">
+                        {/* Volume */}
+                        <div className="ac-fx-item">
+                          <div className="ac-fx-hdr"><Volume2 size={13} /><span>Volume / Gain</span><span className="ac-fx-val">{effects.volume > 0 ? '+' : ''}{effects.volume} dB</span></div>
+                          <Slider min={-20} max={20} step={0.5} value={effects.volume} onChange={v => setFx('volume', v)} />
+                          <div className="ac-slider-marks"><span>-20 dB</span><span>0</span><span>+20 dB</span></div>
+                        </div>
+
+                        {/* Speed */}
+                        <div className="ac-fx-item">
+                          <div className="ac-fx-hdr"><Gauge size={13} /><span>Speed / Tempo</span><span className="ac-fx-val">{effects.speed.toFixed(2)}×</span></div>
+                          <Slider min={0.5} max={2.0} step={0.05} value={effects.speed} onChange={v => setFx('speed', v)} className="ac-slider--speed" />
+                          <div className="ac-slider-marks"><span>0.5×</span><span>1×</span><span>2×</span></div>
+                        </div>
+
+                        {/* Bass */}
+                        <div className="ac-fx-item">
+                          <div className="ac-fx-hdr"><Sliders size={13} /><span>Bass (250Hz)</span><span className="ac-fx-val">{effects.bass > 0 ? '+' : ''}{effects.bass} dB</span></div>
+                          <Slider min={-20} max={20} step={1} value={effects.bass} onChange={v => setFx('bass', v)} />
+                          <div className="ac-slider-marks"><span>-20 dB</span><span>0</span><span>+20 dB</span></div>
+                        </div>
+
+                        {/* Treble */}
+                        <div className="ac-fx-item">
+                          <div className="ac-fx-hdr"><Sliders size={13} /><span>Treble (4kHz)</span><span className="ac-fx-val">{effects.treble > 0 ? '+' : ''}{effects.treble} dB</span></div>
+                          <Slider min={-20} max={20} step={1} value={effects.treble} onChange={v => setFx('treble', v)} />
+                          <div className="ac-slider-marks"><span>-20 dB</span><span>0</span><span>+20 dB</span></div>
+                        </div>
+
+                        {/* Fade In */}
+                        <div className="ac-fx-item">
+                          <div className="ac-fx-hdr"><span className="ac-dot ac-dot--in" /><span>Fade In</span><span className="ac-fx-val">{effects.fadeIn.toFixed(1)} s</span></div>
+                          <Slider min={0} max={fadeCap} step={0.1} value={Math.min(effects.fadeIn, fadeCap)} onChange={v => setFx('fadeIn', v)} className="ac-slider--fi" />
+                          <div className="ac-slider-marks"><span>Off</span><span>{fadeCap.toFixed(1)} s max</span></div>
+                        </div>
+
+                        {/* Fade Out */}
+                        <div className="ac-fx-item">
+                          <div className="ac-fx-hdr"><span className="ac-dot ac-dot--out" /><span>Fade Out</span><span className="ac-fx-val">{effects.fadeOut.toFixed(1)} s</span></div>
+                          <Slider min={0} max={fadeCap} step={0.1} value={Math.min(effects.fadeOut, fadeCap)} onChange={v => setFx('fadeOut', v)} className="ac-slider--fo" />
+                          <div className="ac-slider-marks"><span>Off</span><span>{fadeCap.toFixed(1)} s max</span></div>
+                        </div>
+
+                        {/* Normalize */}
+                        <div className="ac-fx-item ac-fx-item--full">
+                          <label className="ac-toggle-row">
+                            <div className="ac-toggle-switch">
+                              <input type="checkbox" checked={effects.normalize} onChange={e => setFx('normalize', e.target.checked)} />
+                              <span className="ac-toggle-track"><span className="ac-toggle-thumb" /></span>
+                            </div>
+                            <div className="ac-toggle-copy">
+                              <strong>Normalize loudness</strong>
+                              <small>EBU R128 (-16 LUFS)</small>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {activeTab === 'Metadata' && (
+                    <motion.div key="meta" className="ac-panel" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={spring}>
+                      <div className="ac-meta-grid">
+                        {[['title', 'Title', 'Track title'], ['artist', 'Artist', 'Artist name'], ['album', 'Album', 'Album name'], ['track', 'Track #', '1']].map(([k, lbl, ph]) => (
+                          <label key={k} className="ac-meta-field">
+                            <span>{lbl}</span>
+                            <input value={meta[k]} onChange={e => setMetaF(k, e.target.value)} placeholder={ph} type={k === 'track' ? 'number' : 'text'} min={k === 'track' ? 1 : undefined} />
+                          </label>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Main Workspace (Waveform + Transport) */}
+            <div className="ac-main-workspace">
+              {/* Time info row */}
             <div className="ac-timerow">
               {[
                 { label: 'Start', val: fmt(trimStart) },
@@ -671,82 +816,8 @@ export default function AudioCutter({ initialPayload }) {
               </div>
             </div>
 
-            {/* Tabs */}
-            <div className="ac-tabs">
-              {TABS.map(t => (
-                <button key={t} className={`ac-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
-                  {t === 'Effects' && <Sliders size={13} />}
-                  {t === 'Metadata' && <Tag size={13} />}
-                  {t}
-                </button>
-              ))}
             </div>
-
-            <AnimatePresence mode="wait">
-              {activeTab === 'Effects' && (
-                <motion.div key="fx" className="ac-panel" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={spring}>
-                  <div className="ac-fx-grid">
-
-                    {/* Volume */}
-                    <div className="ac-fx-item">
-                      <div className="ac-fx-hdr"><Volume2 size={13} /><span>Volume / Gain</span><span className="ac-fx-val">{effects.volume > 0 ? '+' : ''}{effects.volume} dB</span></div>
-                      <Slider min={-20} max={20} step={0.5} value={effects.volume} onChange={v => setFx('volume', v)} />
-                      <div className="ac-slider-marks"><span>-20 dB</span><span>0</span><span>+20 dB</span></div>
-                    </div>
-
-                    {/* Speed */}
-                    <div className="ac-fx-item">
-                      <div className="ac-fx-hdr"><Gauge size={13} /><span>Speed / Tempo</span><span className="ac-fx-val">{effects.speed.toFixed(2)}×</span></div>
-                      <Slider min={0.5} max={2.0} step={0.05} value={effects.speed} onChange={v => setFx('speed', v)} className="ac-slider--speed" />
-                      <div className="ac-slider-marks"><span>0.5×</span><span>1×</span><span>2×</span></div>
-                    </div>
-
-                    {/* Fade In */}
-                    <div className="ac-fx-item">
-                      <div className="ac-fx-hdr"><span className="ac-dot ac-dot--in" /><span>Fade In</span><span className="ac-fx-val">{effects.fadeIn.toFixed(1)} s</span></div>
-                      <Slider min={0} max={fadeCap} step={0.1} value={Math.min(effects.fadeIn, fadeCap)} onChange={v => setFx('fadeIn', v)} className="ac-slider--fi" />
-                      <div className="ac-slider-marks"><span>Off</span><span>{fadeCap.toFixed(1)} s max</span></div>
-                    </div>
-
-                    {/* Fade Out */}
-                    <div className="ac-fx-item">
-                      <div className="ac-fx-hdr"><span className="ac-dot ac-dot--out" /><span>Fade Out</span><span className="ac-fx-val">{effects.fadeOut.toFixed(1)} s</span></div>
-                      <Slider min={0} max={fadeCap} step={0.1} value={Math.min(effects.fadeOut, fadeCap)} onChange={v => setFx('fadeOut', v)} className="ac-slider--fo" />
-                      <div className="ac-slider-marks"><span>Off</span><span>{fadeCap.toFixed(1)} s max</span></div>
-                    </div>
-
-                    {/* Normalize */}
-                    <div className="ac-fx-item ac-fx-item--full">
-                      <label className="ac-toggle-row">
-                        <div className="ac-toggle-switch">
-                          <input type="checkbox" checked={effects.normalize} onChange={e => setFx('normalize', e.target.checked)} />
-                          <span className="ac-toggle-track"><span className="ac-toggle-thumb" /></span>
-                        </div>
-                        <div className="ac-toggle-copy">
-                          <strong>Normalize loudness</strong>
-                          <small>EBU R128 — FFmpeg loudnorm filter (−16 LUFS target)</small>
-                        </div>
-                      </label>
-                    </div>
-
-                  </div>
-                </motion.div>
-              )}
-
-              {activeTab === 'Metadata' && (
-                <motion.div key="meta" className="ac-panel" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={spring}>
-                  <div className="ac-meta-grid">
-                    {[['title', 'Title', 'Track title'], ['artist', 'Artist', 'Artist name'], ['album', 'Album', 'Album name'], ['track', 'Track #', '1']].map(([k, lbl, ph]) => (
-                      <label key={k} className="ac-meta-field">
-                        <span>{lbl}</span>
-                        <input value={meta[k]} onChange={e => setMetaF(k, e.target.value)} placeholder={ph} type={k === 'track' ? 'number' : 'text'} min={k === 'track' ? 1 : undefined} />
-                      </label>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </>
+          </div>
         )}
       </div>
 
