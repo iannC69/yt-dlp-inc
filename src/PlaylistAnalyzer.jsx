@@ -853,49 +853,100 @@ export default function PlaylistAnalyzer() {
       {/* Main Content Area */}
       {isAnalyzing ? (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
+          key="pa-loading"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 0.96 }}
+          transition={{ duration: 0.4 }}
           className="pa-loading-state"
         >
-          <div className="pa-visualizer">
-            {[...Array(7)].map((_, i) => (
-              <div key={i} className="pa-visualizer-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>
+          {/* Particle field */}
+          <div className="pa-loader-particles">
+            {[...Array(22)].map((_, i) => (
+              <div key={i} className="pa-particle" style={{
+                '--px': `${Math.random() * 100}%`,
+                '--py': `${Math.random() * 100}%`,
+                '--pd': `${(Math.random() * 6 + 2).toFixed(1)}s`,
+                '--ps': `${(Math.random() * 0.4 + 0.15).toFixed(2)}`,
+                animationDelay: `${(Math.random() * 4).toFixed(2)}s`,
+              }} />
             ))}
           </div>
-          <div className="pa-loading-title">
-            <span className="pa-loading-text-glow">Decoding Playlist</span>
-          </div>
-          <div className="pa-loading-steps-wrapper">
-            <div className="pa-loading-steps">
-              <motion.div
-                initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.1 }}
-                className={`pa-loading-step ${analysisStatus.includes('Scanning') ? 'active' : 'done'}`}
-              >
-                <div className="pa-step-icon">
-                  {analysisStatus.includes('Scanning') ? <Activity size={16} /> : <Check size={16} />}
-                </div>
-                <span>Scanning tracks</span>
-              </motion.div>
-              <motion.div
-                initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.3 }}
-                className={`pa-loading-step ${analysisStatus.includes('Detecting') ? 'active' : (analysisStatus.includes('Scanning') ? 'pending' : 'done')}`}
-              >
-                <div className="pa-step-icon">
-                  {analysisStatus.includes('Detecting') ? <Activity size={16} /> : (analysisStatus.includes('Scanning') ? <div className="pa-step-dot" /> : <Check size={16} />)}
-                </div>
-                <span>Detecting artists & genres</span>
-              </motion.div>
-              <motion.div
-                initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.5 }}
-                className={`pa-loading-step ${analysisStatus.includes('Building') ? 'active' : (analysisStatus.includes('Scanning') || analysisStatus.includes('Detecting') ? 'pending' : 'done')}`}
-              >
-                <div className="pa-step-icon">
-                  {analysisStatus.includes('Building') ? <Activity size={16} /> : (analysisStatus.includes('Scanning') || analysisStatus.includes('Detecting') ? <div className="pa-step-dot" /> : <Check size={16} />)}
-                </div>
-                <span>Building statistics & charts</span>
-              </motion.div>
+
+          {/* Scan line */}
+          <div className="pa-scan-line" />
+
+          {/* Core ring + icon */}
+          <div className="pa-loader-core">
+            <div className="pa-ring pa-ring-1" />
+            <div className="pa-ring pa-ring-2" />
+            <div className="pa-ring pa-ring-3" />
+            <div className="pa-loader-inner-glow" />
+            <div className="pa-waveform">
+              {[...Array(13)].map((_, i) => (
+                <div key={i} className="pa-wave-bar" style={{
+                  animationDelay: `${(i * 0.08).toFixed(2)}s`,
+                  '--bar-h': `${(Math.sin(i * 0.6) * 0.5 + 0.5) * 60 + 20}%`,
+                }} />
+              ))}
             </div>
+          </div>
+
+          {/* Status text */}
+          <div className="pa-loader-status">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={analysisStatus}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3 }}
+                className="pa-loader-status-text"
+              >
+                {analysisStatus || 'Initializing…'}
+              </motion.div>
+            </AnimatePresence>
+            <div className="pa-loader-dots">
+              <div className="pa-ldot" style={{ animationDelay: '0s' }} />
+              <div className="pa-ldot" style={{ animationDelay: '0.2s' }} />
+              <div className="pa-ldot" style={{ animationDelay: '0.4s' }} />
+            </div>
+          </div>
+
+          {/* Step tracker */}
+          <div className="pa-loader-steps">
+            {[
+              { key: 'Scanning',  label: 'Fetching tracks',          icon: <Hash size={13} /> },
+              { key: 'Detecting', label: 'Resolving metadata',        icon: <BrainCircuit size={13} /> },
+              { key: 'Building',  label: 'Computing analytics',       icon: <BarChart2 size={13} /> },
+            ].map((step, i) => {
+              const isActive  = analysisStatus.includes(step.key);
+              const isPending = !isActive && (
+                (step.key === 'Detecting' && analysisStatus.includes('Scanning')) ||
+                (step.key === 'Building'  && (analysisStatus.includes('Scanning') || analysisStatus.includes('Detecting')))
+              );
+              const isDoneStep = !isActive && !isPending;
+              return (
+                <motion.div
+                  key={step.key}
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.12, duration: 0.35 }}
+                  className={`pa-lstep ${isActive ? 'pa-lstep--active' : isDoneStep ? 'pa-lstep--done' : 'pa-lstep--pending'}`}
+                >
+                  <div className="pa-lstep-dot">
+                    {isActive  && <motion.div className="pa-lstep-ping" animate={{ scale: [1, 1.8, 1], opacity: [1, 0, 1] }} transition={{ repeat: Infinity, duration: 1.4 }} />}
+                    {isDoneStep && <Check size={10} />}
+                    {isPending  && <div className="pa-lstep-pend-inner" />}
+                  </div>
+                  <div className="pa-lstep-info">
+                    <span className="pa-lstep-icon">{step.icon}</span>
+                    <span className="pa-lstep-label">{step.label}</span>
+                  </div>
+                  {isActive && <div className="pa-lstep-bar"><div className="pa-lstep-bar-fill" /></div>}
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
       ) : !analysisResult ? (

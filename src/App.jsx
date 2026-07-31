@@ -117,10 +117,10 @@ export default function App() {
     spAccent: '#1DB954',
     spText: '#f8fafc',
     // Mass DL panel
-    mdBg: '#07060f',
-    mdAccent: '#a855f7',
-    mdSecondary: '#d946ef',
-    mdText: '#e2d9f3',
+    mdBg: '#0f0505',
+    mdAccent: '#f43f5e',
+    mdSecondary: '#be123c',
+    mdText: '#fce7f3',
     // Audio Cutter panel
     acBg: '#060910',
     acAccent: '#22d3ee',
@@ -335,12 +335,12 @@ export default function App() {
     root.style.setProperty('--sp-green-dim', (customTheme.spAccent || '#1DB954') + '26');
     root.style.setProperty('--sp-text', customTheme.spText || '#f8fafc');
     // Mass DL
-    root.style.setProperty('--md-bg', applyBg(customTheme.mdBg || '#07060f'));
-    root.style.setProperty('--md-purple', customTheme.mdAccent || '#a855f7');
-    root.style.setProperty('--md-purple-rgb', hexToRgb(customTheme.mdAccent || '#a855f7'));
-    root.style.setProperty('--md-magenta', customTheme.mdSecondary || '#d946ef');
-    root.style.setProperty('--md-magenta-rgb', hexToRgb(customTheme.mdSecondary || '#d946ef'));
-    root.style.setProperty('--md-text', customTheme.mdText || '#e2d9f3');
+    root.style.setProperty('--md-bg', applyBg(customTheme.mdBg === '#07060f' ? '#0f0505' : (customTheme.mdBg || '#0f0505')));
+    root.style.setProperty('--md-purple', customTheme.mdAccent === '#a855f7' ? '#f43f5e' : (customTheme.mdAccent || '#f43f5e'));
+    root.style.setProperty('--md-purple-rgb', hexToRgb(customTheme.mdAccent === '#a855f7' ? '#f43f5e' : (customTheme.mdAccent || '#f43f5e')));
+    root.style.setProperty('--md-magenta', customTheme.mdSecondary === '#d946ef' ? '#be123c' : (customTheme.mdSecondary || '#be123c'));
+    root.style.setProperty('--md-magenta-rgb', hexToRgb(customTheme.mdSecondary === '#d946ef' ? '#be123c' : (customTheme.mdSecondary || '#be123c')));
+    root.style.setProperty('--md-text', customTheme.mdText === '#e2d9f3' ? '#fce7f3' : (customTheme.mdText || '#fce7f3'));
     // Audio Cutter
     root.style.setProperty('--ac-bg', applyBg(customTheme.acBg || '#060910'));
     root.style.setProperty('--ac-accent', customTheme.acAccent || '#22d3ee');
