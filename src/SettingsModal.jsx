@@ -186,7 +186,7 @@ export default function SettingsModal({
     primary: '#ef4444', secondary: '#3b82f6', bgBase: '#080a0f',
     panelColor: '#0f111a', navColor: '#06080e', textColor: '#f1f5f9', borderColor: '#ffffff',
     ytBg: '#080a0f', ytAccent: '#ef4444', ytSecondary: '#3b82f6', ytText: '#f1f5f9',
-    spBg: '#060a06', spAccent: '#1DB954', spText: '#f8fafc',
+    spBg: '#000000', spCard: '#0c0c0c', spCardBorder: '#1a1a1a', spAccent: '#1DB954', spText: '#f8fafc',
     mdBg: '#07060f', mdAccent: '#a855f7', mdSecondary: '#d946ef', mdText: '#e2d9f3',
     acBg: '#060910',
     acAccent: '#22d3ee',
@@ -517,7 +517,7 @@ export default function SettingsModal({
                         ['ytBg','Background'],['ytAccent','Accent'],['ytSecondary','Secondary'],['ytText','Text'],
                       ])}
                       {renderColorSection("Spotify Panel", <Music2 size={12} />, [
-                        ['spBg','Background'],['spAccent','Accent'],['spText','Text'],
+                        ['spBg','Background'],['spCard','Card'],['spCardBorder','Card Border'],['spAccent','Accent'],['spText','Text'],
                       ])}
                       {renderColorSection("Mass DL Panel", <Layers size={12} />, [
                         ['mdBg','Background'],['mdAccent','Purple Accent'],['mdSecondary','Magenta'],['mdText','Text'],

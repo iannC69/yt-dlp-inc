@@ -29,9 +29,14 @@ export default function UpdatesTab() {
   const [speed, setSpeed] = useState(0);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [changelog, setChangelog] = useState([]);
+  
+  // Custom Timeline History
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
 
   useEffect(() => {
+    fetchHistory();
+    
     if (!window.electronAPI?.updater) return;
     window.electronAPI.updater.getAppVersion().then(v => setVersion(v));
 
@@ -40,10 +45,6 @@ export default function UpdatesTab() {
       if (name === 'update-available') {
         setStatus('available');
         setUpdateInfo(data);
-        if (data?.releaseNotes) {
-          const lines = parseChangelog(data.releaseNotes);
-          setChangelog(lines);
-        }
       }
       if (name === 'update-not-available') setStatus('not-available');
       if (name === 'error') {
@@ -63,26 +64,33 @@ export default function UpdatesTab() {
     return cleanup;
   }, []);
 
-  function parseChangelog(html) {
-    if (!html) return [];
-    const items = [];
-    const liRegex = /<li[^>]*>(.*?)<\/li>/gi;
-    let m;
-    while ((m = liRegex.exec(html)) !== null) {
-      const t = m[1].replace(/<[^>]+>/g, '').trim();
-      if (t) items.push(t);
+  const fetchHistory = async () => {
+    try {
+      setLoadingHistory(true);
+      // Try to fetch from live GitHub repository first for real-time updates
+      const res = await fetch('https://raw.githubusercontent.com/iannC69/yt-dlp-inc/main/releases.json?cachebust=' + Date.now());
+      if (!res.ok) throw new Error('Live fetch failed');
+      const data = await res.json();
+      setHistory(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.warn('Live fetch failed, falling back to local history', e);
+      // Fallback to local history
+      try {
+        const localRes = await fetch('/api/updates/history');
+        const localData = await localRes.json();
+        setHistory(Array.isArray(localData) ? localData : []);
+      } catch (localErr) {
+        console.error('Failed to fetch local history', localErr);
+      }
+    } finally {
+      setLoadingHistory(false);
     }
-    if (items.length === 0) {
-      return html.replace(/<[^>]+>/g, '\n').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 8);
-    }
-    return items.slice(0, 8);
-  }
+  };
 
   const checkForUpdates = () => {
     if (!window.electronAPI?.updater) return;
     setStatus('checking');
     setUpdateInfo(null);
-    setChangelog([]);
     window.electronAPI.updater.checkForUpdates();
   };
 
@@ -101,283 +109,370 @@ export default function UpdatesTab() {
   const color = STATUS_COLORS[status] || STATUS_COLORS.idle;
 
   return (
-    <div className="ut-wrap">
+    <div className="ut-glass-wrap">
       <style>{`
-        .ut-wrap {
-          padding: 1.5rem 2rem;
+        .ut-glass-wrap {
+          padding: 2rem;
           height: 100%;
           display: flex;
-          flex-direction: column;
-          gap: 1.25rem;
+          gap: 2rem;
           font-family: 'Inter', system-ui, sans-serif;
-          overflow-y: auto;
+          overflow: hidden;
+          background: #090a10;
         }
 
-        /* App version card */
-        .ut-version-card {
-          background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08));
-          border: 1px solid rgba(99,102,241,0.2);
+        /* Left Panel - Status & Actions */
+        .ut-left-panel {
+          width: 280px;
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+
+        .ut-status-card {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 16px;
-          padding: 1.25rem 1.5rem;
+          padding: 2rem 1.5rem;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .ut-status-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        }
+
+        .ut-icon-wrapper {
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.05);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 1rem;
+          color: #f1f5f9;
+        }
+
+        .ut-status-title {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: #fff;
+          margin-bottom: 0.5rem;
+        }
+
+        .ut-status-desc {
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.5);
+          margin-bottom: 1.5rem;
+          line-height: 1.4;
+        }
+
+        .ut-version-flow {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          background: rgba(0, 0, 0, 0.3);
+          padding: 0.5rem 1rem;
+          border-radius: 999px;
+          font-family: monospace;
+          font-size: 0.85rem;
+          margin-bottom: 1.5rem;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .ut-v-current { color: rgba(255, 255, 255, 0.6); }
+        .ut-v-arrow { color: rgba(255, 255, 255, 0.3); }
+        .ut-v-new { color: #fff; font-weight: bold; background: rgba(255,255,255,0.1); padding: 0.1rem 0.4rem; border-radius: 4px;}
+
+        .ut-btn {
+          width: 100%;
+          padding: 0.8rem;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 0.9rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          border: none;
+          font-family: inherit;
+        }
+
+        .ut-btn.primary {
+          background: #f1f5f9;
+          color: #0f172a;
+        }
+        .ut-btn.primary:hover { background: #fff; }
+
+        .ut-btn.secondary {
+          background: transparent;
+          color: rgba(255, 255, 255, 0.7);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .ut-btn.secondary:hover { background: rgba(255, 255, 255, 0.05); color: #fff; }
+
+        .ut-progress-container {
+          width: 100%;
+          margin-bottom: 1rem;
+        }
+        .ut-progress-bar {
+          height: 6px;
+          background: rgba(255,255,255,0.1);
+          border-radius: 999px;
+          overflow: hidden;
+          margin-bottom: 0.5rem;
+        }
+        .ut-progress-fill {
+          height: 100%;
+          background: #fff;
+          border-radius: 999px;
+          transition: width 0.3s;
+        }
+        .ut-progress-text {
+          font-size: 0.75rem;
+          color: rgba(255,255,255,0.5);
+          display: flex;
+          justify-content: space-between;
+        }
+
+        /* Right Panel - Timeline */
+        .ut-right-panel {
+          flex: 1;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 16px;
+          padding: 2rem;
+          overflow-y: auto;
+          position: relative;
+        }
+
+        .ut-timeline-line {
+          position: absolute;
+          top: 2rem;
+          bottom: 2rem;
+          left: 2rem;
+          width: 2px;
+          background: rgba(255, 255, 255, 0.05);
+          z-index: 1;
+        }
+
+        .ut-timeline-item {
+          position: relative;
+          z-index: 2;
+          padding-left: 2rem;
+          margin-bottom: 3rem;
+        }
+
+        .ut-timeline-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .ut-timeline-dot {
+          position: absolute;
+          left: -4px;
+          top: 0.4rem;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.2);
+          border: 2px solid #090a10;
+        }
+        .ut-timeline-dot.latest {
+          background: #34d399;
+          box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+        }
+
+        .ut-tl-header {
           display: flex;
           align-items: center;
           gap: 1rem;
-        }
-        .ut-app-icon {
-          width: 48px; height: 48px;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #6366f1, #a855f7);
-          display: flex; align-items: center; justify-content: center;
-          color: #fff; font-weight: 800; font-size: 1.1rem;
-          box-shadow: 0 4px 16px rgba(99,102,241,0.35);
-          flex-shrink: 0;
-        }
-        .ut-version-info { flex: 1; }
-        .ut-version-title {
-          font-size: 1rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.2rem;
-        }
-        .ut-version-num {
-          font-size: 0.82rem; color: rgba(255,255,255,0.45);
-        }
-        .ut-status-pill {
-          display: flex; align-items: center; gap: 0.4rem;
-          font-size: 0.8rem; font-weight: 600;
-          padding: 0.35rem 0.85rem;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.5);
-          transition: color 0.3s;
+          margin-bottom: 0.5rem;
         }
 
-        /* Status dot */
-        .ut-dot {
-          width: 7px; height: 7px; border-radius: 50%;
-          flex-shrink: 0; transition: background 0.3s;
+        .ut-tl-version {
+          background: rgba(255, 255, 255, 0.1);
+          color: #fff;
+          padding: 0.2rem 0.6rem;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 0.85rem;
+          font-family: monospace;
         }
 
-        /* Progress bar */
-        .ut-progress-wrap {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 12px;
-          padding: 1rem 1.25rem;
-        }
-        .ut-progress-label {
-          display: flex; justify-content: space-between;
-          font-size: 0.82rem; color: rgba(255,255,255,0.5);
-          margin-bottom: 0.65rem;
-        }
-        .ut-bar {
-          height: 8px;
-          background: rgba(255,255,255,0.06);
-          border-radius: 999px;
-          overflow: hidden;
-        }
-        .ut-bar-fill {
-          height: 100%;
-          border-radius: 999px;
-          background: linear-gradient(90deg, #6366f1, #a855f7);
-          box-shadow: 0 0 10px rgba(99,102,241,0.5);
-          transition: width 0.3s linear;
-        }
-        .ut-speed {
-          display: flex; align-items: center; gap: 0.3rem;
-          font-size: 0.78rem; color: rgba(255,255,255,0.35);
-          margin-top: 0.5rem;
+        .ut-tl-desc {
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 0.95rem;
         }
 
-        /* Changelog */
-        .ut-changelog-card {
-          background: rgba(255,255,255,0.02);
-          border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 12px;
-          padding: 1rem 1.25rem;
+        .ut-tl-changes {
+          margin-top: 1rem;
         }
-        .ut-changelog-title {
-          font-size: 0.72rem; font-weight: 700;
-          text-transform: uppercase; letter-spacing: 0.08em;
-          color: rgba(255,255,255,0.3);
-          margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem;
+        .ut-tl-changes-title {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: #fff;
+          margin-bottom: 0.75rem;
         }
-        .ut-changelog-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
-        .ut-changelog-item {
-          display: flex; align-items: flex-start; gap: 0.55rem;
-          font-size: 0.86rem; color: rgba(255,255,255,0.7); line-height: 1.4;
-        }
-        .ut-changelog-icon { color: #34d399; flex-shrink: 0; margin-top: 1px; }
 
-        /* Buttons */
-        .ut-actions { display: flex; flex-direction: column; gap: 0.65rem; }
-        .ut-btn-check {
-          display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-          padding: 0.75rem 1.5rem; border-radius: 10px;
-          background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3);
-          color: #818cf8; font-weight: 600; font-size: 0.9rem;
-          cursor: pointer; transition: all 0.2s; font-family: inherit;
-          width: 100%;
+        .ut-tl-commits {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
         }
-        .ut-btn-check:hover { background: rgba(99,102,241,0.18); border-color: rgba(99,102,241,0.5); color: #a5b4fc; }
-        .ut-btn-download {
-          display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-          padding: 0.75rem 1.5rem; border-radius: 10px;
-          background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2));
-          border: 1px solid rgba(99,102,241,0.4);
-          color: #c4b5fd; font-weight: 600; font-size: 0.9rem;
-          cursor: pointer; transition: all 0.2s; font-family: inherit;
-          width: 100%;
-        }
-        .ut-btn-download:hover { background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.3)); transform: translateY(-1px); }
-        .ut-btn-install {
-          display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-          padding: 0.75rem 1.5rem; border-radius: 10px;
-          background: linear-gradient(135deg, #6366f1, #a855f7);
-          border: none;
-          color: #fff; font-weight: 700; font-size: 0.9rem;
-          cursor: pointer; transition: all 0.2s; font-family: inherit;
-          width: 100%;
-          box-shadow: 0 4px 16px rgba(99,102,241,0.35);
-        }
-        .ut-btn-install:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.5); }
 
-        /* Up to date message */
-        .ut-uptodate {
-          display: flex; flex-direction: column; align-items: center;
-          gap: 0.5rem; padding: 1.5rem; text-align: center;
-          background: rgba(52,211,153,0.05); border: 1px solid rgba(52,211,153,0.15);
-          border-radius: 12px;
+        .ut-tl-commit {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.5rem;
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.85rem;
+          line-height: 1.5;
         }
-        .ut-uptodate svg { color: #34d399; }
-        .ut-uptodate-msg { font-size: 0.95rem; color: #34d399; font-weight: 600; }
-        .ut-uptodate-sub { font-size: 0.82rem; color: rgba(255,255,255,0.35); }
 
-        /* Error */
-        .ut-error-box {
-          display: flex; flex-direction: column; gap: 0.5rem;
-          padding: 1rem 1.25rem;
-          background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.2);
-          border-radius: 12px;
+        .ut-tl-commit::before {
+          content: '•';
+          color: rgba(255, 255, 255, 0.3);
+          margin-top: -1px;
         }
-        .ut-error-title { display: flex; align-items: center; gap: 0.5rem; color: #f87171; font-weight: 600; font-size: 0.9rem; }
-        .ut-error-msg { font-size: 0.8rem; color: rgba(255,255,255,0.4); word-break: break-word; }
+        
+        .ut-tl-commit-avatar {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.1);
+          margin-left: 0.5rem;
+          display: inline-block;
+          vertical-align: middle;
+        }
 
-        /* Spin */
-        @keyframes ut-spin { to { transform: rotate(360deg); } }
-        .ut-spinning { animation: ut-spin 1.2s linear infinite; }
-
-        .ut-wrap::-webkit-scrollbar { width: 4px; }
-        .ut-wrap::-webkit-scrollbar-track { background: transparent; }
-        .ut-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+        .ut-spin { animation: spin 1.2s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        
+        .ut-right-panel::-webkit-scrollbar { width: 4px; }
+        .ut-right-panel::-webkit-scrollbar-track { background: transparent; }
+        .ut-right-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
       `}</style>
 
-      {/* Version card */}
-      <div className="ut-version-card">
-        <div className="ut-app-icon">M</div>
-        <div className="ut-version-info">
-          <div className="ut-version-title">MediaDL</div>
-          <div className="ut-version-num">Version {version || '...'}</div>
-        </div>
-        <div className="ut-status-pill" style={{ color }}>
-          <div className="ut-dot" style={{ background: color }} />
-          {STATUS_LABELS[status] || 'Idle'}
+      {/* LEFT PANEL */}
+      <div className="ut-left-panel">
+        <div className="ut-status-card">
+          <div className="ut-icon-wrapper">
+            <Download size={24} />
+          </div>
+          
+          <h3 className="ut-status-title">
+            {status === 'available' ? 'Update available' : 
+             status === 'downloading' ? 'Downloading Update' :
+             status === 'downloaded' ? 'Update Ready' :
+             status === 'checking' ? 'Checking...' :
+             status === 'not-available' ? 'Up to date' :
+             status === 'error' ? 'Update Error' :
+             'MediaDL Updates'}
+          </h3>
+          
+          <p className="ut-status-desc">
+            {updateInfo?.releaseNotes?.replace(/<[^>]+>/g, '').substring(0, 80) || 
+             (status === 'available' ? 'A new version of MediaDL is ready to be downloaded.' :
+              status === 'not-available' ? 'You are running the latest version.' :
+              'Keep your app up to date to get the latest features and security improvements.')}
+          </p>
+
+          {(status === 'available' || status === 'downloading' || status === 'downloaded') && (
+            <div className="ut-version-flow">
+              <span className="ut-v-current">v{version}</span>
+              <span className="ut-v-arrow">→</span>
+              <span className="ut-v-new">v{updateInfo?.version || '...'}</span>
+            </div>
+          )}
+
+          {status === 'downloading' && (
+            <div className="ut-progress-container">
+              <div className="ut-progress-bar">
+                <div className="ut-progress-fill" style={{ width: `${progress}%` }}></div>
+              </div>
+              <div className="ut-progress-text">
+                <span>{Math.round(progress)}%</span>
+                <span>{(speed / 1024 / 1024).toFixed(1)} MB/s</span>
+              </div>
+            </div>
+          )}
+
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {status === 'available' && (
+              <>
+                <button className="ut-btn primary" onClick={downloadUpdate}>Download</button>
+                <button className="ut-btn secondary">Later</button>
+              </>
+            )}
+            {status === 'downloaded' && (
+              <button className="ut-btn primary" onClick={installUpdate}>Restart to Install</button>
+            )}
+            {(status === 'idle' || status === 'not-available' || status === 'error') && (
+              <button className="ut-btn secondary" onClick={checkForUpdates}>
+                {status === 'checking' ? <RefreshCw className="ut-spin" size={16}/> : 'Check for Updates'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Downloading progress */}
-      <AnimatePresence>
-        {status === 'downloading' && (
-          <motion.div
-            className="ut-progress-wrap"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-          >
-            <div className="ut-progress-label">
-              <span>Downloading v{updateInfo?.version}...</span>
-              <span style={{ color: '#818cf8', fontWeight: 700 }}>{Math.round(progress)}%</span>
-            </div>
-            <div className="ut-bar">
-              <div className="ut-bar-fill" style={{ width: `${progress}%` }} />
-            </div>
-            {speed > 0 && (
-              <div className="ut-speed">
-                <Zap size={11} />
-                {(speed / 1024 / 1024).toFixed(1)} MB/s
+      {/* RIGHT PANEL - TIMELINE */}
+      <div className="ut-right-panel">
+        <div className="ut-timeline-line"></div>
+        
+        {loadingHistory ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'rgba(255,255,255,0.5)' }}>
+            <RefreshCw className="ut-spin" />
+          </div>
+        ) : history.length > 0 ? (
+          history.map((release, i) => (
+            <div key={i} className="ut-timeline-item">
+              <div className={`ut-timeline-dot ${i === 0 ? 'latest' : ''}`}></div>
+              
+              <div className="ut-tl-header">
+                <span className="ut-tl-version">{release.version}</span>
+                <span className="ut-tl-desc">{release.title}</span>
               </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      {/* Changelog */}
-      <AnimatePresence>
-        {changelog.length > 0 && (
-          <motion.div
-            className="ut-changelog-card"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <div className="ut-changelog-title">
-              <Tag size={12} /> What's new in v{updateInfo?.version}
+              {release.changes && release.changes.length > 0 && (
+                <div className="ut-tl-changes">
+                  <div className="ut-tl-changes-title">Changes</div>
+                  <div className="ut-tl-commits">
+                    {release.changes.map((change, j) => {
+                      const msg = typeof change === 'string' ? change : (change.message || '');
+                      const author = change.author || 'System';
+                      const email = change.email || '';
+                      const avatarUrl = email ? `https://unavatar.io/${email}` : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(msg)}`;
+                      
+                      return (
+                        <div key={j} className="ut-tl-commit">
+                          <span>{msg} <span style={{ opacity: 0.6, fontSize: '0.85em', marginLeft: '0.4rem', color: '#818cf8' }}>by {author}</span></span>
+                          <div className="ut-tl-commit-avatar" style={{
+                             backgroundImage: `url(${avatarUrl})`,
+                             backgroundSize: 'cover'
+                          }}></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-            <ul className="ut-changelog-list">
-              {changelog.map((item, i) => (
-                <motion.li
-                  key={i}
-                  className="ut-changelog-item"
-                  initial={{ opacity: 0, x: -6 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                >
-                  <CheckCircle size={13} className="ut-changelog-icon" />
-                  {item}
-                </motion.li>
-              ))}
-            </ul>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Up to date */}
-      <AnimatePresence>
-        {status === 'not-available' && (
-          <motion.div className="ut-uptodate" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <CheckCircle size={32} />
-            <div className="ut-uptodate-msg">You're up to date!</div>
-            <div className="ut-uptodate-sub">MediaDL v{version} is the latest version.</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Error */}
-      <AnimatePresence>
-        {status === 'error' && (
-          <motion.div className="ut-error-box" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <div className="ut-error-title"><AlertTriangle size={15} /> Update failed</div>
-            <div className="ut-error-msg">{errorMessage}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Actions */}
-      <div className="ut-actions">
-        {(status === 'idle' || status === 'not-available' || status === 'error') && (
-          <button className="ut-btn-check" onClick={checkForUpdates}>
-            <RefreshCw size={15} className={status === 'checking' ? 'ut-spinning' : ''} />
-            {status === 'checking' ? 'Checking...' : 'Check for Updates'}
-          </button>
-        )}
-        {status === 'available' && (
-          <button className="ut-btn-download" onClick={downloadUpdate}>
-            <ArrowDownCircle size={15} />
-            Download Update v{updateInfo?.version}
-          </button>
-        )}
-        {status === 'downloaded' && (
-          <button className="ut-btn-install" onClick={installUpdate}>
-            <Rocket size={15} />
-            Restart &amp; Install v{updateInfo?.version}
-          </button>
+          ))
+        ) : (
+          <div style={{ color: 'rgba(255,255,255,0.5)', paddingLeft: '2rem' }}>No release history found.</div>
         )}
       </div>
     </div>

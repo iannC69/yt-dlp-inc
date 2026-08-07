@@ -183,6 +183,7 @@ export default function PlaylistAnalyzer() {
       if (isSpotify) {
         const res = await fetch(`/api/spotify-info?url=${encodeURIComponent(targetUrl)}`);
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch Spotify playlist');
         if (data && data.items) {
           tracks = data.items.map(t => ({
             id: t.id,
@@ -205,6 +206,7 @@ export default function PlaylistAnalyzer() {
       } else {
         const res = await fetch(`/api/ytdl/collection-info?url=${encodeURIComponent(targetUrl)}`);
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch YouTube playlist (it may be private or invalid)');
         if (data && data.entries) {
           tracks = data.entries.map(t => {
             let rawArtist = t.uploader || t.channel || 'Unknown Artist';
@@ -227,6 +229,11 @@ export default function PlaylistAnalyzer() {
               cover: (t.thumbnails && t.thumbnails.length ? t.thumbnails[t.thumbnails.length - 1].url : null) || `https://i.ytimg.com/vi/${t.id}/hqdefault.jpg`
             };
           });
+          playlistMeta = {
+            title: data.title || 'Unknown Playlist',
+            cover: data.thumbnail || (data.thumbnails && data.thumbnails.length ? data.thumbnails[data.thumbnails.length - 1].url : null) || tracks[0]?.cover || '',
+            author: data.uploader || data.channel || 'YouTube'
+          };
           setAnalysisStatus('Detecting albums and deep metadata...');
       
       // Auto-detect missing albums using iTunes API for ALL tracks to ensure accurate counts
@@ -275,21 +282,21 @@ export default function PlaylistAnalyzer() {
           }));
         }
       }
-
-      setAnalysisStatus('Building statistics & charts...');
-          playlistMeta = {
-            title: data.title || 'Unknown Playlist',
-            cover: data.thumbnail || (data.thumbnails && data.thumbnails.length ? data.thumbnails[data.thumbnails.length - 1].url : null) || tracks[0]?.cover || '',
-            author: data.uploader || data.channel || 'YouTube'
-          };
         }
       }
 
+      if (tracks.length === 0) {
+        throw new Error("No tracks found in the playlist. Make sure the link is correct and the playlist is public.");
+      }
       setAnalysisStatus('Detecting artists...');
       await new Promise(r => setTimeout(r, 400));
 
       setAnalysisStatus('Building statistics & charts...');
       const result = processTracks(tracks);
+      
+      if (!result) {
+        throw new Error("Failed to process tracks.");
+      }
 
       setAnalysisStatus('Fetching artist images...');
       const top5 = result.topArtists.slice(0, 5);
@@ -341,7 +348,7 @@ export default function PlaylistAnalyzer() {
 
     } catch (e) {
       console.error(e);
-      // Fallback for error state handled gracefully if possible
+      alert(e.message || 'An error occurred during analysis.');
     } finally {
       setIsAnalyzing(false);
       setAnalysisStatus('');

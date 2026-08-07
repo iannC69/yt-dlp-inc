@@ -27,15 +27,62 @@
 .ytdl-page {
   height: 100%;
   overflow-y: auto;
-  background: var(--theme-bg);
   font-family: 'Inter', sans-serif;
   color: var(--yt-text, #e2e8f0);
   position: relative;
   overflow-x: hidden;
   width: 100%;
-  transition: background-color 0.4s ease, color 0.4s ease;
-  filter: hue-rotate(var(--theme-hue));
   transition: filter 0.8s ease;
+  filter: hue-rotate(var(--theme-hue));
+
+  background:
+    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--theme-primary) 18%, transparent), transparent 28%),
+    radial-gradient(circle at 85% 25%, color-mix(in srgb, var(--theme-primary) 14%, transparent), transparent 30%),
+    radial-gradient(circle at 70% 80%, color-mix(in srgb, var(--theme-primary) 10%, transparent), transparent 26%),
+    linear-gradient(135deg, #02060b 0%, #041018 45%, #02060b 100%);
+  background-attachment: fixed;
+}
+
+.ytdl-page::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 20% 30%, color-mix(in srgb, var(--theme-primary) 22%, transparent) 0%, transparent 45%),
+    radial-gradient(ellipse at 75% 35%, color-mix(in srgb, var(--theme-primary) 18%, transparent) 0%, transparent 40%),
+    radial-gradient(ellipse at 60% 75%, color-mix(in srgb, var(--theme-primary) 14%, transparent) 0%, transparent 42%);
+  filter: blur(70px);
+  animation: ytAuroraFloat 22s ease-in-out infinite alternate;
+  z-index: -2;
+}
+
+.ytdl-page::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg,
+      transparent 0 2px,
+      color-mix(in srgb, var(--theme-primary) 1.5%, transparent) 2px 3px);
+  opacity: .22;
+  mix-blend-mode: screen;
+  z-index: -1;
+}
+
+@keyframes ytAuroraFloat {
+  0% {
+    transform: translate3d(-2%, -1%, 0) scale(1);
+  }
+
+  50% {
+    transform: translate3d(2%, 2%, 0) scale(1.04);
+  }
+
+  100% {
+    transform: translate3d(-1%, 3%, 0) scale(1.02);
+  }
 }
 
 /* Reverse Hue Shift for Images */

@@ -371,12 +371,13 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
     const seen = new Set();
     return history
       .filter(
-        (item) =>
-          item.uploader &&
-          !item.isCollection &&
-          !isPlaylistUrl(item.url) &&
-          !seen.has(item.uploader) &&
-          seen.add(item.uploader),
+        (item) => {
+          if (!item.uploader) return false;
+          if (item.uploader === "YouTube" || item.uploader === "YouTube Music" || item.uploader === "Various Artists" || item.uploader === "Unknown") return false;
+          if (seen.has(item.uploader)) return false;
+          seen.add(item.uploader);
+          return true;
+        }
       )
       .slice(0, 6);
   }, [history]);
@@ -959,7 +960,7 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
         targetUrl,
         playlist ? playlist.title : data.title,
         playlist && playlist.thumbnail ? playlist.thumbnail : data.thumbnail,
-        playlist && playlist.uploader ? playlist.uploader : data.uploader || "",
+        playlist && playlist.uploader ? playlist.uploader : data.albumArtist || data.uploader || "",
         data.artistThumbnail || "",
         Boolean(playlist),
       );

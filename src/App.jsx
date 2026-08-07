@@ -16,6 +16,7 @@ import SplashScreen from './SplashScreen';
 import ToastSystem, { toast } from './ToastSystem';
 import AuroraBackground from './AuroraBackground';
 import SettingsModal from './SettingsModal';
+import AdminPanel from './AdminPanel';
 import './App.css';
 import { storage } from './storage';
 
@@ -77,6 +78,7 @@ export default function App() {
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [updateNotice, setUpdateNotice] = useState(null);
   const [showUpdateOverlay, setShowUpdateOverlay] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [updateState, setUpdateState] = useState('idle');
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateSpeed, setUpdateSpeed] = useState(0);
@@ -113,7 +115,9 @@ export default function App() {
     ytMusic: '#8b5cf6',
     ytText: '#f1f5f9',
     // Spotify panel
-    spBg: '#060a06',
+    spBg: '#000000',
+    spCard: '#0c0c0c',
+    spCardBorder: '#1a1a1a',
     spAccent: '#1DB954',
     spText: '#f8fafc',
     // Mass DL panel
@@ -330,7 +334,9 @@ export default function App() {
     root.style.setProperty('--theme-music-secondary', customTheme.ytMusicSecondary || '#c084fc');
     root.style.setProperty('--yt-text', customTheme.ytText || '#f1f5f9');
     // Spotify
-    root.style.setProperty('--sp-bg', applyBg(customTheme.spBg || '#060a06'));
+    root.style.setProperty('--sp-bg', applyBg(customTheme.spBg || '#000000'));
+    root.style.setProperty('--sp-card', customTheme.spCard || '#0c0c0c');
+    root.style.setProperty('--sp-card-border', customTheme.spCardBorder || '#1a1a1a');
     root.style.setProperty('--sp-green', customTheme.spAccent || '#1DB954');
     root.style.setProperty('--sp-green-dim', (customTheme.spAccent || '#1DB954') + '26');
     root.style.setProperty('--sp-text', customTheme.spText || '#f8fafc');
@@ -426,6 +432,12 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('app:global-download'));
+      }
+
+      // Ctrl+Shift+A triggers Admin Panel
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setShowAdminPanel(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -683,6 +695,12 @@ export default function App() {
             ytDlpFallbackEnabled={ytDlpFallbackEnabled}
             setYtDlpFallbackEnabled={setYtDlpFallbackEnabled}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAdminPanel && (
+          <AdminPanel onClose={() => setShowAdminPanel(false)} />
         )}
       </AnimatePresence>
 

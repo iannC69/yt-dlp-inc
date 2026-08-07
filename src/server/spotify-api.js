@@ -393,7 +393,7 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       copyright: albumData?.copyrights?.[0]?.text || '',
       explicit: track.explicit || false,
       genre,
-      coverUrl: getMaxResImage(track.album.images),
+      coverUrl: track.album.images?.[0]?.url || null,
       spotifyId: track.id,
       spotifyUrl: `https://open.spotify.com/track/${track.id}`,
       durationMs: track.duration_ms,
@@ -479,7 +479,7 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
     )
 
     const firstPage = await fetchWithRetry(
-      `/v1/playlists/${id}/tracks?limit=100&fields=next,total,items(track(id,name,duration_ms,type,is_local,artists(id,name),album(id,name,release_date,images,total_tracks),track_number))${market}`,
+      `/v1/playlists/${id}/tracks?limit=100&fields=next,total,items(track(id,name,duration_ms,type,is_local,artists(id,name),album(id,name,release_date,images,total_tracks),track_number,external_ids))${market}`,
       clientId, clientSecret, accessToken
     )
 
@@ -505,6 +505,51 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       }
     }
 
+    // ── Batch-fetch artist thumbnails for all unique artists in playlist ──────
+    // Spotify /v1/artists?ids= accepts up to 50 comma-separated IDs per request.
+    const artistThumbnailMap = new Map() // artistId → imageUrl
+    try {
+      // Collect all unique artist IDs from playlist tracks
+      const uniqueArtistIds = []
+      const seenIds = new Set()
+      for (const item of validTracks) {
+        for (const a of (item.track?.artists || [])) {
+          if (a.id && !seenIds.has(a.id)) {
+            seenIds.add(a.id)
+            uniqueArtistIds.push(a.id)
+          }
+        }
+      }
+
+      console.log(`[spotify-api] Fetching thumbnails for ${uniqueArtistIds.length} unique artists in playlist...`)
+
+      // Batch in groups of 50
+      for (let i = 0; i < uniqueArtistIds.length; i += 50) {
+        const chunk = uniqueArtistIds.slice(i, i + 50)
+        try {
+          const batchRes = await fetchWithRetry(
+            `/v1/artists?ids=${chunk.join(',')}`,
+            clientId, clientSecret, accessToken
+          )
+          for (const artist of (batchRes?.artists || [])) {
+            if (artist?.id && artist.images?.[0]?.url) {
+              artistThumbnailMap.set(artist.id, artist.images[0].url)
+            }
+          }
+          // Small delay between batches to avoid 429
+          if (i + 50 < uniqueArtistIds.length) {
+            await new Promise(r => setTimeout(r, 50))
+          }
+        } catch (batchErr) {
+          console.warn(`[spotify-api] Batch artist fetch failed for chunk starting at ${i}: ${batchErr.message}`)
+        }
+      }
+
+      console.log(`[spotify-api] Got thumbnails for ${artistThumbnailMap.size} / ${uniqueArtistIds.length} artists`)
+    } catch (artistErr) {
+      console.warn(`[spotify-api] Artist batch thumbnail fetch failed: ${artistErr.message}`)
+    }
+
     return {
       type: 'playlist',
       title: playlist.name,
@@ -517,6 +562,7 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
       tracks: validTracks.map((item, index) => {
         const track = item.track
         const tArtist = track.artists?.[0]?.name
+        const tArtistId = track.artists?.[0]?.id
         if (!tArtist) console.warn(`[spotify-api] No artist for track ${track.id}`)
         return {
           trackNumber: index + 1,
@@ -529,7 +575,10 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
           spotifyId: track.id,
           spotifyUrl: `https://open.spotify.com/track/${track.id}`,
           durationMs: track.duration_ms,
-          totalTracks: trackCount
+          totalTracks: trackCount,
+          isrc: track.external_ids?.isrc || '',
+          artistId: tArtistId || null,
+          artistThumbnail: tArtistId ? (artistThumbnailMap.get(tArtistId) || null) : null,
         }
       })
     }
@@ -561,33 +610,144 @@ export async function parseSpotifyEmbed(urlStr, clientId = null, clientSecret = 
   const entity = json.props.pageProps.state?.data?.entity || json.props.pageProps.entity
   if (!entity) throw new Error('No entity data found in Spotify embed page')
 
+  // 🔍 Debug: log entity structure so we can identify new Spotify embed formats
+  console.log(`[parseSpotifyEmbed] entity keys: ${Object.keys(entity).join(', ')}`)
+  console.log(`[parseSpotifyEmbed] entity.subtitle=${entity.subtitle}, entity.name=${entity.name}, entity.title=${entity.title}`)
+  if (entity.artists) console.log(`[parseSpotifyEmbed] entity.artists[0]=${JSON.stringify(entity.artists?.[0])}`)
+  if (entity.data) console.log(`[parseSpotifyEmbed] entity.data keys: ${Object.keys(entity.data || {}).join(', ')}`)
+
   const title = entity.title || entity.name || 'Spotify Resource'
   const coverUrl = entity.coverArt?.sources?.[0]?.url || entity.visualIdentity?.image?.[0]?.url || null
 
   if (type === 'track') {
-    const artist = entity.subtitle || entity.authors?.[0]?.name || 'Unknown Artist'
-    const spotifyId = entity.id || id
+    // Spotify embed JSON structure changes frequently.
+    // Try every known path to find the artist name — never return 'Unknown Artist' without exhausting all options.
+    const extractArtist = (entity, json) => {
+      // Latest Spotify embed structure (2024+): GraphQL-style
+      const gqlArtists =
+        entity?.data?.trackUnion?.firstArtist?.items?.[0]?.profile?.name ||
+        entity?.data?.trackUnion?.artists?.items?.[0]?.profile?.name ||
+        entity?.trackUnion?.firstArtist?.items?.[0]?.profile?.name ||
+        entity?.trackUnion?.artists?.items?.[0]?.profile?.name;
+      if (gqlArtists) return gqlArtists;
+
+      // Classic subtitle field
+      if (entity.subtitle && entity.subtitle !== title) return entity.subtitle;
+
+      // authors array (common in older embed responses)
+      const authName = entity.authors?.[0]?.name ||
+        entity.author?.[0]?.name ||
+        entity.creators?.[0]?.name ||
+        entity.artist?.name;
+      if (authName) return authName;
+
+      // artists array on entity directly
+      const directArtist = entity.artists?.[0]?.name ||
+        entity.artistWithRole?.[0]?.artist?.name;
+      if (directArtist) return directArtist;
+
+      // Try scanning deeper in pageProps state
+      try {
+        const state = json.props?.pageProps?.state;
+        const entities = state?.entities?.items || {};
+        for (const val of Object.values(entities)) {
+          if (val?.type === 'artist' && val?.data?.profile?.name) {
+            return val.data.profile.name;
+          }
+          if (val?.data?.artist?.profile?.name) return val.data.artist.profile.name;
+        }
+        // Dig into trackUnion from state
+        const tu = state?.data?.trackUnion;
+        if (tu?.firstArtist?.items?.[0]?.profile?.name) return tu.firstArtist.items[0].profile.name;
+        if (tu?.artists?.items?.[0]?.profile?.name) return tu.artists.items[0].profile.name;
+      } catch { }
+
+      // Last resort: scan entire JSON string for artist patterns
+      try {
+        const jsonStr = JSON.stringify(json);
+        // Look for "profile":{"name":"ArtistName"}
+        const profileMatch = jsonStr.match(/"profile"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/);
+        if (profileMatch?.[1]) return profileMatch[1];
+      } catch { }
+
+      return null; // caller will use title-based fallback
+    };
+
+    let artistName = extractArtist(entity, json);
+
+    // Fallback: fetch the main page and extract artist from <title> tag
+    if (!artistName) {
+      try {
+        const trackUrl = `https://open.spotify.com/track/${id}`;
+        const r = await fetch(trackUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } });
+        const html = await r.text();
+        const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+        if (titleMatch) {
+          const tText = titleMatch[1];
+          // Usually: "Title - song and lyrics by Artist | Spotify"
+          const byMatch = tText.match(/song and lyrics by (.*?) \|/i) || tText.match(/- Single by (.*?) \|/i);
+          if (byMatch) {
+            artistName = byMatch[1].trim();
+          } else {
+            // "Title - song by Artist | Spotify"
+            const byMatch2 = tText.match(/song by (.*?) \|/i);
+            if (byMatch2) artistName = byMatch2[1].trim();
+          }
+        }
+      } catch (err) {
+        console.warn('[parseSpotifyEmbed] Title fallback failed:', err.message);
+      }
+    }
+
+    console.log(`[parseSpotifyEmbed] extracted artist="${artistName}" for title="${title}"`);
+
+    // Cover art — try multiple paths
+    const coverUrl =
+      entity.coverArt?.sources?.find(s => s.width >= 300)?.url ||
+      entity.coverArt?.sources?.[0]?.url ||
+      entity.visualIdentity?.image?.[0]?.url ||
+      entity.data?.trackUnion?.albumOfTrack?.coverArt?.sources?.[0]?.url ||
+      entity.albumOfTrack?.coverArt?.sources?.[0]?.url ||
+      null;
+
+    // Album name
+    const albumName =
+      entity.data?.trackUnion?.albumOfTrack?.name ||
+      entity.albumOfTrack?.name ||
+      entity.album?.name ||
+      '';
+
+    const spotifyId = entity.id || entity.data?.trackUnion?.id || id;
+    const artist = artistName || 'Unknown Artist';
     return {
       type: 'track',
       title,
       artist,
       allArtists: artist,
-      album: '',
+      album: albumName,
       year: '',
       trackNumber: 1,
       totalTracks: 1,
       coverUrl,
       spotifyId,
       spotifyUrl: `https://open.spotify.com/track/${spotifyId}`,
-      durationMs: entity.duration || 0,
-      artistThumbnail: null
-    }
+      durationMs: entity.duration || entity.data?.trackUnion?.duration?.totalMilliseconds || 0,
+      artistThumbnail: null,
+      isrc: entity.data?.trackUnion?.externalIds?.isrc || '',
+    };
   } else {
     const rawTracks = entity.trackList || []
     const tracks = rawTracks.map((t, idx) => {
-      const trackId = t.uri ? t.uri.split(':').pop() : `${id}_${idx + 1}`
-      const tTitle = t.title || 'Track ' + (idx + 1)
-      const tArtist = t.subtitle || 'Unknown Artist'
+      const trackId = t.uri ? t.uri.split(':').pop() : (t.id || `${id}_${idx + 1}`)
+      const tTitle = t.title || t.name || 'Track ' + (idx + 1)
+      // Try all known paths for artist in playlist/album embed JSON
+      const tArtist =
+        t.subtitle ||
+        t.artists?.[0]?.name ||
+        t.firstArtist?.items?.[0]?.profile?.name ||
+        t.artistWithRole?.[0]?.artist?.profile?.name ||
+        t.authors?.[0]?.name ||
+        'Unknown Artist'
       return {
         trackNumber: idx + 1,
         title: tTitle,
@@ -595,10 +755,10 @@ export async function parseSpotifyEmbed(urlStr, clientId = null, clientSecret = 
         allArtists: tArtist,
         album: '',
         year: '',
-        coverUrl: null,
+        coverUrl: t.coverArt?.sources?.[0]?.url || t.albumOfTrack?.coverArt?.sources?.[0]?.url || null,
         spotifyId: trackId,
         spotifyUrl: `https://open.spotify.com/track/${trackId}`,
-        durationMs: t.duration || 0,
+        durationMs: t.duration || t.duration_ms || t.durationMs || 0,
         totalTracks: rawTracks.length,
         audioPreview: t.audioPreview?.url || null
       }

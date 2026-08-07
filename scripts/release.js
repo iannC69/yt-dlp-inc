@@ -72,6 +72,59 @@ if (bumpType) {
 
 const version = readPkg().version
 
+// ── Step 1.5: Auto-generate Release Notes ────────────────────────────────────
+if (bumpType || shouldPublish) {
+  step('Auto-generating release notes from git history')
+  try {
+    let latestTag = '';
+    try {
+      latestTag = execSync('git describe --tags --abbrev=0', { cwd: ROOT, encoding: 'utf8' }).trim();
+    } catch (e) {
+      latestTag = ''; // No tags yet
+    }
+    
+    // Fallback to last 10 commits if no tags exist
+    const gitLogCmd = latestTag ? `git log ${latestTag}..HEAD --pretty=format:"%s|%an|%ae"` : `git log -n 10 --pretty=format:"%s|%an|%ae"`;
+    let commits = [];
+    try {
+      commits = execSync(gitLogCmd, { cwd: ROOT, encoding: 'utf8' })
+        .trim().split('\n').filter(Boolean)
+        .map(line => {
+          const parts = line.split('|');
+          return {
+            message: parts[0] || line,
+            author: parts[1] || 'Unknown',
+            email: parts[2] || ''
+          };
+        });
+    } catch (e) {}
+
+    // Filter out previous release commits
+    commits = commits.filter(c => !c.message.startsWith('chore: release v'));
+
+    const releasesPath = path.join(ROOT, 'releases.json');
+    let releases = [];
+    if (fs.existsSync(releasesPath)) {
+      try { releases = JSON.parse(fs.readFileSync(releasesPath, 'utf8')); } catch(e){}
+    }
+    
+    if (commits.length > 0 || releases.length === 0) {
+      releases.unshift({
+        version: `v${version}`,
+        title: 'Update ' + new Date().toLocaleDateString(),
+        date: new Date().toISOString(),
+        changes: commits.length > 0 ? commits : [{ message: 'chore: automated update', author: 'System', email: '' }]
+      });
+      fs.writeFileSync(releasesPath, JSON.stringify(releases, null, 2), 'utf8');
+      ok(`Added ${commits.length} commits to releases.json`);
+    } else {
+      warn('No new commits found since last release.');
+    }
+  } catch (e) {
+    warn('Failed to auto-generate release notes: ' + e.message);
+  }
+}
+
 // ── Step 2: Verify binaries ─────────────────────────────────────────────────
 step('Verifying bundled binaries')
 const binDir = path.join(ROOT, 'bin')
@@ -130,7 +183,7 @@ ok('Packaging complete')
 if (bumpType || shouldPublish) {
   step('Committing and pushing to GitHub')
   try {
-    run('git add package.json package-lock.json')
+    run('git add package.json package-lock.json releases.json')
     // Only commit if there's actually something staged
     const statusResult = spawnSync('git', ['diff', '--staged', '--quiet'], { cwd: ROOT })
     if (statusResult.status !== 0) {

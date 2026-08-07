@@ -412,11 +412,72 @@ function youtubeDownloaderPlugin() {
     configureServer(server) {
       configureNewBackend(server);
 
+      // ── Updates API ──
+      const releasesPath = path.join(__dirname, 'releases.json');
+      server.middlewares.use('/api/updates/history', (req, res, next) => {
+        const u = new URL(req.url, `http://${req.headers.host}`)
+        if (u.pathname !== '/') return next()
+        res.setHeader('Content-Type', 'application/json')
+        if (fs.existsSync(releasesPath)) {
+          try {
+            const data = fs.readFileSync(releasesPath, 'utf8')
+            res.end(data)
+          } catch (e) {
+            res.end(JSON.stringify([]))
+          }
+        } else {
+          res.end(JSON.stringify([]))
+        }
+      })
+
+      server.middlewares.use('/api/updates/save', (req, res, next) => {
+        const u = new URL(req.url, `http://${req.headers.host}`)
+        if (u.pathname !== '/') return next()
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          return res.end('Method Not Allowed')
+        }
+        let b = ''
+        req.on('data', c => b += c)
+        req.on('end', () => {
+          try {
+            fs.writeFileSync(releasesPath, b, 'utf8')
+            res.end(JSON.stringify({ success: true }))
+          } catch (e) {
+            res.end(JSON.stringify({ success: false, error: e.message }))
+          }
+        })
+      })
+
       // ── API Middleware for Hits ──
       server.middlewares.use('/api/ytdl', (req, res, next) => {
         metrics.totalHits++;
         next();
       })
+      
+      // ── Spotify Artist Thumbnail ──
+      server.middlewares.use('/api/spotify-artist-thumbnail', async (req, res, next) => {
+        const u = new URL(req.url, `http://${req.headers.host}`);
+        if (u.pathname !== '/') return next();
+        const name = u.searchParams.get('name');
+        if (!name) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing name' })); }
+        
+        try {
+          const cr = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(name + ' channel')}`, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
+          const ch = await cr.text();
+          const am = ch.match(/"url"\s*:\s*"(https:\/\/yt3\.ggpht\.com\/[^"]+)"/i);
+          let at = am?.[1]?.replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
+          if (at) {
+            if (!at.startsWith('http')) at = 'https:' + at;
+            res.writeHead(302, { Location: at, 'Cache-Control': 'public, max-age=86400' });
+            return res.end();
+          }
+        } catch { }
+
+        // Final fallback: unavatar
+        res.writeHead(302, { Location: `https://unavatar.io/spotify/${encodeURIComponent(name)}`, 'Cache-Control': 'public, max-age=86400' });
+        return res.end();
+      });
 
       // ── Config Endpoints ──
       server.middlewares.use('/api/ytdl/get-config', (req, res, next) => {
@@ -734,7 +795,7 @@ function youtubeDownloaderPlugin() {
 
             let args = []
             if (format === 'audio') {
-              args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir]
+              args = ['-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir]
             } else {
               args = ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', path.join(targetDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir]
             }
@@ -833,11 +894,11 @@ function youtubeDownloaderPlugin() {
           const audioFmt = parts[1] || 'mp3'
           const audioQuality = parts[2] || '0'
           if (audioFmt === 'wav') {
-            args = ['-x', '--audio-format', 'wav', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
+            args = ['-f', 'bestaudio/best', '-x', '--audio-format', 'wav', '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
           } else if (audioFmt === 'vorbis') {
-            args = ['-x', '--audio-format', 'vorbis', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
+            args = ['-f', 'bestaudio/best', '-x', '--audio-format', 'vorbis', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
           } else {
-            args = ['-x', '--audio-format', 'mp3', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
+            args = ['-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', audioQuality, '-o', path.join(downloadsDir, '%(title)s.%(ext)s'), '--ffmpeg-location', ffmpegDir, videoUrl]
           }
         } else if (format.startsWith('video:')) {
           const formatStr = format.substring(6)
@@ -945,9 +1006,11 @@ function youtubeDownloaderPlugin() {
                 return reject(new Error(knownError || stderr.trim() || 'yt-dlp nu a putut citi acest link.'))
               }
               try {
-                resolve(JSON.parse(stdout))
-              } catch {
-                reject(new Error('Nu am putut interpreta răspunsul YouTube.'))
+                const parsed = JSON.parse(stdout)
+                if (!parsed) throw new Error('Acest playlist este privat sau nu există.')
+                resolve(parsed)
+              } catch (e) {
+                reject(new Error(e.message || 'Nu am putut interpreta răspunsul YouTube.'))
               }
             })
           })
@@ -970,7 +1033,7 @@ function youtubeDownloaderPlugin() {
             }))
           }))
         } catch (error) {
-          res.statusCode = 500
+          res.statusCode = 404
           res.end(JSON.stringify({ error: error.message || 'Nu am putut încărca playlistul.' }))
         }
       })
@@ -1028,8 +1091,8 @@ function youtubeDownloaderPlugin() {
           const parts = format.split(':')
           const audioFormat = ['mp3', 'wav', 'vorbis'].includes(parts[1]) ? parts[1] : 'mp3'
           const audioQuality = /^\d+$/.test(parts[2] || '') ? parts[2] : '0'
-          args = ['-x', '--audio-format', audioFormat, '-o', outputTemplate, '--ffmpeg-location', ffmpegDir]
-          if (audioFormat !== 'wav') args.splice(3, 0, '--audio-quality', audioQuality)
+          args = ['-f', 'bestaudio/best', '-x', '--audio-format', audioFormat, '-o', outputTemplate, '--ffmpeg-location', ffmpegDir]
+          if (audioFormat !== 'wav') args.splice(5, 0, '--audio-quality', audioQuality)
         } else {
           const videoFormat = format.startsWith('video:') ? format.substring(6) : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
           args = ['-f', videoFormat, '--merge-output-format', 'mp4', '-o', outputTemplate, '--ffmpeg-location', ffmpegDir]

@@ -1,18 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DownloadCloud } from 'lucide-react';
 
 export default function SplashScreen({ onComplete }) {
   const [phase, setPhase] = useState(0);
+  const [loadingText, setLoadingText] = useState('Initializing Engine...');
   
   useEffect(() => {
-    // Elegant, smooth timing
-    const t1 = setTimeout(() => setPhase(1), 800);
-    const t2 = setTimeout(() => setPhase(2), 2200);
-    const t3 = setTimeout(() => setPhase(3), 2800); // Trigger exit early
-    const t4 = setTimeout(() => onComplete(), 3400);
+    // Highly detailed loading sequence
+    const texts = [
+      'Waking up MediaDL...',
+      'Connecting to Spotify API...',
+      'Initializing YouTube Engine...',
+      'Allocating Audio Buffers...',
+      'Loading UI Components...',
+      'Optimizing Workspace...',
+      'Almost Ready...'
+    ];
+    let i = 0;
+    const interval = setInterval(() => {
+      setLoadingText(texts[i]);
+      i = (i + 1) % texts.length;
+    }, 450);
+
+    // Timing logic
+    const t1 = setTimeout(() => setPhase(1), 300);
+    const t2 = setTimeout(() => setPhase(2), 2600);
+    const t3 = setTimeout(() => setPhase(3), 3200); // Exit animation starts
+    const t4 = setTimeout(() => onComplete(), 3800);
     
     return () => {
+      clearInterval(interval);
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
@@ -22,185 +39,346 @@ export default function SplashScreen({ onComplete }) {
 
   return (
     <motion.div
-      className="splash-screen"
+      className="splash-screen-pro"
       initial={{ opacity: 1 }}
-      exit={{ opacity: 0, filter: 'blur(16px)', scale: 1.02 }}
-      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+      exit={{ opacity: 0, filter: 'blur(30px)', scale: 1.1 }}
+      transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
     >
       <style>{`
-        .splash-screen {
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap');
+
+        .splash-screen-pro {
           position: fixed;
           inset: 0;
           z-index: 999999;
-          background-color: #0A0A0A;
+          background-color: #010308;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
           overflow: hidden;
-          font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', sans-serif;
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
           user-select: none;
         }
 
-        /* Premium Aurora Ambient Glow combining all brand colors */
-        .splash-aurora {
+        /* ── ORGANIC INFINITE WAVES ── */
+        .wave-container {
           position: absolute;
-          inset: -50%;
-          z-index: 1;
-          filter: blur(120px) saturate(150%);
-          opacity: 0.2;
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          height: 60vh;
+          overflow: hidden;
+          z-index: 0;
           pointer-events: none;
-          background: conic-gradient(from 0deg at 50% 50%, 
-            rgba(255, 0, 0, 0.8),     /* YouTube Red */
-            rgba(255, 85, 0, 0.8),    /* SoundCloud Orange */
-            rgba(29, 185, 84, 0.8),   /* Spotify Green */
-            rgba(0, 199, 242, 0.8),   /* Deezer Cyan */
-            rgba(250, 36, 60, 0.8),   /* Apple Music Pink/Red */
-            rgba(255, 0, 0, 0.8)      /* Loop */
-          );
-          animation: aurora-spin 25s linear infinite;
+          opacity: 0.8;
         }
 
-        @keyframes aurora-spin {
-          0% { transform: rotate(0deg) scale(1.2); }
-          50% { transform: rotate(180deg) scale(1.6); }
-          100% { transform: rotate(360deg) scale(1.2); }
+        .wave {
+          position: absolute;
+          width: 250vw;
+          height: 250vw;
+          left: -75vw;
+          top: 40vh;
+          border-radius: 43%;
+          animation: wave-spin infinite linear;
+          mix-blend-mode: screen;
         }
 
-        .splash-content {
+        .wave-1 {
+          background: rgba(124, 58, 237, 0.15); /* Deep Purple */
+          animation-duration: 20s;
+          top: 35vh;
+          box-shadow: inset 0 0 100px rgba(124, 58, 237, 0.3);
+        }
+        
+        .wave-2 {
+          background: rgba(34, 245, 199, 0.12); /* Vibrant Teal */
+          animation-duration: 25s;
+          animation-direction: reverse;
+          top: 38vh;
+          box-shadow: inset 0 0 100px rgba(34, 245, 199, 0.2);
+        }
+        
+        .wave-3 {
+          background: rgba(217, 70, 239, 0.15); /* Pink */
+          animation-duration: 30s;
+          top: 42vh;
+          box-shadow: inset 0 0 150px rgba(217, 70, 239, 0.3);
+        }
+
+        @keyframes wave-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        /* Ambient Glow */
+        .ambient-glow {
+          position: absolute;
+          width: 600px;
+          height: 600px;
+          background: radial-gradient(circle, rgba(124,58,237,0.2) 0%, transparent 60%);
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          filter: blur(80px);
+          z-index: 1;
+        }
+
+        /* ── CENTER CONTENT ── */
+        .content-layer {
           position: relative;
           z-index: 10;
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 24px;
         }
 
-        .splash-logo-container {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 64px;
-          height: 64px;
-          border-radius: 16px;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-        }
-
-        /* Soft breathing shadow */
-        .splash-logo-shadow {
-          position: absolute;
-          inset: 0;
-          border-radius: 16px;
-          box-shadow: 0 0 20px rgba(255, 255, 255, 0.08);
-          animation: breath-shadow 4s ease-in-out infinite alternate;
-        }
-
-        @keyframes breath-shadow {
-          0% { opacity: 0.3; transform: scale(0.95); }
-          100% { opacity: 0.8; transform: scale(1.05); }
-        }
-
-        .splash-title {
-          font-size: 1.25rem;
-          font-weight: 500;
-          letter-spacing: 0.15em;
-          color: rgba(255, 255, 255, 0.9);
+        /* Huge Premium Title */
+        .splash-huge-title {
+          font-family: 'Montserrat', 'Arial Black', sans-serif;
+          font-size: 9.5rem;
+          font-weight: 900;
+          letter-spacing: -0.06em;
           margin: 0;
-          margin-right: -0.15em; /* Compensate for tracking */
+          line-height: 1;
+          color: #ffffff;
+          background: linear-gradient(
+            110deg,
+            #e2e8f0 10%,
+            #ffffff 30%,
+            #64748b 50%,
+            #ffffff 70%,
+            #e2e8f0 90%
+          );
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: title-shimmer 6s linear infinite;
+        }
+        
+        @keyframes title-shimmer {
+          to { background-position: -200% center; }
+        }
+
+        .splash-detailed-subtitle {
+          font-size: 1.2rem;
+          font-weight: 400;
+          letter-spacing: 0.4em;
+          color: rgba(255, 255, 255, 0.6);
+          margin-top: 8px;
+          margin-bottom: 60px;
           text-transform: uppercase;
         }
 
-        /* Ultra-thin indeterminate loader */
-        .splash-loader-wrapper {
-          position: absolute;
-          bottom: -40px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 140px;
-          height: 1px;
+        /* Pro Max Loader */
+        .pro-loader-container {
+          width: 440px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .pro-loader-track {
+          width: 100%;
+          height: 4px;
           background: rgba(255, 255, 255, 0.05);
+          border-radius: 4px;
           overflow: hidden;
-          border-radius: 1px;
+          position: relative;
+          box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
         }
 
-        .splash-loader-indicator {
-          position: absolute;
-          top: 0;
-          left: 0;
+        .pro-loader-fill {
           height: 100%;
-          background: rgba(255, 255, 255, 0.8);
-          box-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+          border-radius: 4px;
+          background: linear-gradient(90deg, transparent, #22f5c7, #7c3aed, #ff00a0);
+          background-size: 200% 100%;
+          box-shadow: 0 0 20px rgba(124, 58, 237, 0.8), 0 0 10px rgba(34, 245, 199, 0.6);
+          position: relative;
         }
 
-        .splash-version {
+        /* Glowing head of the loading bar */
+        .pro-loader-fill::after {
+          content: '';
           position: absolute;
-          bottom: 24px;
-          right: 24px;
-          font-size: 0.7rem;
-          font-weight: 400;
-          color: rgba(255, 255, 255, 0.2);
-          letter-spacing: 0.05em;
+          right: 0;
+          top: -2px;
+          height: 8px;
+          width: 20px;
+          background: #ffffff;
+          border-radius: 10px;
+          box-shadow: 0 0 15px #ffffff;
+          filter: blur(1px);
+        }
+
+        .pro-status-text {
+          font-size: 0.8rem;
+          color: rgba(255, 255, 255, 0.5);
+          text-align: center;
+          font-weight: 500;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          height: 16px;
+        }
+
+        /* Vertical Details */
+        .vertical-text {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.3em;
+          color: rgba(255, 255, 255, 0.1);
+          line-height: 2.5;
+          z-index: 5;
+        }
+        .vertical-text.left { left: 48px; }
+        .vertical-text.right { right: 48px; text-align: right; }
+        /* ── PREMIUM TECHNICAL DETAILS ── */
+        .tech-grid {
+          position: absolute;
+          inset: 0;
+          background-image: 
+            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+          background-size: 40px 40px;
+          opacity: 0.3;
+          z-index: 1;
+          pointer-events: none;
+          mask-image: radial-gradient(circle at center, black 20%, transparent 80%);
+          -webkit-mask-image: radial-gradient(circle at center, black 20%, transparent 80%);
+        }
+
+        .scanlines {
+          position: absolute;
+          inset: 0;
+          background: repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(0, 0, 0, 0.2) 2px,
+            rgba(0, 0, 0, 0.2) 4px
+          );
+          z-index: 100;
+          pointer-events: none;
+          opacity: 0.4;
+        }
+
+        .reticle {
+          position: absolute;
+          width: 20px;
+          height: 20px;
+          border: 1px solid rgba(255,255,255,0.15);
+          z-index: 5;
+        }
+        .reticle::before {
+          content: ''; position: absolute; background: rgba(255,255,255,0.5);
+        }
+        .reticle.tl { top: 40px; left: 40px; border-right: none; border-bottom: none; }
+        .reticle.tr { top: 40px; right: 40px; border-left: none; border-bottom: none; }
+        .reticle.bl { bottom: 40px; left: 40px; border-right: none; border-top: none; }
+        .reticle.br { bottom: 40px; right: 40px; border-left: none; border-top: none; }
+
+        .system-badge {
+          display: inline-block;
+          font-size: 0.65rem;
+          color: #22f5c7;
+          border: 1px solid rgba(34, 245, 199, 0.3);
+          background: rgba(34, 245, 199, 0.05);
+          padding: 4px 10px;
+          border-radius: 4px;
+          letter-spacing: 0.1em;
+          margin-bottom: 24px;
+          box-shadow: 0 0 10px rgba(34, 245, 199, 0.1);
         }
       `}</style>
 
-      <div className="splash-aurora" />
+      {/* Background Elements */}
+      <div className="ambient-glow" />
+      <div className="tech-grid" />
+      <div className="scanlines" />
+      
+      {/* HUD Reticles */}
+      <div className="reticle tl" />
+      <div className="reticle tr" />
+      <div className="reticle bl" />
+      <div className="reticle br" />
 
-      <motion.div 
-        className="splash-content"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-      >
+      <div className="wave-container">
+        <div className="wave wave-1"></div>
+        <div className="wave wave-2"></div>
+        <div className="wave wave-3"></div>
+      </div>
+
+      <div className="vertical-text left">
+        SYSTEM<br/>BOOT<br/>SEQUENCE
+      </div>
+      <div className="vertical-text right">
+        MEDIA.DL<br/>V1.0.75<br/>ONLINE
+      </div>
+
+      <div className="content-layer">
         <motion.div 
-          className="splash-logo-container"
-          animate={{ scale: [1, 1.02, 1] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.5, duration: 0.8 }}
+          className="system-badge"
         >
-          <div className="splash-logo-shadow" />
-          <DownloadCloud size={28} color="rgba(255, 255, 255, 0.9)" strokeWidth={1.5} style={{ zIndex: 2 }} />
+          SYS.CORE // INITIATING
         </motion.div>
 
         <motion.h1 
-          className="splash-title"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4, duration: 1 }}
+          className="splash-huge-title"
+          initial={{ y: 30, opacity: 0, scale: 0.95 }}
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
         >
           MediaDL
         </motion.h1>
 
+        <motion.div 
+          className="splash-detailed-subtitle"
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 1, delay: 0.3, ease: "easeOut" }}
+        >
+          Premium Media Engine
+        </motion.div>
+
         <AnimatePresence>
           {phase < 3 && (
             <motion.div 
-              className="splash-loader-wrapper"
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: 140 }}
-              exit={{ opacity: 0, scaleX: 0 }}
-              transition={{ delay: 0.8, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+              className="pro-loader-container"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 15, scale: 0.95 }}
+              transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
             >
+              <div className="pro-loader-track">
+                <motion.div 
+                  className="pro-loader-fill"
+                  initial={{ width: "0%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ delay: 0.8, duration: 2.4, ease: [0.4, 0, 0.2, 1] }}
+                />
+              </div>
+              
               <motion.div 
-                className="splash-loader-indicator" 
-                initial={{ width: "0%" }}
-                animate={{ width: "100%" }}
-                transition={{ delay: 1, duration: 2, ease: "easeInOut" }}
-              />
+                className="pro-status-text"
+                key={loadingText}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2 }}
+              >
+                {loadingText}
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
-
-      <motion.div 
-        className="splash-version"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.2, duration: 1 }}
-      >
-        v1.0.65
-      </motion.div>
-
+      </div>
     </motion.div>
   );
 }
