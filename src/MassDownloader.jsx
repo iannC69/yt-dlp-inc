@@ -2,12 +2,11 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Layers, Music, Download, Loader2, AlertCircle, CheckCircle2,
-  Link2, List, Search, X, FolderOpen, Clock, HardDrive, Database,
+  Link2, Search, X, FolderOpen, Clock, HardDrive,
   Play, Pause, SquareStop, RefreshCw, Terminal, ChevronDown, ChevronUp,
-  Archive, Disc, Zap, FileText, Cpu, LayoutGrid, ListVideo, ExternalLink,
+  Archive, Zap, FileText, LayoutGrid, ListVideo, ExternalLink,
   Activity, Sparkles, Shield, Trash2, Upload,
-  Gauge, Headphones, Timer, SlidersHorizontal, Flame, Settings2,
-  SkipForward, CheckSquare, RotateCcw, TrendingUp
+  Gauge, Headphones, Settings2,
 } from 'lucide-react';
 import './MassDownloader.css';
 
@@ -95,12 +94,20 @@ function MiniStat({ label, value, accent, pulse }) {
 
 function ToggleSwitch({ checked, onChange, label }) {
   return (
-    <label className="v2-switch">
-      <div className={`v2-switch-track${checked ? ' v2-switch-track--on' : ''}`} onClick={() => onChange(!checked)}>
-        <div className="v2-switch-thumb" />
+    <label className="md3-toggle">
+      <div className={`md3-toggle-track${checked ? ' md3-toggle-track--on' : ''}`} onClick={() => onChange(!checked)}>
+        <div className="md3-toggle-thumb" />
       </div>
       <span>{label}</span>
     </label>
+  );
+}
+
+function SegBtn({ active, onClick, children, danger }) {
+  return (
+    <button className={`md3-seg${active ? ' md3-seg--on' : ''}${danger ? ' md3-seg--fire' : ''}`} onClick={onClick}>
+      {children}
+    </button>
   );
 }
 
@@ -453,195 +460,135 @@ export default function MassDownloader() {
   // RENDER
   // ════════════════════════════════════════════════════════════
   return (
-    <div className="v2-page">
-      {/* ambient */}
-      <div className="v2-orb v2-orb-1" />
-      <div className="v2-orb v2-orb-2" />
-      <div className="v2-grid" />
+    <div className="md3-root">
+      <div className="md3-orb md3-orb-1" />
+      <div className="md3-orb md3-orb-2" />
 
-      {/* ═══ HEADER BAR ═══ */}
-      <header className="v2-header">
-        <div className="v2-header-brand">
-          <div className="v2-brand-dot" />
-          <span className="v2-brand-name">Mass Downloader</span>
-          <span className={`v2-engine-badge${isDownloading ? ' v2-engine-badge--active' : ''}`}>
-            {isDownloading ? 'ACTIVE' : 'STANDBY'}
+      {/* ═══ LEFT SIDEBAR ═══ */}
+      <aside className="md3-sidebar">
+        <div className="md3-brand">
+          <div className="md3-brand-dot" />
+          <span className="md3-brand-name">Mass Downloader</span>
+          <span className={`md3-engine-pill${isDownloading ? ' md3-engine-pill--on' : ''}`}>
+            {isDownloading ? 'ACTIVE' : 'READY'}
           </span>
         </div>
 
-        {/* Source input — lives inline in header */}
-        <div className="v2-header-source">
-          <div className="v2-src-tabs">
-            <TabBtn active={sourceTab === 'spotify'}  onClick={() => setSourceTab('spotify')}>
-              <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-              Spotify
-            </TabBtn>
-            <TabBtn active={sourceTab === 'youtube'}  onClick={() => setSourceTab('youtube')}>
-              <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M21.582 6.186a2.684 2.684 0 00-1.884-1.898C17.983 3.8 12 3.8 12 3.8s-5.983 0-7.698.488A2.684 2.684 0 002.418 6.186C1.94 7.915 1.94 12 1.94 12s0 4.085.478 5.814a2.684 2.684 0 001.884 1.898C5.983 20.2 12 20.2 12 20.2s5.983 0 7.698-.488a2.684 2.684 0 001.884-1.898C22.06 16.085 22.06 12 22.06 12s0-4.085-.478-5.814zM9.913 14.894V9.106l5.244 2.894-5.244 2.894z"/></svg>
-              YouTube
-            </TabBtn>
-            <TabBtn active={sourceTab === 'urllist'} onClick={() => setSourceTab('urllist')}>
-              <FileText size={12} /> URLs
-            </TabBtn>
-          </div>
+        <div className="md3-src-tabs">
+          {[
+            { id: 'spotify',  icon: <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>, label: 'Spotify' },
+            { id: 'youtube', icon: <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M21.582 6.186a2.684 2.684 0 00-1.884-1.898C17.983 3.8 12 3.8 12 3.8s-5.983 0-7.698.488A2.684 2.684 0 002.418 6.186C1.94 7.915 1.94 12 1.94 12s0 4.085.478 5.814a2.684 2.684 0 001.884 1.898C5.983 20.2 12 20.2 12 20.2s5.983 0 7.698-.488a2.684 2.684 0 001.884-1.898C22.06 16.085 22.06 12 22.06 12s0-4.085-.478-5.814zM9.913 14.894V9.106l5.244 2.894-5.244 2.894z"/></svg>, label: 'YouTube' },
+            { id: 'urllist', icon: <FileText size={13} />, label: 'URL List' },
+          ].map(t => (
+            <button key={t.id} className={`md3-src-tab${sourceTab === t.id ? ' md3-src-tab--on' : ''}`} onClick={() => setSourceTab(t.id)}>
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
 
-          {/* Spotify input */}
+        <div className="md3-src-input-area">
           {sourceTab === 'spotify' && (
-            <div className="v2-src-input-row">
-              <div className="v2-src-input-wrap">
-                <Link2 size={13} className="v2-src-icon" />
-                <input
-                  className="v2-src-input"
-                  value={spotUrl}
-                  onChange={e => { setSpotUrl(e.target.value); setSpotError(''); setSpotResult(null); }}
-                  onKeyDown={e => e.key === 'Enter' && fetchSpotify()}
-                  placeholder="Paste a Spotify playlist URL…"
-                />
-                {spotUrl && <button className="v2-src-clear" onClick={() => { setSpotUrl(''); setSpotResult(null); setSpotError(''); }}><X size={12} /></button>}
+            <div className="md3-url-group">
+              <div className="md3-url-wrap">
+                <Search size={13} className="md3-url-icon" />
+                <input className="md3-url-input" value={spotUrl} onChange={e => { setSpotUrl(e.target.value); setSpotError(''); setSpotResult(null); }} onKeyDown={e => e.key === 'Enter' && fetchSpotify()} placeholder="Paste Spotify playlist URL…" />
+                {spotUrl && <button className="md3-url-clear" onClick={() => { setSpotUrl(''); setSpotResult(null); setSpotError(''); }}><X size={12} /></button>}
               </div>
-              <button className="v2-src-btn" onClick={fetchSpotify} disabled={spotFetching || !spotUrl.trim()}>
-                {spotFetching ? <Loader2 size={13} className="v2-spin" /> : <Search size={13} />} Scan
+              <button className="md3-scan-btn" onClick={fetchSpotify} disabled={spotFetching || !spotUrl.trim()}>
+                {spotFetching ? <Loader2 size={13} className="md3-spin" /> : <Search size={13} />} Scan
               </button>
-              {spotError && <span className="v2-src-err"><AlertCircle size={12} /> {spotError}</span>}
+              {spotError && <div className="md3-src-err"><AlertCircle size={12} />{spotError}</div>}
             </div>
           )}
-
-          {/* YouTube input */}
           {sourceTab === 'youtube' && (
-            <div className="v2-src-input-row">
-              <div className="v2-src-input-wrap">
-                <Link2 size={13} className="v2-src-icon" />
-                <input
-                  className="v2-src-input"
-                  value={ytUrl}
-                  onChange={e => { setYtUrl(e.target.value); setYtError(''); setYtResult(null); }}
-                  onKeyDown={e => e.key === 'Enter' && fetchYoutube()}
-                  placeholder="Paste a YouTube playlist URL…"
-                />
-                {ytUrl && <button className="v2-src-clear" onClick={() => { setYtUrl(''); setYtResult(null); setYtError(''); }}><X size={12} /></button>}
+            <div className="md3-url-group">
+              <div className="md3-url-wrap">
+                <Search size={13} className="md3-url-icon" />
+                <input className="md3-url-input" value={ytUrl} onChange={e => { setYtUrl(e.target.value); setYtError(''); setYtResult(null); }} onKeyDown={e => e.key === 'Enter' && fetchYoutube()} placeholder="Paste YouTube playlist URL…" />
+                {ytUrl && <button className="md3-url-clear" onClick={() => { setYtUrl(''); setYtResult(null); setYtError(''); }}><X size={12} /></button>}
               </div>
-              <button className="v2-src-btn" onClick={fetchYoutube} disabled={ytFetching || !ytUrl.trim()}>
-                {ytFetching ? <Loader2 size={13} className="v2-spin" /> : <Search size={13} />} Load
+              <button className="md3-scan-btn" onClick={fetchYoutube} disabled={ytFetching || !ytUrl.trim()}>
+                {ytFetching ? <Loader2 size={13} className="md3-spin" /> : <Search size={13} />} Load
               </button>
-              {ytError && <span className="v2-src-err"><AlertCircle size={12} /> {ytError}</span>}
+              {ytError && <div className="md3-src-err"><AlertCircle size={12} />{ytError}</div>}
             </div>
           )}
-
-          {/* URL list input */}
           {sourceTab === 'urllist' && (
-            <div className="v2-src-input-row">
-              <textarea
-                className="v2-src-textarea"
-                value={urlListText}
-                onChange={e => setUrlListText(e.target.value)}
-                placeholder="Paste URLs one per line…"
-                rows={2}
-              />
-              <button className="v2-src-btn" onClick={resolveUrlList} disabled={urlListResolving || !urlListText.trim()}>
-                {urlListResolving ? <Loader2 size={13} className="v2-spin" /> : <Search size={13} />} Resolve
+            <div className="md3-url-group">
+              <textarea className="md3-url-textarea" value={urlListText} onChange={e => setUrlListText(e.target.value)} placeholder="Paste URLs one per line…" rows={4} />
+              <button className="md3-scan-btn" onClick={resolveUrlList} disabled={urlListResolving || !urlListText.trim()}>
+                {urlListResolving ? <Loader2 size={13} className="md3-spin" /> : <Search size={13} />} Resolve
               </button>
-              {urlListError && <span className="v2-src-err"><AlertCircle size={12} /> {urlListError}</span>}
+              {urlListError && <div className="md3-src-err"><AlertCircle size={12} />{urlListError}</div>}
             </div>
           )}
         </div>
 
-        {/* Header right: stats pills */}
-        <div className="v2-header-stats">
-          <MiniStat label="Queued"   value={allItems.length}   accent="var(--cr)" />
-          <MiniStat label="Selected" value={selectedCount}     accent="var(--cr)" />
-          {isDownloading && <MiniStat label="Done"   value={dlState?.completedCount ?? 0} accent="#22c55e" pulse />}
-          {isDownloading && <MiniStat label="Failed" value={dlState?.failedCount ?? 0}    accent="#ef4444" />}
-        </div>
-      </header>
-
-      {/* ═══ SETTINGS DRAWER ═══ */}
-      <AnimatePresence>
-        {allItems.length > 0 && !isDownloading && !isDone && (
-          <motion.div className="v2-settings-bar" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={spring}>
-            {/* Always-visible quick settings */}
-            <div className="v2-quick-bar">
-              {/* Format */}
-              <div className="v2-qs-group">
-                <label className="v2-qs-label"><Headphones size={11} /> Format</label>
-                <select className="v2-qs-select" value={format} onChange={e => setFormat(e.target.value)}>
-                  {AUDIO_FORMATS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-                </select>
+        {/* Settings */}
+        <div className="md3-settings-scroll">
+          <div className="md3-settings-section">
+            <div className="md3-field">
+              <label className="md3-field-label"><Headphones size={11} />Format</label>
+              <select className="md3-select" value={format} onChange={e => setFormat(e.target.value)}>
+                {AUDIO_FORMATS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+              </select>
+            </div>
+            <div className="md3-field">
+              <label className="md3-field-label"><Gauge size={11} />Parallel Downloads <span className="md3-field-val">{concurrency}</span></label>
+              <input type="range" min="1" max="24" value={concurrency} onChange={e => setConcurrency(Number(e.target.value))} className="md3-slider" style={{ '--pct': `${concurrencyPct}%` }} />
+            </div>
+            <div className="md3-field">
+              <label className="md3-field-label">Speed Mode</label>
+              <div className="md3-seg-row">
+                <SegBtn active={speedMode === 'BALANCED'} onClick={() => setSpeedMode('BALANCED')}>Balanced</SegBtn>
+                <SegBtn active={speedMode === 'MAXIMUM'}  onClick={() => setSpeedMode('MAXIMUM')} danger><Zap size={11} />Max</SegBtn>
               </div>
-
-              {/* Parallelism */}
-              <div className="v2-qs-group">
-                <label className="v2-qs-label"><Gauge size={11} /> Parallel: {concurrency}</label>
-                <input type="range" min="1" max="24" value={concurrency} onChange={e => setConcurrency(Number(e.target.value))} className="v2-qs-slider" style={{ '--pct': `${concurrencyPct}%` }} />
+            </div>
+            <div className="md3-field">
+              <label className="md3-field-label">Output</label>
+              <div className="md3-seg-row">
+                <SegBtn active={outputMode === 'zip'}    onClick={() => setOutputMode('zip')}><Archive size={11} />ZIP</SegBtn>
+                <SegBtn active={outputMode === 'folder'} onClick={() => setOutputMode('folder')}><FolderOpen size={11} />Folder</SegBtn>
               </div>
-
-              {/* Speed mode */}
-              <div className="v2-qs-group">
-                <label className="v2-qs-label">Mode</label>
-                <div className="v2-seg-group">
-                  <button className={`v2-seg${speedMode === 'BALANCED' ? ' v2-seg--on' : ''}`} onClick={() => setSpeedMode('BALANCED')}>Balanced</button>
-                  <button className={`v2-seg${speedMode === 'MAXIMUM'  ? ' v2-seg--on v2-seg--fire' : ''}`} onClick={() => setSpeedMode('MAXIMUM')}><Zap size={11} /> Max</button>
-                </div>
-              </div>
-
-              {/* Output */}
-              <div className="v2-qs-group">
-                <label className="v2-qs-label">Output</label>
-                <div className="v2-seg-group">
-                  <button className={`v2-seg${outputMode === 'zip'    ? ' v2-seg--on' : ''}`} onClick={() => setOutputMode('zip')}><Archive size={11} /> ZIP</button>
-                  <button className={`v2-seg${outputMode === 'folder' ? ' v2-seg--on' : ''}`} onClick={() => setOutputMode('folder')}><FolderOpen size={11} /> Folder</button>
-                </div>
-              </div>
-
-              {/* Quick toggles inline */}
-              <div className="v2-qs-group v2-qs-toggles">
-                <ToggleSwitch checked={embedMetadata} onChange={setEmbedMetadata} label="Tags" />
-                <ToggleSwitch checked={embedLyrics}   onChange={setEmbedLyrics}   label="Lyrics" />
-                <ToggleSwitch checked={skipExisting}  onChange={setSkipExisting}  label="Skip Existing" />
-                <ToggleSwitch checked={autoRetry}     onChange={setAutoRetry}     label="Auto Retry" />
-              </div>
-
-              {/* Advanced toggle */}
-              <button className="v2-adv-btn" onClick={() => setAdvancedMode(!advancedMode)}>
-                <Settings2 size={13} />
-                {advancedMode ? 'Less' : 'More'}
-                {advancedMode ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-              </button>
+            </div>
+            <div className="md3-toggles-grid">
+              <ToggleSwitch checked={embedMetadata} onChange={setEmbedMetadata} label="Tags" />
+              <ToggleSwitch checked={embedLyrics}   onChange={setEmbedLyrics}   label="Lyrics" />
+              <ToggleSwitch checked={skipExisting}  onChange={setSkipExisting}  label="Skip Existing" />
+              <ToggleSwitch checked={autoRetry}     onChange={setAutoRetry}     label="Auto Retry" />
             </div>
 
-            {/* Advanced panel */}
+            <button className="md3-adv-toggle" onClick={() => setAdvancedMode(!advancedMode)}>
+              <Settings2 size={12} />Advanced Settings
+              {advancedMode ? <ChevronUp size={12} style={{ marginLeft: 'auto' }} /> : <ChevronDown size={12} style={{ marginLeft: 'auto' }} />}
+            </button>
+
             <AnimatePresence>
               {advancedMode && (
-                <motion.div className="v2-adv-panel" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }}>
-                  <div className="v2-adv-inner">
-                    {/* Folder name */}
-                    <div className="v2-qs-group">
-                      <label className="v2-qs-label">Folder / ZIP Name</label>
-                      <input className="v2-qs-input" value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="Playlist name" />
+                <motion.div className="md3-adv-panel" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
+                  <div className="md3-adv-inner">
+                    <div className="md3-field">
+                      <label className="md3-field-label">Folder / ZIP Name</label>
+                      <input className="md3-input" value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="Playlist name" />
                     </div>
-
-                    {/* Output structure */}
-                    <div className="v2-qs-group">
-                      <label className="v2-qs-label">Structure</label>
-                      <select className="v2-qs-select" value={outputStructure} onChange={e => setOutputStructure(e.target.value)}>
+                    <div className="md3-field">
+                      <label className="md3-field-label">File Structure</label>
+                      <select className="md3-select" value={outputStructure} onChange={e => setOutputStructure(e.target.value)}>
                         <option value="flat">Flat Folder</option>
-                        <option value="artist_album">Nested (Artist / Album)</option>
+                        <option value="artist_album">Artist / Album</option>
                       </select>
                     </div>
-
-                    {/* Codec priority */}
-                    <div className="v2-qs-group">
-                      <label className="v2-qs-label">Codec</label>
-                      <select className="v2-qs-select" value={audioCodecPriority} onChange={e => setAudioCodecPriority(e.target.value)}>
+                    <div className="md3-field">
+                      <label className="md3-field-label">Codec Priority</label>
+                      <select className="md3-select" value={audioCodecPriority} onChange={e => setAudioCodecPriority(e.target.value)}>
                         <option value="quality">Highest Quality</option>
                         <option value="compatibility">Compatibility</option>
                         <option value="lossless">Lossless</option>
                       </select>
                     </div>
-
-                    {/* Speed limit */}
-                    <div className="v2-qs-group">
-                      <label className="v2-qs-label">Speed Limit</label>
-                      <select className="v2-qs-select" value={speedLimit} onChange={e => setSpeedLimit(e.target.value)}>
+                    <div className="md3-field">
+                      <label className="md3-field-label">Speed Limit</label>
+                      <select className="md3-select" value={speedLimit} onChange={e => setSpeedLimit(e.target.value)}>
                         <option value="0">No Limit</option>
                         <option value="500K">500 KB/s</option>
                         <option value="1M">1 MB/s</option>
@@ -649,36 +596,30 @@ export default function MassDownloader() {
                         <option value="10M">10 MB/s</option>
                       </select>
                     </div>
-
-                    {/* Extra flags */}
-                    <div className="v2-qs-group v2-qs-toggles">
-                      <ToggleSwitch checked={volumeNorm}    onChange={setVolumeNorm}    label="Vol. Normalize" />
-                      <ToggleSwitch checked={trimSilence}   onChange={setTrimSilence}   label="Trim Silence" />
-                      <ToggleSwitch checked={generateNFO}   onChange={setGenerateNFO}   label=".NFO Files" />
-                      <ToggleSwitch checked={exportLRC}     onChange={setExportLRC}     label=".LRC Lyrics" />
+                    <div className="md3-toggles-grid">
+                      <ToggleSwitch checked={volumeNorm}     onChange={setVolumeNorm}     label="Vol Normalize" />
+                      <ToggleSwitch checked={trimSilence}    onChange={setTrimSilence}    label="Trim Silence" />
+                      <ToggleSwitch checked={generateNFO}    onChange={setGenerateNFO}    label=".NFO Files" />
+                      <ToggleSwitch checked={exportLRC}      onChange={setExportLRC}      label=".LRC Lyrics" />
                       <ToggleSwitch checked={bandwidthSaver} onChange={setBandwidthSaver} label="Bw Saver" />
                     </div>
-
-                    {/* Naming template */}
-                    <div className="v2-qs-group v2-qs-group--wide">
-                      <label className="v2-qs-label">File Naming</label>
-                      <div className="v2-token-row">
+                    <div className="md3-field">
+                      <label className="md3-field-label">File Naming Template</label>
+                      <div className="md3-token-row">
                         {NAMING_TOKENS.map(tok => (
-                          <button key={tok} className="v2-token" onClick={() => setNamingTpl(p => p + tok)}>{tok}</button>
+                          <button key={tok} className="md3-token" onClick={() => setNamingTpl(p => p + tok)}>{tok}</button>
                         ))}
                       </div>
-                      <input className="v2-qs-input v2-qs-input--mono" value={namingTpl} onChange={e => setNamingTpl(e.target.value)} />
-                      <span className="v2-naming-preview"><FileText size={10} /> {namingPreview}</span>
+                      <input className="md3-input md3-input--mono" value={namingTpl} onChange={e => setNamingTpl(e.target.value)} />
+                      <div className="md3-naming-preview"><FileText size={10} />{namingPreview}</div>
                     </div>
-
-                    {/* ZIP split */}
                     {outputMode === 'zip' && (
-                      <div className="v2-qs-group">
-                        <label className="v2-qs-label">Split ZIP</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div className="md3-field">
+                        <label className="md3-field-label">Split ZIP every</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <input type="checkbox" checked={splitEnabled} onChange={e => setSplitEnabled(e.target.checked)} />
-                          <input className="v2-split-num" type="number" min="50" max="500" step="50" value={splitEvery} onChange={e => setSplitEvery(Number(e.target.value))} disabled={!splitEnabled} />
-                          <span className="v2-qs-label">tracks</span>
+                          <input className="md3-input" style={{ width: 70 }} type="number" min="50" max="500" step="50" value={splitEvery} onChange={e => setSplitEvery(Number(e.target.value))} disabled={!splitEnabled} />
+                          <span style={{ fontSize: 11, color: 'rgba(245,243,255,0.4)' }}>tracks</span>
                         </div>
                       </div>
                     )}
@@ -686,34 +627,34 @@ export default function MassDownloader() {
                 </motion.div>
               )}
             </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      </aside>
 
-      {/* ═══ MAIN CONTENT AREA ═══ */}
-      <main className="v2-main">
+      {/* ═══ RIGHT MAIN ═══ */}
+      <main className="md3-main">
 
-        {/* ── ZERO STATE ── */}
+        {/* ZERO STATE */}
         <AnimatePresence>
           {allItems.length === 0 && !isDownloading && !isDone && (
-            <motion.div className="v2-zero" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={springBounce}>
-              <div className="v2-zero-glow" />
-              <div className="v2-zero-ring-wrap">
-                <div className="v2-zero-ring" />
-                <Activity size={44} className="v2-zero-icon" />
+            <motion.div className="md3-zero" key="zero" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={springBounce}>
+              <div className="md3-zero-glow" />
+              <div className="md3-zero-ring-wrap">
+                <div className="md3-zero-ring" />
+                <Activity size={44} className="md3-zero-icon" />
               </div>
-              <h2 className="v2-zero-title">Ready to Download</h2>
-              <p className="v2-zero-sub">Paste a Spotify or YouTube playlist URL in the bar above to get started.</p>
-              <div className="v2-zero-tips">
+              <h2 className="md3-zero-title">Ready to Download</h2>
+              <p className="md3-zero-sub">Paste a Spotify or YouTube playlist URL in the sidebar to get started.</p>
+              <div className="md3-zero-tips">
                 {[
-                  { icon: <Gauge size={18} />,      t: 'Optimal Parallelism', d: 'Use 3–5 parallel downloads for best stability.' },
-                  { icon: <Shield size={18} />,     t: 'Auto Deduplication',  d: 'Duplicate tracks are flagged and removed in one click.' },
-                  { icon: <Sparkles size={18} />,   t: 'Smart Metadata',      d: 'Tags sourced from Spotify, iTunes & YouTube Music.' },
+                  { icon: <Gauge size={18} />,    t: 'Optimal Parallelism', d: 'Use 3–5 parallel downloads for best stability.' },
+                  { icon: <Shield size={18} />,   t: 'Auto Deduplication',  d: 'Duplicate tracks are flagged and removed in one click.' },
+                  { icon: <Sparkles size={18} />, t: 'Smart Metadata',      d: 'Tags sourced from Spotify, iTunes & YouTube Music.' },
                 ].map((tip, i) => (
-                  <motion.div key={i} className="v2-tip-card" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.1 + i * 0.08 }}>
-                    <div className="v2-tip-icon">{tip.icon}</div>
-                    <div className="v2-tip-title">{tip.t}</div>
-                    <div className="v2-tip-text">{tip.d}</div>
+                  <motion.div key={i} className="md3-tip-card" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.1 + i * 0.08 }}>
+                    <div className="md3-tip-icon">{tip.icon}</div>
+                    <div className="md3-tip-title">{tip.t}</div>
+                    <div className="md3-tip-text">{tip.d}</div>
                   </motion.div>
                 ))}
               </div>
@@ -721,74 +662,61 @@ export default function MassDownloader() {
           )}
         </AnimatePresence>
 
-        {/* ── TRACK LIST ── */}
+        {/* TRACK LIST */}
         <AnimatePresence>
           {allItems.length > 0 && !isDownloading && !isDone && (
-            <motion.div className="v2-tracklist-wrap" key="tl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring}>
+            <motion.div className="md3-tracklist-wrap" key="tl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring}>
 
-              {/* Playlist header strip */}
-              <div className="v2-pl-strip">
-                {(spotResult?.playlistCover || ytResult?.items?.[0]?.thumbnail) ? (
-                  <img src={spotResult?.playlistCover || ytResult?.items?.[0]?.thumbnail} alt="" className="v2-pl-cover" />
-                ) : (
-                  <div className="v2-pl-cover-ph"><Music size={20} /></div>
-                )}
-                <div className="v2-pl-meta">
-                  <div className="v2-pl-name">{spotResult?.playlistName || ytResult?.title || 'URL Batch'}</div>
-                  {spotResult?.owner && <div className="v2-pl-owner">by {spotResult.owner}</div>}
+              {/* Playlist strip */}
+              <div className="md3-pl-strip">
+                <div className="md3-pl-art">
+                  {(spotResult?.playlistCover || ytResult?.items?.[0]?.thumbnail) ? (
+                    <img src={spotResult?.playlistCover || ytResult?.items?.[0]?.thumbnail} alt="" className="md3-pl-cover" />
+                  ) : (
+                    <div className="md3-pl-cover-ph"><Music size={20} /></div>
+                  )}
                 </div>
-                <div className="v2-pl-pills">
-                  <span className="v2-pill"><Music size={10} /> {allItems.length}</span>
-                  {totalDurationMs > 0 && <span className="v2-pill"><Clock size={10} /> {fmtDur(totalDurationMs)}</span>}
-                  <span className="v2-pill"><HardDrive size={10} /> {fmtSize(totalDurationMs, format)}</span>
-                  {dupCount > 0 && <span className="v2-pill v2-pill--warn">⚠ {dupCount} dups</span>}
-                  {dupCount === 0 && <span className="v2-pill v2-pill--ok">✓ No dupes</span>}
-                  {/* Metadata sources (spotify) */}
-                  {sourceTab === 'spotify' && spotResult && metaCounts.spotify > 0 && <span className="v2-pill" style={{ color: '#1DB954' }}>SPT {metaCounts.spotify}</span>}
-                  {sourceTab === 'spotify' && spotResult && metaCounts.itunes  > 0 && <span className="v2-pill" style={{ color: '#fb923c' }}>AMS {metaCounts.itunes}</span>}
-                  {sourceTab === 'spotify' && spotResult && metaCounts.youtube > 0 && <span className="v2-pill" style={{ color: '#f87171' }}>YTM {metaCounts.youtube}</span>}
+                <div className="md3-pl-info">
+                  <div className="md3-pl-name">{spotResult?.playlistName || ytResult?.title || 'URL Batch'}</div>
+                  {spotResult?.owner && <div className="md3-pl-owner">by {spotResult.owner}</div>}
+                  <div className="md3-pl-pills">
+                    <span className="md3-pill"><Music size={10} />{allItems.length} tracks</span>
+                    {totalDurationMs > 0 && <span className="md3-pill"><Clock size={10} />{fmtDur(totalDurationMs)}</span>}
+                    <span className="md3-pill"><HardDrive size={10} />{fmtSize(totalDurationMs, format)}</span>
+                    {dupCount > 0 && <span className="md3-pill md3-pill--warn">⚠ {dupCount} dups</span>}
+                    {dupCount === 0 && <span className="md3-pill md3-pill--ok">✓ No dupes</span>}
+                    {sourceTab === 'spotify' && spotResult && metaCounts.spotify > 0 && <span className="md3-pill" style={{ color: '#1DB954' }}>SPT {metaCounts.spotify}</span>}
+                    {sourceTab === 'spotify' && spotResult && metaCounts.itunes  > 0 && <span className="md3-pill" style={{ color: '#fb923c' }}>AMS {metaCounts.itunes}</span>}
+                    {sourceTab === 'spotify' && spotResult && metaCounts.youtube > 0 && <span className="md3-pill" style={{ color: '#f87171' }}>YTM {metaCounts.youtube}</span>}
+                  </div>
                 </div>
-
-                {/* CTA */}
-                <motion.button
-                  className="v2-dl-btn"
-                  onClick={startDownload}
-                  disabled={selectedCount === 0}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  transition={spring}
-                >
-                  <Download size={15} />
-                  Download {selectedCount} track{selectedCount !== 1 ? 's' : ''}
-                  {totalDurationMs > 0 && <span className="v2-dl-size">{fmtSize(totalDurationMs, format)}</span>}
-                </motion.button>
               </div>
 
-              {/* Track controls */}
-              <div className="v2-tl-controls">
-                <div className="v2-search-wrap">
-                  <Search size={13} className="v2-search-icon" />
-                  <input className="v2-search" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter tracks…" />
-                  {filter && <button className="v2-search-x" onClick={() => setFilter('')}><X size={11} /></button>}
+              {/* Controls */}
+              <div className="md3-tl-controls">
+                <div className="md3-search-wrap">
+                  <Search size={13} className="md3-search-icon" />
+                  <input className="md3-search" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter tracks…" />
+                  {filter && <button className="md3-search-x" onClick={() => setFilter('')}><X size={11} /></button>}
                 </div>
-                <select className="v2-sort" value={sortOrder} onChange={e => setSortOrder(e.target.value)}>
+                <select className="md3-sort" value={sortOrder} onChange={e => setSortOrder(e.target.value)}>
                   <option value="default">Default</option>
                   <option value="az">A → Z</option>
                   <option value="za">Z → A</option>
                 </select>
-                <button className="v2-ctrl-btn" onClick={() => setGridView(!gridView)}>
+                <button className="md3-ctrl-btn" onClick={() => setGridView(!gridView)}>
                   {gridView ? <ListVideo size={13} /> : <LayoutGrid size={13} />}
                 </button>
-                <div className="v2-ctrl-sep" />
-                <button className="v2-ctrl-btn" onClick={selectAll}>All</button>
-                <button className="v2-ctrl-btn" onClick={deselectAll}>None</button>
-                {dupCount > 0 && <motion.button className="v2-ctrl-btn v2-ctrl-btn--danger" onClick={removeDups} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springBounce}><Trash2 size={12} /> Rm Dups</motion.button>}
-                <button className="v2-ctrl-btn" onClick={exportUrls}><Upload size={12} /> Export</button>
-                <span className="v2-tl-count">{selectedCount} / {allItems.length}</span>
+                <div className="md3-ctrl-sep" />
+                <button className="md3-ctrl-btn" onClick={selectAll}>All</button>
+                <button className="md3-ctrl-btn" onClick={deselectAll}>None</button>
+                {dupCount > 0 && <motion.button className="md3-ctrl-btn md3-ctrl-btn--danger" onClick={removeDups} initial={{ scale: 0 }} animate={{ scale: 1 }}><Trash2 size={12} />Rm Dups</motion.button>}
+                <button className="md3-ctrl-btn" onClick={exportUrls}><Upload size={12} />Export</button>
+                <span className="md3-tl-count">{selectedCount} / {allItems.length}</span>
               </div>
 
               {/* Track table */}
-              <div className={`v2-tracks${gridView ? ' v2-tracks--grid' : ''}`}>
+              <div className={`md3-tracks${gridView ? ' md3-tracks--grid' : ''}`}>
                 <AnimatePresence>
                   {filteredItems.map((item, visIdx) => {
                     const realIdx    = allItems.indexOf(item);
@@ -796,279 +724,222 @@ export default function MassDownloader() {
                     const isDup      = duplicateSet.has(realIdx);
                     const hasPreview = !!item.preview_url;
                     const tStatus    = trackStatuses[realIdx];
-
                     return (
                       <motion.div
                         key={item.id || item.url || realIdx}
-                        className={[
-                          'v2-track',
-                          isSelected          ? 'v2-track--sel'   : '',
-                          isDup               ? 'v2-track--dup'   : '',
-                          tStatus === 'downloading' ? 'v2-track--dl'  : '',
-                          tStatus === 'done'        ? 'v2-track--done': '',
-                          tStatus === 'failed'      ? 'v2-track--fail': '',
-                        ].filter(Boolean).join(' ')}
+                        className={['md3-track', isSelected ? 'md3-track--sel' : '', isDup ? 'md3-track--dup' : '', tStatus === 'downloading' ? 'md3-track--dl' : '', tStatus === 'done' ? 'md3-track--done' : '', tStatus === 'failed' ? 'md3-track--fail' : ''].filter(Boolean).join(' ')}
                         onClick={() => toggleItem(realIdx)}
                         initial={{ opacity: 0, y: 4 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
                         transition={{ ...spring, delay: Math.min(visIdx * 0.008, 0.24) }}
                       >
-                        {/* Check */}
-                        <div className={`v2-chk${isSelected ? ' v2-chk--on' : ''}`}>
+                        <div className={`md3-chk${isSelected ? ' md3-chk--on' : ''}`}>
                           {isSelected && <CheckCircle2 size={11} color="white" />}
                         </div>
-
-                        {/* Number */}
-                        <span className="v2-track-num">{String(realIdx + 1).padStart(2, '0')}</span>
-
-                        {/* Thumbnail */}
+                        <span className="md3-track-num">{String(realIdx + 1).padStart(2, '0')}</span>
                         {item.thumbnail || item.coverUrl ? (
-                          <img src={item.thumbnail || item.coverUrl} alt="" className="v2-thumb" />
+                          <img src={item.thumbnail || item.coverUrl} alt="" className="md3-thumb" />
                         ) : (
-                          <div className="v2-thumb-ph"><Music size={12} /></div>
+                          <div className="md3-thumb-ph"><Music size={12} /></div>
                         )}
-
-                        {/* Info */}
-                        <div className="v2-track-info">
-                          <div className="v2-track-title">{item.title}</div>
-                          <div className="v2-track-artist">{item.artist || item.channel || ''}</div>
+                        <div className="md3-track-info">
+                          <div className="md3-track-title">{item.title}</div>
+                          <div className="md3-track-artist">{item.artist || item.channel || ''}</div>
                         </div>
-
-                        {/* Duration */}
-                        <span className="v2-track-dur">{fmtDur(item.durationMs || item.duration * 1000)}</span>
-
-                        {/* Meta badge */}
+                        <span className="md3-track-dur">{fmtDur(item.durationMs || item.duration * 1000)}</span>
                         {item.metadataSource && (
-                          <span className={`v2-mbadge v2-mbadge--${item.metadataSource === 'spotify' || item.metadataSource === 'spotify-public' ? 'spt' : item.metadataSource === 'itunes' ? 'ams' : 'ytm'}`}>
+                          <span className={`md3-mbadge md3-mbadge--${item.metadataSource === 'spotify' || item.metadataSource === 'spotify-public' ? 'spt' : item.metadataSource === 'itunes' ? 'ams' : 'ytm'}`}>
                             {item.metadataSource === 'spotify' || item.metadataSource === 'spotify-public' ? 'SPT' : item.metadataSource === 'itunes' ? 'AMS' : 'YTM'}
                           </span>
                         )}
-                        {isDup && <span className="v2-mbadge v2-mbadge--dup">DUP</span>}
-
-                        {/* Preview */}
+                        {isDup && <span className="md3-mbadge md3-mbadge--dup">DUP</span>}
                         {hasPreview && (
-                          <motion.button
-                            className={`v2-prev-btn${previewingIdx === realIdx ? ' v2-prev-btn--on' : ''}`}
-                            onClick={e => { e.stopPropagation(); togglePreview(realIdx, item.preview_url); }}
-                            whileTap={{ scale: 0.86 }}
-                          >
+                          <motion.button className={`md3-prev-btn${previewingIdx === realIdx ? ' md3-prev-btn--on' : ''}`} onClick={e => { e.stopPropagation(); togglePreview(realIdx, item.preview_url); }} whileTap={{ scale: 0.86 }}>
                             {previewingIdx === realIdx ? <Pause size={10} /> : <Play size={10} />}
                           </motion.button>
                         )}
-
-                        {/* Inspector */}
-                        <button className="v2-insp-btn" onClick={e => { e.stopPropagation(); setInspectorItem(item); }} title="Inspect">
+                        <button className="md3-insp-btn" onClick={e => { e.stopPropagation(); setInspectorItem(item); }} title="Inspect">
                           <Terminal size={11} />
                         </button>
-
-                        {/* Download bar */}
-                        {tStatus === 'downloading' && <div className="v2-dl-bar"><div className="v2-dl-bar-fill" /></div>}
+                        {tStatus === 'downloading' && <div className="md3-dl-bar"><div className="md3-dl-bar-fill" /></div>}
                       </motion.div>
                     );
                   })}
                 </AnimatePresence>
               </div>
+
+              {/* Sticky CTA */}
+              <div className="md3-cta-bar">
+                <div className="md3-cta-info">
+                  <span className="md3-cta-count">{selectedCount} tracks selected</span>
+                  {totalDurationMs > 0 && <span className="md3-cta-meta">{fmtDur(totalDurationMs)} · {fmtSize(totalDurationMs, format)}</span>}
+                </div>
+                <motion.button className="md3-dl-btn" onClick={startDownload} disabled={selectedCount === 0} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} transition={spring}>
+                  <Download size={15} />Download {selectedCount} track{selectedCount !== 1 ? 's' : ''}
+                </motion.button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── PROGRESS ── */}
+        {/* PROGRESS */}
         <AnimatePresence>
           {isDownloading && (
-            <motion.div className="v2-progress-wrap" key="prog" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring}>
-              {/* Big progress bar at top */}
-              <div className="v2-prog-mega-bar">
-                <div className="v2-prog-mega-fill" style={{ width: `${dlState?.percent || 0}%` }}>
-                  <div className="v2-shimmer" />
+            <motion.div className="md3-prog-wrap" key="prog" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring}>
+              <div className="md3-prog-bar-track">
+                <div className="md3-prog-bar-fill" style={{ width: `${dlState?.percent || 0}%` }}>
+                  <div className="md3-prog-shimmer" />
                 </div>
               </div>
-
-              {/* Progress body */}
-              <div className="v2-prog-body">
-                {/* Currently playing / downloading */}
-                <div className="v2-prog-now">
-                  {dlState?.coverUrl ? (
-                    <img src={dlState.coverUrl} alt="" className="v2-prog-art" />
-                  ) : (
-                    <div className="v2-prog-art-ph"><Music size={18} /></div>
-                  )}
-                  <div className="v2-prog-info">
-                    <div className="v2-prog-label">Now Downloading</div>
-                    <div className="v2-prog-title">{dlState?.title || 'Preparing…'}</div>
-                    <div className="v2-prog-artist">{dlState?.artist || ''}</div>
-                  </div>
+              <div className="md3-prog-now">
+                {dlState?.coverUrl ? (
+                  <img src={dlState.coverUrl} alt="" className="md3-prog-art" />
+                ) : (
+                  <div className="md3-prog-art-ph"><Music size={18} /></div>
+                )}
+                <div className="md3-prog-info">
+                  <div className="md3-prog-label">Now Downloading</div>
+                  <div className="md3-prog-track">{dlState?.title || 'Preparing…'}</div>
+                  <div className="md3-prog-artist">{dlState?.artist || ''}</div>
                 </div>
-
-                {/* Stats row */}
-                <div className="v2-prog-stats">
-                  <div className="v2-prog-stat">
-                    <span className="v2-prog-stat-val v2-prog-stat-val--red">{dlState?.percent || 0}%</span>
-                    <span className="v2-prog-stat-lbl">Progress</span>
+                <div className="md3-prog-pct">{dlState?.percent || 0}%</div>
+              </div>
+              <div className="md3-prog-stats">
+                {[
+                  { label: 'Done',    val: dlState?.completedCount ?? 0,                       color: '#4ade80' },
+                  { label: 'Tracks',  val: `${dlState?.current || 0} / ${dlState?.total || 0}`, color: null },
+                  { label: 'ETA',     val: fmtSecs(dlState?.estimatedSecondsRemaining),         color: 'var(--cr)' },
+                  { label: 'Elapsed', val: fmtSecs(elapsedSecs),                                color: null },
+                  ...(tracksPerMin ? [{ label: 'Trk/min', val: tracksPerMin, color: null }] : []),
+                  { label: 'Failed',  val: dlState?.failedCount || 0,                           color: '#f87171' },
+                ].map((s, i) => (
+                  <div key={i} className="md3-prog-stat">
+                    <span className="md3-prog-stat-val" style={s.color ? { color: s.color } : {}}>{s.val}</span>
+                    <span className="md3-prog-stat-lbl">{s.label}</span>
                   </div>
-                  <div className="v2-prog-stat">
-                    <span className="v2-prog-stat-val v2-prog-stat-val--green">{dlState?.completedCount ?? 0}</span>
-                    <span className="v2-prog-stat-lbl">Done</span>
-                  </div>
-                  <div className="v2-prog-stat">
-                    <span className="v2-prog-stat-val">{dlState?.current || 0} / {dlState?.total || 0}</span>
-                    <span className="v2-prog-stat-lbl">Tracks</span>
-                  </div>
-                  <div className="v2-prog-stat">
-                    <span className="v2-prog-stat-val v2-prog-stat-val--red">{fmtSecs(dlState?.estimatedSecondsRemaining)}</span>
-                    <span className="v2-prog-stat-lbl">ETA</span>
-                  </div>
-                  <div className="v2-prog-stat">
-                    <span className="v2-prog-stat-val">{fmtSecs(elapsedSecs)}</span>
-                    <span className="v2-prog-stat-lbl">Elapsed</span>
-                  </div>
-                  {tracksPerMin && (
-                    <div className="v2-prog-stat">
-                      <span className="v2-prog-stat-val">{tracksPerMin}</span>
-                      <span className="v2-prog-stat-lbl">Tracks/min</span>
+                ))}
+              </div>
+              {allItems.filter((_, i) => selectedItems.has(i)).length <= 60 && (
+                <div className="md3-prog-dots">
+                  {allItems.filter((_, i) => selectedItems.has(i)).map((_, i) => {
+                    const cur = dlState?.current || 0;
+                    const st  = i < cur - 1 ? 'done' : i === cur - 1 ? 'dl' : 'pend';
+                    return <div key={i} className={`md3-dot md3-dot--${st}`} />;
+                  })}
+                </div>
+              )}
+              {allItems.filter((_, i) => selectedItems.has(i)).length > 60 && (
+                <div className="md3-dl-list">
+                  {allItems.filter((_, i) => selectedItems.has(i)).slice(Math.max(0, (dlState?.current || 1) - 4), (dlState?.current || 0) + 2).map((item, i) => {
+                    const absIdx = Math.max(0, (dlState?.current || 1) - 4) + i;
+                    const cur    = dlState?.current || 0;
+                    const st     = absIdx < cur - 1 ? 'done' : absIdx === cur - 1 ? 'downloading' : 'pending';
+                    return (
+                      <div key={absIdx} className={`md3-dl-row md3-dl-row--${st}`}>
+                        {st === 'downloading' && <Loader2 size={12} className="md3-spin" style={{ color: 'var(--cr)' }} />}
+                        {st === 'done'        && <CheckCircle2 size={12} style={{ color: '#4ade80' }} />}
+                        {st === 'pending'     && <div className="md3-dl-dot" />}
+                        <span className="md3-dl-name">{item.title}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="md3-prog-actions">
+                <button className="md3-act md3-act--pause" onClick={() => setPaused(p => !p)}>
+                  {paused ? <><Play size={13} />Resume</> : <><Pause size={13} />Pause</>}
+                </button>
+                <button className="md3-act md3-act--cancel" onClick={cancelDownload}><SquareStop size={13} />Cancel</button>
+                <button className="md3-act" onClick={() => setShowLog(p => !p)}><Terminal size={13} />{showLog ? 'Hide' : 'Show'} Log</button>
+                <button className="md3-act" onClick={clearCompleted}><Trash2 size={13} />Clear Done</button>
+                {paused && <span className="md3-paused-badge">PAUSED</span>}
+              </div>
+              <AnimatePresence>
+                {showLog && (
+                  <motion.div className="md3-log" style={{ overflow: 'hidden' }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+                    <div className="md3-log-header">
+                      <div className="md3-log-dots"><div /><div /><div /></div>
+                      <span className="md3-log-lbl">yt-dlp stdout</span>
                     </div>
-                  )}
-                  <div className="v2-prog-stat">
-                    <span className="v2-prog-stat-val v2-prog-stat-val--red">{dlState?.failedCount || 0}</span>
-                    <span className="v2-prog-stat-lbl">Failed</span>
-                  </div>
-                </div>
-
-                {/* Dots (≤60 tracks) */}
-                {allItems.filter((_, i) => selectedItems.has(i)).length <= 60 && (
-                  <div className="v2-prog-dots">
-                    {allItems.filter((_, i) => selectedItems.has(i)).map((_, i) => {
-                      const cur = dlState?.current || 0;
-                      const st  = i < cur - 1 ? 'done' : i === cur - 1 ? 'dl' : 'pend';
-                      return <div key={i} className={`v2-dot v2-dot--${st}`} />;
-                    })}
-                  </div>
+                    <div className="md3-log-body">
+                      {logLines.length === 0 && <div className="md3-log-line">Waiting for output…</div>}
+                      {logLines.map((l, i) => <div key={i} className="md3-log-line">{l}</div>)}
+                      <div ref={logEndRef} />
+                    </div>
+                  </motion.div>
                 )}
-
-                {/* Rolling track list (> 60) */}
-                {allItems.filter((_, i) => selectedItems.has(i)).length > 60 && (
-                  <div className="v2-dl-list">
-                    {allItems.filter((_, i) => selectedItems.has(i)).slice(Math.max(0, (dlState?.current || 1) - 4), (dlState?.current || 0) + 2).map((item, i) => {
-                      const absIdx = Math.max(0, (dlState?.current || 1) - 4) + i;
-                      const cur    = dlState?.current || 0;
-                      const st     = absIdx < cur - 1 ? 'done' : absIdx === cur - 1 ? 'downloading' : 'pending';
-                      return (
-                        <div key={absIdx} className={`v2-dl-row v2-dl-row--${st}`}>
-                          {st === 'downloading' && <Loader2 size={12} className="v2-spin" style={{ color: 'var(--cr)' }} />}
-                          {st === 'done'        && <CheckCircle2 size={12} style={{ color: '#4ade80' }} />}
-                          {st === 'pending'     && <div className="v2-dl-dot" />}
-                          <span className="v2-dl-name">{item.title}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="v2-prog-actions">
-                  <button className="v2-act v2-act--pause" onClick={() => setPaused(p => !p)}>
-                    {paused ? <><Play size={13} /> Resume</> : <><Pause size={13} /> Pause</>}
-                  </button>
-                  <button className="v2-act v2-act--cancel" onClick={cancelDownload}><SquareStop size={13} /> Cancel</button>
-                  <button className="v2-act" onClick={() => setShowLog(p => !p)}><Terminal size={13} /> {showLog ? 'Hide' : 'Show'} Log</button>
-                  <button className="v2-act" onClick={clearCompleted}><Trash2 size={13} /> Clear Done</button>
-                  {paused && <span className="v2-paused-badge">PAUSED</span>}
-                </div>
-
-                {/* Log */}
-                <AnimatePresence>
-                  {showLog && (
-                    <motion.div className="v2-log" style={{ overflow: 'hidden' }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-                      <div className="v2-log-header">
-                        <div className="v2-log-dots"><div /><div /><div /></div>
-                        <span className="v2-log-lbl">yt-dlp stdout</span>
-                      </div>
-                      <div className="v2-log-body">
-                        {logLines.length === 0 && <div className="v2-log-line">Waiting for output…</div>}
-                        {logLines.map((l, i) => <div key={i} className="v2-log-line">{l}</div>)}
-                        <div ref={logEndRef} />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── DONE ── */}
+        {/* DONE */}
         <AnimatePresence>
           {isDone && (
-            <motion.div className="v2-done-wrap" key="done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={springBounce}>
-              <motion.div className={`v2-done-icon${dlState?.cancelled ? ' v2-done-icon--cancel' : ''}`} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springBounce}>
-                {dlState?.cancelled ? <AlertCircle size={36} color="#f87171" /> : <CheckCircle2 size={36} color="#4ade80" />}
+            <motion.div className="md3-done-wrap" key="done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={springBounce}>
+              <motion.div className={`md3-done-icon${dlState?.cancelled ? ' md3-done-icon--cancel' : ''}`} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springBounce}>
+                {dlState?.cancelled ? <AlertCircle size={40} color="#f87171" /> : <CheckCircle2 size={40} color="#4ade80" />}
               </motion.div>
-              <div className="v2-done-title">{dlState?.cancelled ? 'Cancelled' : dlState?.error ? 'Failed' : 'Download Complete!'}</div>
-              <div className="v2-done-sub">
+              <div className="md3-done-title">{dlState?.cancelled ? 'Cancelled' : dlState?.error ? 'Failed' : 'Download Complete!'}</div>
+              <div className="md3-done-sub">
                 {dlState?.completedCount !== undefined
                   ? `${dlState.completedCount} downloaded · ${dlState.failedCount || 0} failed`
                   : dlState?.error || ''}
               </div>
               {dlState?.zipParts?.length > 0 && (
-                <div className="v2-done-parts">
+                <div className="md3-done-parts">
                   {dlState.zipParts.map((p, i) => (
-                    <div key={i} className="v2-done-part"><Archive size={13} style={{ color: 'var(--cr)' }} /><span>{p}</span></div>
+                    <div key={i} className="md3-done-part"><Archive size={13} style={{ color: 'var(--cr)' }} /><span>{p}</span></div>
                   ))}
                 </div>
               )}
-              <div className="v2-done-actions">
-                <button className="v2-act" onClick={openFolder}><FolderOpen size={14} /> Open Folder</button>
+              <div className="md3-done-actions">
+                <button className="md3-act" onClick={openFolder}><FolderOpen size={14} />Open Folder</button>
                 {dlState?.failedCount > 0 && (
-                  <motion.button className="v2-act v2-act--retry" onClick={retryFailed} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springBounce}>
-                    <RefreshCw size={14} /> Retry Failed ({dlState.failedCount})
+                  <motion.button className="md3-act md3-act--retry" onClick={retryFailed} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springBounce}>
+                    <RefreshCw size={14} />Retry Failed ({dlState.failedCount})
                   </motion.button>
                 )}
-                <button className="v2-dl-btn" onClick={resetAll}><Layers size={14} /> New Download</button>
+                <button className="md3-dl-btn" onClick={resetAll}><Layers size={14} />New Download</button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-
       </main>
 
-      {/* ═══ INSPECTOR PANEL ═══ */}
+      {/* INSPECTOR */}
       <AnimatePresence>
         {inspectorItem && (
-          <motion.div
-            className="v2-inspector"
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 26, stiffness: 200 }}
-          >
-            <div className="v2-insp-head">
-              <span className="v2-insp-title"><Terminal size={13} style={{ display: 'inline', marginRight: 6, marginBottom: -2 }} />Inspector</span>
-              <button className="v2-insp-close" onClick={() => setInspectorItem(null)}><X size={14} /></button>
+          <motion.div className="md3-inspector" initial={{ x: '100%', opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: '100%', opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 200 }}>
+            <div className="md3-insp-head">
+              <span className="md3-insp-title"><Terminal size={13} style={{ display: 'inline', marginRight: 6, marginBottom: -2 }} />Inspector</span>
+              <button className="md3-insp-close" onClick={() => setInspectorItem(null)}><X size={14} /></button>
             </div>
             {(inspectorItem.coverUrl || inspectorItem.thumbnail) && (
-              <img src={inspectorItem.coverUrl || inspectorItem.thumbnail} alt="" className="v2-insp-cover" />
+              <img src={inspectorItem.coverUrl || inspectorItem.thumbnail} alt="" className="md3-insp-cover" />
             )}
-            <div className="v2-insp-track">{inspectorItem.title}</div>
-            <div className="v2-insp-artist">{inspectorItem.artist || inspectorItem.channel || 'Unknown'}</div>
-            <div className="v2-insp-section">
-              <div className="v2-insp-label">Details</div>
-              <div className="v2-insp-val">
+            <div className="md3-insp-track">{inspectorItem.title}</div>
+            <div className="md3-insp-artist">{inspectorItem.artist || inspectorItem.channel || 'Unknown'}</div>
+            <div className="md3-insp-section">
+              <div className="md3-insp-label">Details</div>
+              <div className="md3-insp-val">
                 SRC: {inspectorItem.metadataSource || 'Unknown'}<br />
                 ID: {inspectorItem.id}<br />
                 DUR: {fmtDur(inspectorItem.durationMs || inspectorItem.duration * 1000)}<br />
                 ~320 kbps
               </div>
             </div>
-            <div className="v2-insp-section">
-              <div className="v2-insp-label">URL</div>
-              <div className="v2-insp-val" style={{ fontSize: '0.63rem', wordBreak: 'break-all' }}>{inspectorItem.url}</div>
+            <div className="md3-insp-section">
+              <div className="md3-insp-label">URL</div>
+              <div className="md3-insp-val" style={{ fontSize: '0.63rem', wordBreak: 'break-all' }}>{inspectorItem.url}</div>
             </div>
-            <button className="v2-dl-btn" style={{ marginTop: 'auto', fontSize: '0.84rem', minHeight: 38 }} onClick={() => window.open(inspectorItem.url, '_blank')}>
-              <ExternalLink size={13} /> Open in Browser
+            <button className="md3-dl-btn" style={{ marginTop: 'auto', fontSize: '0.84rem', minHeight: 38 }} onClick={() => window.open(inspectorItem.url, '_blank')}>
+              <ExternalLink size={13} />Open in Browser
             </button>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
-}
+}

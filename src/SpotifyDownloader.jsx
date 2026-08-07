@@ -16,23 +16,23 @@ import './SpotifyDownloader.css';
 
 const AUDIO_FORMATS = [
   { id: 'mp3_320', label: '320kbps MP3', sub: 'Best Quality', ext: 'mp3', quality: '0', audioFmt: 'mp3', kbps: 320 },
-  { id: 'mp3_192', label: '192kbps MP3', sub: 'Balanced',     ext: 'mp3', quality: '5', audioFmt: 'mp3', kbps: 192 },
-  { id: 'mp3_128', label: '128kbps MP3', sub: 'Compressed',   ext: 'mp3', quality: '9', audioFmt: 'mp3', kbps: 128 },
-  { id: 'ogg',     label: 'OGG Vorbis',  sub: 'Open Format',  ext: 'ogg', quality: '0', audioFmt: 'vorbis', kbps: 192 },
-  { id: 'wav',     label: 'WAV',          sub: 'Lossless',     ext: 'wav', quality: '0', audioFmt: 'wav',    kbps: 1411 },
+  { id: 'mp3_192', label: '192kbps MP3', sub: 'Balanced', ext: 'mp3', quality: '5', audioFmt: 'mp3', kbps: 192 },
+  { id: 'mp3_128', label: '128kbps MP3', sub: 'Compressed', ext: 'mp3', quality: '9', audioFmt: 'mp3', kbps: 128 },
+  { id: 'ogg', label: 'OGG Vorbis', sub: 'Open Format', ext: 'ogg', quality: '0', audioFmt: 'vorbis', kbps: 192 },
+  { id: 'wav', label: 'WAV', sub: 'Lossless', ext: 'wav', quality: '0', audioFmt: 'wav', kbps: 1411 },
 ];
 
 const SPOTIFY_SUGGESTIONS = [
-  { label: 'Blinding Lights',       url: 'https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b', tag: 'Track',    color: '#1DB954' },
-  { label: 'As It Was - Harry',     url: 'https://open.spotify.com/track/4H9oo2bPD4hpgGhubGbWRT', tag: 'Track',    color: '#1DB954' },
-  { label: 'Bohemian Rhapsody',     url: 'https://open.spotify.com/track/3z8h0TU7ReDPLIbEnYhWZb', tag: 'Track',    color: '#1DB954' },
-  { label: 'Starboy - The Weeknd',  url: 'https://open.spotify.com/track/7MXVkk9YMctZqd1Srtv4MB', tag: 'Track',    color: '#1DB954' },
-  { label: '1989 - Taylor Swift',   url: 'https://open.spotify.com/album/64LU4c1Vi6eBk7QMnR6AN9', tag: 'Album',    color: '#818cf8' },
-  { label: 'DAMN. - Kendrick',      url: 'https://open.spotify.com/album/4eLPsYPBmXABThSJ821sqY', tag: 'Album',    color: '#818cf8' },
-  { label: 'After Hours - Weeknd',  url: 'https://open.spotify.com/album/4yP0hdKOZPNshxUOjY0cZj', tag: 'Album',    color: '#818cf8' },
-  { label: 'Top 50 Global',         url: 'https://open.spotify.com/playlist/37i9dQZEVXbMDoHDwVN2tF', tag: 'Playlist', color: '#fb923c' },
-  { label: 'Hot Hits',              url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', tag: 'Playlist', color: '#fb923c' },
-  { label: 'Lo-Fi Beats',           url: 'https://open.spotify.com/playlist/37i9dQZF1DWWQRwui0ExPn', tag: 'Playlist', color: '#fb923c' },
+  { label: 'Blinding Lights', url: 'https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b', tag: 'Track', color: '#1DB954' },
+  { label: 'As It Was - Harry', url: 'https://open.spotify.com/track/4H9oo2bPD4hpgGhubGbWRT', tag: 'Track', color: '#1DB954' },
+  { label: 'Bohemian Rhapsody', url: 'https://open.spotify.com/track/3z8h0TU7ReDPLIbEnYhWZb', tag: 'Track', color: '#1DB954' },
+  { label: 'Starboy - The Weeknd', url: 'https://open.spotify.com/track/7MXVkk9YMctZqd1Srtv4MB', tag: 'Track', color: '#1DB954' },
+  { label: '1989 - Taylor Swift', url: 'https://open.spotify.com/album/64LU4c1Vi6eBk7QMnR6AN9', tag: 'Album', color: '#818cf8' },
+  { label: 'DAMN. - Kendrick', url: 'https://open.spotify.com/album/4eLPsYPBmXABThSJ821sqY', tag: 'Album', color: '#818cf8' },
+  { label: 'After Hours - Weeknd', url: 'https://open.spotify.com/album/4yP0hdKOZPNshxUOjY0cZj', tag: 'Album', color: '#818cf8' },
+  { label: 'Top 50 Global', url: 'https://open.spotify.com/playlist/37i9dQZEVXbMDoHDwVN2tF', tag: 'Playlist', color: '#fb923c' },
+  { label: 'Hot Hits', url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', tag: 'Playlist', color: '#fb923c' },
+  { label: 'Lo-Fi Beats', url: 'https://open.spotify.com/playlist/37i9dQZF1DWWQRwui0ExPn', tag: 'Playlist', color: '#fb923c' },
 ];
 
 // ── Utility functions ──────────────────────────────────────────────────────────
@@ -82,8 +82,8 @@ function formatBytes(bytes) {
 
 function SpotifyBadge({ type }) {
   const colors = {
-    track:    { bg: 'rgba(29,185,84,0.12)',  color: '#1DB954', border: 'rgba(29,185,84,0.3)' },
-    album:    { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', border: 'rgba(99,102,241,0.3)' },
+    track: { bg: 'rgba(29,185,84,0.12)', color: '#1DB954', border: 'rgba(29,185,84,0.3)' },
+    album: { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', border: 'rgba(99,102,241,0.3)' },
     playlist: { bg: 'rgba(251,146,60,0.12)', color: '#fb923c', border: 'rgba(251,146,60,0.3)' },
   };
   const c = colors[type] || colors.track;
@@ -169,11 +169,6 @@ function clearSpotifyAuth() {
 
 // ── Artist Bubbles ─────────────────────────────────────────────────────────────
 
-const BUBBLE_POSITIONS = [
-  { x: 42, y: 50 }, { x: 65, y: 40 }, { x: 25, y: 65 }, { x: 75, y: 60 }, { x: 30, y: 35 },
-  { x: 55, y: 70 }, { x: 85, y: 35 }, { x: 15, y: 45 }, { x: 45, y: 25 }, { x: 70, y: 75 },
-];
-
 function ArtistBubbles({ artists, onRemove }) {
   if (!artists || artists.length === 0) {
     return (
@@ -187,46 +182,22 @@ function ArtistBubbles({ artists, onRemove }) {
   }
 
   return (
-    <div className="sp-artist-bubbles">
-      <motion.div
-        className="sp-bubbles-field"
-        animate={{ rotate: [0, 3, -2, 0] }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {artists.slice(0, 10).map((artist, i) => {
-          const pos = BUBBLE_POSITIONS[i % BUBBLE_POSITIONS.length];
-          const dx1 = (i % 3 === 0 ? 15 : i % 2 === 0 ? -12 : 8) + (i * 1.5);
-          const dx2 = (i % 2 === 0 ? -10 : i % 3 === 0 ? 12 : -15) - i;
-          const dy1 = (i % 2 === 0 ? 12 : i % 3 === 0 ? -14 : 10) + i;
-          const dy2 = (i % 3 === 0 ? -10 : i % 2 === 0 ? 15 : -8) - (i * 1.2);
-          return (
-            <div key={artist.name + i} className="sp-bubble-wrapper" style={{ position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, width: 140, height: 140, transform: 'translate(-50%, -50%)', zIndex: 1 }}>
-              <motion.div
-                className="sp-bubble"
-                style={{ position: 'relative', left: 0, top: 0, width: '100%', height: '100%', transform: 'none' }}
-                initial={{ opacity: 0, scale: 0 }}
-                animate={{ opacity: 1, scale: 1, x: [0, dx1, dx2, 0], y: [0, dy1, dy2, 0] }}
-                transition={{
-                  opacity: { duration: 0.5, delay: i * 0.12 },
-                  scale: { duration: 0.5, delay: i * 0.12, type: 'spring', bounce: 0.4 },
-                  x: { duration: 15 + i * 1.5, repeat: Infinity, ease: 'easeInOut', delay: i * 0.2 },
-                  y: { duration: 18 + i * 1.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 },
-                }}
-              >
-                {artist.thumbnail ? (
-                  <img src={artist.thumbnail} alt={artist.name} className="sp-bubble-img" />
-                ) : (
-                  <div className="sp-bubble-fallback"><User size={140 * 0.35} /></div>
-                )}
-                <div className="sp-bubble-name">{artist.name}</div>
-                <button className="sp-bubble-delete" onClick={(e) => { e.stopPropagation(); if (onRemove) onRemove(artist.name); }} title="Remove artist from history">
-                  <X size={14} />
-                </button>
-              </motion.div>
-            </div>
-          );
-        })}
-      </motion.div>
+    <div className="sp-artist-bubbles sp-artist-bubbles--static">
+      {artists.slice(0, 1).map((artist, i) => (
+        <div key={artist.name + i} className="sp-bubble-static-wrapper">
+          <div className="sp-bubble-static">
+            {artist.thumbnail ? (
+              <img src={artist.thumbnail} alt={artist.name} className="sp-bubble-img" />
+            ) : (
+              <div className="sp-bubble-fallback"><User size={60} /></div>
+            )}
+          </div>
+          <div className="sp-artist-profile-info">
+            <div className="sp-artist-profile-name">{artist.name}</div>
+            <div className="sp-artist-profile-label">Artist</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -337,7 +308,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     try {
       const saved = localStorage.getItem('sp_history');
       if (saved) setHistory(JSON.parse(saved));
-    } catch {}
+    } catch { }
   }, []);
 
   // Check cookies
@@ -345,7 +316,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     fetch('/api/cookies/status')
       .then(res => res.json())
       .then(data => { if (data?.hasCookies !== undefined) setHasCookies(data.hasCookies); })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // NEW: System status polling
@@ -354,7 +325,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       try {
         const res = await fetch('/api/ytdl/system-status');
         if (res.ok) setSystemStatus(await res.json());
-      } catch {}
+      } catch { }
     };
     fetchSysStatus();
     const interval = setInterval(fetchSysStatus, 5000);
@@ -373,7 +344,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           playlists: spotifyItems.filter(i => i.spotifyType === 'playlist').length,
           total: spotifyItems.length,
         });
-      } catch {}
+      } catch { }
     };
     calcStats();
     window.addEventListener('history_updated', calcStats);
@@ -391,7 +362,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           setClipboardToast(true);
           setTimeout(() => setClipboardToast(false), 3000);
         }
-      } catch {}
+      } catch { }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
@@ -480,7 +451,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           return r.json();
         })
         .then(data => { if (data && !data.error) setUserProfile(data); })
-        .catch(() => {});
+        .catch(() => { });
     } else {
       setUserProfile(null);
     }
@@ -679,7 +650,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      esRef.current = { close: () => { reader.cancel().catch(() => {}); esRef.current = null; } };
+      esRef.current = { close: () => { reader.cancel().catch(() => { }); esRef.current = null; } };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -692,6 +663,23 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           if (chunk.startsWith('data: ')) {
             try {
               const d = JSON.parse(chunk.slice(6));
+
+              if (d.trackStart) {
+                d.currentTrack = d.trackStart.index + 1;
+                d.status = `Downloading: ${d.trackStart.title} - ${d.trackStart.artist}`;
+              }
+              if (d.trackDone && d.trackDone.title) {
+                d.status = `Downloaded: ${d.trackDone.title} via ${d.trackDone.source}`;
+                d.trackDone = true; // map to boolean for frontend logic
+              }
+              if (d.trackPending) {
+                d.status = `Failed: ${d.trackPending.title}`;
+                d.trackError = d.trackPending.reason;
+              }
+              if (d.trackProgress && typeof d.trackProgress === 'object') {
+                d.trackProgress = d.trackProgress.percent;
+              }
+
               if (d.error && d.done) {
                 setDownloadState(prev => ({ ...prev, active: false, done: true, error: d.error }));
                 setStep(0);
@@ -702,16 +690,20 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                 const next = { ...prev, ...d };
                 if (!d.done) next.active = true;
                 if (d.done) next.active = false;
+                if (d.trackStart) next.currentTrack = d.trackStart.index + 1;
                 return next;
               });
+
               if (d.progress > 0 && d.progress < 95) setStep(2);
               if (d.progress >= 95) setStep(3);
-              if (d.trackDone && d.currentTrack) setTrackStatuses(prev => ({ ...prev, [d.currentTrack - 1]: 'done' }));
-              if (d.trackError && d.currentTrack) {
-                setTrackStatuses(prev => ({ ...prev, [d.currentTrack - 1]: 'error' }));
-                setTrackErrors(prev => ({ ...prev, [d.currentTrack - 1]: d.trackError }));
+
+              if (d.trackStart) setTrackStatuses(prev => ({ ...prev, [d.trackStart.index]: 'downloading' }));
+              if (d.trackDone || d.trackDone === true) setTrackStatuses(prev => ({ ...prev, [(d.currentTrack || 1) - 1]: 'done' }));
+              if (d.trackError) {
+                setTrackStatuses(prev => ({ ...prev, [(d.currentTrack || 1) - 1]: 'error' }));
+                setTrackErrors(prev => ({ ...prev, [(d.currentTrack || 1) - 1]: d.trackError }));
               }
-              if (d.currentTrack && !d.trackDone && !d.trackError) setTrackStatuses(prev => ({ ...prev, [d.currentTrack - 1]: 'downloading' }));
+
               if (d.done) {
                 setStep(4);
                 if (esRef.current) { esRef.current.close(); esRef.current = null; }
@@ -724,11 +716,11 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                       if (h.length > 500) h.length = 500;
                       localStorage.setItem('global_history', JSON.stringify(h));
                       window.dispatchEvent(new Event('history_updated'));
-                    } catch {}
+                    } catch { }
                   }
                 }
               }
-            } catch {}
+            } catch { }
           }
         }
       }
@@ -837,7 +829,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      esRef.current = { close: () => { reader.cancel().catch(() => {}); esRef.current = null; } };
+      esRef.current = { close: () => { reader.cancel().catch(() => { }); esRef.current = null; } };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -850,10 +842,28 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           if (chunk.startsWith('data: ')) {
             try {
               const d = JSON.parse(chunk.slice(6));
+
+              if (d.trackStart) {
+                d.currentTrack = d.trackStart.index + 1;
+                d.status = `Downloading: ${d.trackStart.title} - ${d.trackStart.artist}`;
+              }
+              if (d.trackDone && d.trackDone.title) {
+                d.status = `Downloaded: ${d.trackDone.title} via ${d.trackDone.source}`;
+                d.trackDone = true;
+              }
+              if (d.trackPending) {
+                d.status = `Failed: ${d.trackPending.title}`;
+                d.trackError = d.trackPending.reason;
+              }
+              if (d.trackProgress && typeof d.trackProgress === 'object') {
+                d.trackProgress = d.trackProgress.percent;
+              }
+
               setDownloadState(prev => {
                 const next = { ...prev, ...d };
                 if (!d.done) next.active = true;
                 if (d.done) next.active = false;
+                if (d.trackStart) next.currentTrack = d.trackStart.index + 1;
                 return next;
               });
 
@@ -863,18 +873,11 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               if (d.progress >= 95 || d.status?.toLowerCase().includes('finaliz')) setStep(3);
 
               // Per-track status updates
-              if (d.currentTrack !== undefined && info.tracks?.length) {
-                const idx = d.currentTrack - 1;
-                if (d.trackDone) {
-                  setTrackStatuses(prev => ({ ...prev, [idx]: 'done' }));
-                } else if (d.trackError) {
-                  setTrackStatuses(prev => ({ ...prev, [idx]: 'error' }));
-                  setTrackErrors(prev => ({ ...prev, [idx]: d.trackError }));
-                } else if (d.trackProgress !== undefined && d.trackProgress > 0) {
-                  setTrackStatuses(prev => ({ ...prev, [idx]: 'downloading' }));
-                } else if (d.status?.startsWith('Search')) {
-                  setTrackStatuses(prev => ({ ...prev, [idx]: 'searching' }));
-                }
+              if (d.trackStart) setTrackStatuses(prev => ({ ...prev, [d.trackStart.index]: 'downloading' }));
+              if (d.trackDone || d.trackDone === true) setTrackStatuses(prev => ({ ...prev, [(d.currentTrack || 1) - 1]: 'done' }));
+              if (d.trackError) {
+                setTrackStatuses(prev => ({ ...prev, [(d.currentTrack || 1) - 1]: 'error' }));
+                setTrackErrors(prev => ({ ...prev, [(d.currentTrack || 1) - 1]: d.trackError }));
               }
 
               if (d.done) {
@@ -897,11 +900,11 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                       if (h.length > 500) h.length = 500;
                       localStorage.setItem('global_history', JSON.stringify(h));
                       window.dispatchEvent(new Event('history_updated'));
-                    } catch {}
+                    } catch { }
                   }
                 }
               }
-            } catch {}
+            } catch { }
           }
         }
       }
@@ -914,7 +917,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
   const handleCancel = async () => {
     if (esRef.current) esRef.current.close();
     if (downloadIdRef.current) {
-      try { await fetch(`/api/spotify-cancel?downloadId=${downloadIdRef.current}`); } catch {}
+      try { await fetch(`/api/spotify-cancel?downloadId=${downloadIdRef.current}`); } catch { }
     }
     setDownloadState(prev => ({ ...prev, active: false, done: true, error: 'Download cancelled.' }));
     setStep(0);
@@ -926,7 +929,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       const res = await fetch('/api/ytdl/select-folder?temp=true');
       const data = await res.json();
       if (data.success && data.path) setLocalCustomPath(data.path);
-    } catch {}
+    } catch { }
   };
 
   const openFolder = () => { fetch('/api/ytdl/open-folder'); };
@@ -1012,7 +1015,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                             if (data.data.refresh_token) storage.setItem('spotify_refresh_token', data.data.refresh_token);
                             setAccessToken(data.data.access_token);
                           }
-                        } catch {}
+                        } catch { }
                       }, 1000);
                     } else {
                       window.location.href = authUrl;
@@ -1118,48 +1121,98 @@ export default function SpotifyDownloader({ activeDownloadId }) {
 
           {/* ── New Download Card (YouTube-style layout) ── */}
           <motion.div
-            className={`sp-new-dl-card ${
-              spotifyType === 'track' ? 'sp-new-dl-card--track'
-              : spotifyType === 'album' ? 'sp-new-dl-card--album'
-              : spotifyType === 'playlist' ? 'sp-new-dl-card--playlist'
-              : 'sp-new-dl-card--default'
-            }`}
+            className={`sp-glass-panel sp-new-dl-card`}
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.1 }}
           >
-            {/* Label + hint */}
-            <div className="sp-new-dl-label-row">
-              <span>New download</span>
-              <small>Paste a Spotify track, album, or playlist link</small>
+            <div className="sp-new-dl-header">
+              <h2 className="sp-new-dl-title">New download</h2>
+              <span className="sp-new-dl-subtitle">Paste a Spotify track, album, or playlist link</span>
             </div>
 
-            {/* Type mode tabs */}
             <div className="sp-new-dl-tabs">
               <button
-                className={`sp-new-dl-tab sp-new-dl-tab--track ${spotifyType === 'track' ? 'active' : ''}`}
+                className={`sp-new-dl-tab ${spotifyType === 'track' ? 'active' : ''}`}
                 onClick={() => { setUrl(''); setInfo(null); setFetchStatus('idle'); inputRef.current?.focus(); }}
               >
-                <Disc size={13} /> Track
+                <Disc size={14} /> Track
               </button>
               <button
-                className={`sp-new-dl-tab sp-new-dl-tab--album ${spotifyType === 'album' ? 'active' : ''}`}
+                className={`sp-new-dl-tab ${spotifyType === 'album' ? 'active' : ''}`}
                 onClick={() => { setUrl(''); setInfo(null); setFetchStatus('idle'); inputRef.current?.focus(); }}
               >
-                <Music size={13} /> Album
+                <Music size={14} /> Album
               </button>
               <button
-                className={`sp-new-dl-tab sp-new-dl-tab--playlist ${spotifyType === 'playlist' ? 'active' : ''}`}
+                className={`sp-new-dl-tab ${spotifyType === 'playlist' ? 'active' : ''}`}
                 onClick={() => { setUrl(''); setInfo(null); setFetchStatus('idle'); inputRef.current?.focus(); }}
               >
-                <List size={13} /> Playlist
+                <List size={14} /> Playlist
               </button>
             </div>
 
-            {/* Clipboard toast */}
+            <div className="sp-new-dl-input-wrapper">
+              <div className="sp-input-icon-left">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+                  <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+                </svg>
+              </div>
+
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', position: 'relative' }}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  className="sp-new-dl-input"
+                  value={url}
+                  onChange={e => { setUrl(e.target.value); setFetchStatus('idle'); setInfo(null); setFetchError(''); setError(null); setDownloadState(null); }}
+                  onFocus={() => setShowHistory(true)}
+                  onBlur={() => setTimeout(() => setShowHistory(false), 200)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Paste Spotify link here..."
+                  style={{ width: '100%', paddingRight: url ? '3rem' : '0' }}
+                />
+                {url && (
+                  <button className="sp-new-dl-clear" onClick={reset} title="Clear"><X size={16} strokeWidth={2.5} /></button>
+                )}
+                <AnimatePresence>
+                  {showHistory && history.length > 0 && !url && (
+                    <motion.div className="sp-history-dropdown" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                      <div className="sp-history-label">Recent searches</div>
+                      {history.map((h, i) => (
+                        <div key={i} className="sp-history-item" onMouseDown={() => { setUrl(h.url); setShowHistory(false); setTimeout(() => fetchInfo(h.url), 100); }}>
+                          {h.thumbnail ? (
+                            <img src={h.thumbnail} alt="" className="sp-history-item-thumb" />
+                          ) : (
+                            <div className="sp-history-item-icon"><Clock size={13} /></div>
+                          )}
+                          <span className="sp-history-item-name">{h.title}</span>
+                          <button className="sp-history-item-remove" onMouseDown={(e) => { e.stopPropagation(); removeFromHistory(h.url); }} title="Remove">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <button
+                className="sp-new-dl-btn"
+                onClick={() => fetchInfo()}
+                disabled={!url || fetchStatus === 'loading'}
+              >
+                {fetchStatus === 'loading' ? (
+                  <><Loader2 className="sp-spin" size={16} /> Loading...</>
+                ) : (
+                  <><Zap size={16} fill="currentColor" /> Preview</>
+                )}
+              </button>
+            </div>
+
             {clipboardToast && (
               <motion.div
-                initial={{ opacity: 0, y: -20 }}
+                initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 className="sp-clipboard-toast"
@@ -1168,66 +1221,6 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               </motion.div>
             )}
 
-            {/* Spotify icon */}
-            <div className="sp-new-dl-icon">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
-                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
-              </svg>
-            </div>
-
-            {/* Input area */}
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', position: 'relative' }}>
-              <input
-                ref={inputRef}
-                type="text"
-                className="sp-new-dl-input"
-                value={url}
-                onChange={e => { setUrl(e.target.value); setFetchStatus('idle'); setInfo(null); setFetchError(''); setError(null); setDownloadState(null); }}
-                onFocus={() => setShowHistory(true)}
-                onBlur={() => setTimeout(() => setShowHistory(false), 200)}
-                onKeyDown={handleKeyDown}
-                placeholder="Paste Spotify link here..."
-                style={{ width: '100%', paddingRight: url ? '3rem' : '0' }}
-              />
-              {url && (
-                <button className="sp-new-dl-clear" onClick={reset} title="Clear"><X size={16} strokeWidth={2.5} /></button>
-              )}
-              <AnimatePresence>
-                {showHistory && history.length > 0 && !url && (
-                  <motion.div className="sp-history-dropdown" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
-                    <div className="sp-history-label">Recent searches</div>
-                    {history.map((h, i) => (
-                      <div key={i} className="sp-history-item" onMouseDown={() => { setUrl(h.url); setShowHistory(false); setTimeout(() => fetchInfo(h.url), 100); }}>
-                        {h.thumbnail ? (
-                          <img src={h.thumbnail} alt="" className="sp-history-item-thumb" />
-                        ) : (
-                          <div className="sp-history-item-icon"><Clock size={13} /></div>
-                        )}
-                        <span className="sp-history-item-name">{h.title}</span>
-                        <button className="sp-history-item-remove" onMouseDown={(e) => { e.stopPropagation(); removeFromHistory(h.url); }} title="Remove">
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Process button */}
-            <button
-              className="sp-new-dl-btn"
-              onClick={() => fetchInfo()}
-              disabled={!url || fetchStatus === 'loading'}
-            >
-              {fetchStatus === 'loading' ? (
-                <><Loader2 className="sp-spin" size={18} /> Loading...</>
-              ) : (
-                <><Zap size={18} fill="currentColor" /> Preview</>
-              )}
-            </button>
-
-            {/* Feature capability pills row */}
             <div className="sp-new-dl-capability-row">
               <span><Music size={13} /> MP3 320kbps</span>
               <span><Hash size={13} /> Embedded metadata</span>
@@ -1263,7 +1256,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           {/* ── Info Card ── */}
           <AnimatePresence>
             {info && fetchStatus === 'done' && (
-              <motion.div className="sp-info-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <motion.div className="sp-glass-panel sp-corner-mask sp-info-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
 
                 <div className="sp-info-top">
                   <div className="sp-info-thumb-wrap">
@@ -1482,7 +1475,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           <AnimatePresence>
             {showDownloadModal && info && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="sp-modal-overlay">
-                <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="sp-modal">
+                <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="sp-glass-panel sp-corner-mask sp-modal">
                   <h3 className="sp-modal-title">Download Settings {info.trackCount > 1 ? `— ${info.type === 'album' ? 'Album' : 'Playlist'}` : ''}</h3>
 
                   <div className="sp-modal-settings">
@@ -1593,7 +1586,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           {/* ── Download Progress ── */}
           <AnimatePresence>
             {downloadState && (
-              <motion.div className="sp-progress-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <motion.div className="sp-glass-panel sp-corner-mask sp-progress-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
 
                 {/* Scheduled success */}
                 {downloadState.scheduled && isSuccess && (
@@ -1786,40 +1779,46 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           </AnimatePresence>
 
         </div>
-
-        {/* ── Artist Gallery Section ── */}
-        <div className="sp-gallery-section">
-          <div className="sp-gallery-title">Artist History</div>
-          <ArtistBubbles artists={historyArtists} onRemove={removeArtistFromHistory} />
-        </div>
-
-        {/* ── Recent Downloads Section ── */}
-        {history && history.length > 0 && (
-          <div className="sp-recent-section">
-            <div className="sp-recent-title">Recent Downloads</div>
-            <div className="sp-recent-list">
-              {history.slice(0, 5).map((item, i) => (
-                <div key={i} className="sp-recent-item" onClick={() => { setUrl(item.url); fetchInfo(item.url); }}>
-                  {item.thumbnail ? (
-                    <img src={item.thumbnail} alt={item.title} className="sp-recent-thumb" />
-                  ) : (
-                    <div className="sp-recent-thumb sp-recent-thumb-fallback"><Music size={16} /></div>
-                  )}
-                  <div className="sp-recent-info">
-                    <div className="sp-recent-song-title">{item.title}</div>
-                    <div className="sp-recent-artist">{item.artist || 'Unknown Artist'}</div>
-                  </div>
-                  <div className="sp-recent-type">
-                    {item.url && getSpotifyType(item.url) && (
-                      <span className={`sp-feature-pill sp-feature-pill--${getSpotifyType(item.url)}`}>{getSpotifyType(item.url)}</span>
-                    )}
-                  </div>
-                  <button className="sp-recent-delete" onClick={(e) => { e.stopPropagation(); removeFromHistory(item.url); }} title="Remove from history">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
+        {/* ── History Layout Grid ── */}
+        {(historyArtists?.length > 0 || history?.length > 0) && (
+          <div className="sp-history-grid">
+            {/* ── Artist Gallery Section ── */}
+            <div className="sp-gallery-section">
+              <div className="sp-recent-title">Artist History</div>
+              <div className="sp-gallery-card">
+                <ArtistBubbles artists={historyArtists} onRemove={removeArtistFromHistory} />
+              </div>
             </div>
+
+            {/* ── Recent Downloads Section ── */}
+            {history && history.length > 0 && (
+              <div className="sp-recent-section">
+                <div className="sp-recent-title">Recent Downloads</div>
+                <div className="sp-recent-list">
+                  {history.slice(0, 5).map((item, i) => (
+                    <div key={i} className="sp-recent-item" onClick={() => { setUrl(item.url); fetchInfo(item.url); }}>
+                      {item.thumbnail ? (
+                        <img src={item.thumbnail} alt={item.title} className="sp-recent-thumb" />
+                      ) : (
+                        <div className="sp-recent-thumb sp-recent-thumb-fallback"><Music size={16} /></div>
+                      )}
+                      <div className="sp-recent-info">
+                        <div className="sp-recent-song-title">{item.title}</div>
+                        <div className="sp-recent-artist">{item.artist || 'Unknown Artist'}</div>
+                      </div>
+                      <div className="sp-recent-type">
+                        {item.url && getSpotifyType(item.url) && (
+                          <span className={`sp-feature-pill sp-feature-pill--${getSpotifyType(item.url)}`}>{getSpotifyType(item.url)}</span>
+                        )}
+                      </div>
+                      <button className="sp-recent-delete" onClick={(e) => { e.stopPropagation(); removeFromHistory(item.url); }} title="Remove from history">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

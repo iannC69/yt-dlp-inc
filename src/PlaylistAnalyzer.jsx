@@ -4,7 +4,8 @@ import ReactECharts from 'echarts-for-react';
 import {
   Link2, Sparkles, Clock, Users, Disc, Hash, Layers,
   BarChart2, Activity, ShieldAlert, Cpu, Check, Music, Star, Flame, Calendar, X,
-  Play, BrainCircuit, BarChart3, Music4, PlayCircle, Coffee
+  Play, BrainCircuit, BarChart3, Music4, PlayCircle, Coffee,
+  SlidersHorizontal, TrendingUp, Award, Eye, Zap, LayoutGrid
 } from 'lucide-react';
 import { storage } from './storage';
 import './PlaylistAnalyzer.css';
@@ -59,6 +60,53 @@ export default function PlaylistAnalyzer() {
   const [artistCustomBgUrl, setArtistCustomBgUrl] = useState(() => storage.getItem('pa_artist_custom_bg_url') || '');
   const [highlightIndex, setHighlightIndex] = useState(0);
   const fetchedModalArtists = useRef(false);
+
+  // Appearance customization
+  const [showCustomize, setShowCustomize] = useState(false);
+  const [accentPreset, setAccentPreset] = useState(() => localStorage.getItem('pa_accent_preset') || 'purple');
+  const [cardOpacity, setCardOpacity] = useState(() => parseFloat(localStorage.getItem('pa_card_opacity') || '0.55'));
+  const [bgZoom, setBgZoom] = useState(() => parseFloat(localStorage.getItem('pa_artist_zoom_level') || '0.6'));
+  const [bgBlur, setBgBlur] = useState(() => parseFloat(localStorage.getItem('pa_artist_blur_level') || '0'));
+  const [customBgInput, setCustomBgInput] = useState(() => localStorage.getItem('pa_artist_custom_bg_url') || '');
+  const [layoutDensity, setLayoutDensity] = useState(() => localStorage.getItem('pa_layout_density') || 'normal');
+
+  const ACCENT_PRESETS = {
+    purple: { a1: '#8B5CF6', a1r: '139, 92, 246', a2: '#EC4899', a2r: '236, 72, 153' },
+    blue:   { a1: '#3B82F6', a1r: '59, 130, 246',  a2: '#06B6D4', a2r: '6, 182, 212' },
+    green:  { a1: '#10B981', a1r: '16, 185, 129',  a2: '#84CC16', a2r: '132, 204, 22' },
+    orange: { a1: '#F59E0B', a1r: '245, 158, 11',  a2: '#EF4444', a2r: '239, 68, 68' },
+    rose:   { a1: '#F43F5E', a1r: '244, 63, 94',   a2: '#FB923C', a2r: '251, 146, 60' },
+    indigo: { a1: '#6366F1', a1r: '99, 102, 241',  a2: '#A855F7', a2r: '168, 85, 247' },
+  };
+
+  const applyAccent = (preset) => {
+    const p = ACCENT_PRESETS[preset];
+    if (!p) return;
+    document.documentElement.style.setProperty('--pa-accent-1', p.a1);
+    document.documentElement.style.setProperty('--pa-accent-1-rgb', p.a1r);
+    document.documentElement.style.setProperty('--pa-accent-2', p.a2);
+    document.documentElement.style.setProperty('--pa-accent-2-rgb', p.a2r);
+    setAccentPreset(preset);
+    localStorage.setItem('pa_accent_preset', preset);
+  };
+
+  useEffect(() => { applyAccent(accentPreset); }, [accentPreset]);
+
+  useEffect(() => {
+    localStorage.setItem('pa_card_opacity', String(cardOpacity));
+    document.documentElement.style.setProperty('--pa-card-opacity', String(cardOpacity));
+  }, [cardOpacity]);
+
+  useEffect(() => {
+    storage.setItem('pa_artist_zoom_level', String(bgZoom));
+    storage.setItem('pa_artist_blur_level', String(bgBlur));
+    setArtistZoomLevel(bgZoom);
+    setArtistBlurLevel(bgBlur);
+  }, [bgZoom, bgBlur]);
+
+  useEffect(() => {
+    localStorage.setItem('pa_layout_density', layoutDensity);
+  }, [layoutDensity]);
 
   useEffect(() => {
     const timer = setInterval(() => setHighlightIndex(prev => prev + 1), 5000);
@@ -1108,6 +1156,10 @@ export default function PlaylistAnalyzer() {
                   <span className="pa-stat-label">Unique Artists</span>
                   <span className="pa-stat-value">{analysisResult.uniqueArtists}</span>
                 </div>
+                <div className="pa-stat-pill">
+                  <span className="pa-stat-label">Albums</span>
+                  <span className="pa-stat-value">{analysisResult.uniqueAlbums}</span>
+                </div>
                 {analysisResult.duplicates > 0 && (
                   <div className="pa-stat-pill" style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
                     <span className="pa-stat-label">Duplicates</span>
@@ -1116,6 +1168,10 @@ export default function PlaylistAnalyzer() {
                 )}
               </div>
             </div>
+            <button className="pa-customize-btn" onClick={() => setShowCustomize(p => !p)} title="Customize Appearance">
+              <SlidersHorizontal size={16} />
+              <span>Customize</span>
+            </button>
           </div>
 
           {/* New Highlights Row */}
@@ -1128,7 +1184,7 @@ export default function PlaylistAnalyzer() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 5 }}
                   transition={{ duration: 0.3 }}
-                  className="pa-highlight-card"
+                  className="pa-highlight-card pa-highlight-card--popular"
                 >
                   <div className="pa-highlight-icon-wrapper" style={{ color: '#F59E0B', overflow: 'hidden', padding: analysisResult.mostPopularList[highlightIndex % analysisResult.mostPopularList.length].cover ? '0' : '12px' }}>
                     {analysisResult.mostPopularList[highlightIndex % analysisResult.mostPopularList.length].cover ? (
@@ -1154,7 +1210,7 @@ export default function PlaylistAnalyzer() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 5 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
-                  className="pa-highlight-card"
+                  className="pa-highlight-card pa-highlight-card--gem"
                 >
                   <div className="pa-highlight-icon-wrapper" style={{ color: getComputedColor('--pa-accent-3', '#10B981'), overflow: 'hidden', padding: analysisResult.hiddenGemList[highlightIndex % analysisResult.hiddenGemList.length].cover ? '0' : '12px' }}>
                     {analysisResult.hiddenGemList[highlightIndex % analysisResult.hiddenGemList.length].cover ? (
@@ -1173,7 +1229,7 @@ export default function PlaylistAnalyzer() {
             )}
 
             {analysisResult.averageYear && (
-              <div className="pa-highlight-card">
+              <div className="pa-highlight-card pa-highlight-card--era">
                 <div className="pa-highlight-icon-wrapper" style={{ color: getComputedColor('--pa-accent-1', '#8B5CF6') }}>
                   <Calendar size={24} />
                 </div>
@@ -1206,14 +1262,17 @@ export default function PlaylistAnalyzer() {
                 </div>
 
                 <div className="pa-artist-avatars">
-                  {analysisResult.topArtists.slice(0, 5).map(artist => (
+                  {analysisResult.topArtists.slice(0, 5).map((artist, idx) => (
                     <div className="pa-artist-avatar-item" key={artist.name}>
-                      <div className="pa-artist-circle" style={{ backgroundColor: artist.color }}>
-                        {artistImages[artist.name] ? (
-                          <img src={artistImages[artist.name]} alt={artist.name} className="pa-artist-img" />
-                        ) : (
-                          artist.initials
-                        )}
+                      <div className="pa-artist-circle-wrapper">
+                        <div className="pa-artist-circle" style={{ backgroundColor: artist.color }}>
+                          {artistImages[artist.name] ? (
+                            <img src={artistImages[artist.name]} alt={artist.name} className="pa-artist-img" />
+                          ) : (
+                            artist.initials
+                          )}
+                        </div>
+                        <div className={`pa-artist-rank-badge pa-artist-rank-badge--${idx + 1}`}>#{idx + 1}</div>
                       </div>
                       <span className="pa-artist-name-small" title={artist.name}>{artist.name}</span>
                     </div>
@@ -1268,6 +1327,9 @@ export default function PlaylistAnalyzer() {
                                 <Disc size={24} />
                               </div>
                             )}
+                            <div className="pa-album-play-overlay">
+                              <Play size={18} fill="white" color="white" />
+                            </div>
                           </div>
                           <div className="pa-album-info">
                             <span className="pa-album-name">{album.name}</span>
@@ -1304,7 +1366,7 @@ export default function PlaylistAnalyzer() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 * i }}
                       >
-                        <Sparkles size={16} className="pa-ai-icon" />
+                        <div className="pa-ai-num-badge">{i + 1}</div>
                         <p className="pa-ai-text">
                           {parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: '#F5F3FF' }}>{p}</strong> : p)}
                         </p>
@@ -1327,21 +1389,50 @@ export default function PlaylistAnalyzer() {
 
               {/* Song Length Distribution */}
               <div className="pa-card">
-                <h3 className="pa-card-title"><Clock size={16} className="pa-card-icon" /> Length Distribution</h3>
-                <div style={{ height: 250 }}>
+                <div className="pa-card-header">
+                  <Clock className="pa-card-icon" size={20} />
+                  <h3 className="pa-card-title">Length Distribution</h3>
+                </div>
+                <div style={{ height: 230 }}>
                   <ReactECharts option={getLengthChartOption()} style={{ height: '100%', width: '100%' }} />
                 </div>
               </div>
 
-              {/* Decades Distribution */}
-              <div className="pa-card">
-                <h3 className="pa-card-title"><Calendar size={16} className="pa-card-icon" /> Era / Decades</h3>
-                <div style={{ height: 250 }}>
-                  <ReactECharts option={getDecadeChartOption()} style={{ height: '100%', width: '100%' }} />
+              {/* Top Tracks (replaces Era/Decades) */}
+              {analysisResult.mostPopularList && analysisResult.mostPopularList.length > 0 && (
+                <div className="pa-card">
+                  <div className="pa-card-header">
+                    <TrendingUp className="pa-card-icon" size={20} />
+                    <h3 className="pa-card-title">Top Tracks by Popularity</h3>
+                  </div>
+                  <div className="pa-top-tracks-list">
+                    {analysisResult.mostPopularList.slice(0, 5).map((track, i) => (
+                      <div key={track.id || i} className="pa-top-track-item">
+                        <div className={`pa-top-track-rank pa-top-track-rank--${i + 1}`}>{i + 1}</div>
+                        <div className="pa-top-track-cover">
+                          {track.cover ? (
+                            <img src={track.cover} alt={track.title} />
+                          ) : (
+                            <Music size={14} />
+                          )}
+                        </div>
+                        <div className="pa-top-track-info">
+                          <div className="pa-top-track-title">{track.title}</div>
+                          <div className="pa-top-track-artist">{track.artist}</div>
+                        </div>
+                        <div className="pa-top-track-dur">{formatMs(track.durationMs)}</div>
+                        {track.popularity > 0 && (
+                          <div className="pa-top-track-pop">
+                            <div className="pa-top-track-pop-bar" style={{ width: `${track.popularity}%` }} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Top Albums List */}
+              {/* Album Distribution */}
               <div className="pa-card">
                 <div className="pa-card-header">
                   <Disc className="pa-card-icon" size={20} />
@@ -1358,6 +1449,94 @@ export default function PlaylistAnalyzer() {
 
             </div>
           </div>
+
+          {/* ── Stats Overview Row ── */}
+          <div className="pa-stats-overview">
+            {[
+              { label: 'Avg Track Length', value: formatMs(analysisResult.avgLengthMs), icon: <Clock size={16} /> },
+              { label: 'Explicit Tracks', value: `${analysisResult.explicitCount} (${Math.round((analysisResult.explicitCount / analysisResult.totalTracks) * 100)}%)`, icon: <ShieldAlert size={16} /> },
+              { label: 'Unique Albums', value: analysisResult.uniqueAlbums, icon: <Disc size={16} /> },
+              { label: 'Shortest Track', value: `${analysisResult.shortest?.title?.substring(0, 18) || '—'}`, sub: formatMs(analysisResult.shortest?.durationMs), icon: <Zap size={16} /> },
+              { label: 'Longest Track', value: `${analysisResult.longest?.title?.substring(0, 18) || '—'}`, sub: formatMs(analysisResult.longest?.durationMs), icon: <Layers size={16} /> },
+              { label: 'Playlist Era', value: analysisResult.eraStr || 'Unknown', sub: analysisResult.averageYear ? `~${analysisResult.averageYear}` : '', icon: <Calendar size={16} /> },
+            ].map((stat, i) => (
+              <motion.div key={i} className="pa-stats-tile" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
+                <div className="pa-stats-tile-icon">{stat.icon}</div>
+                <div className="pa-stats-tile-body">
+                  <div className="pa-stats-tile-label">{stat.label}</div>
+                  <div className="pa-stats-tile-value">{stat.value}</div>
+                  {stat.sub && <div className="pa-stats-tile-sub">{stat.sub}</div>}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* ── Artist Diversity Card ── */}
+          {(() => {
+            const score = Math.min(100, Math.round((analysisResult.uniqueArtists / analysisResult.totalTracks) * 100));
+            const label = score >= 70 ? 'Extremely Diverse' : score >= 45 ? 'Highly Diverse' : score >= 25 ? 'Moderately Diverse' : score >= 10 ? 'Artist-Focused' : 'Artist Concentrated';
+            const color = score >= 70 ? '#10B981' : score >= 45 ? '#3B82F6' : score >= 25 ? '#8B5CF6' : score >= 10 ? '#F59E0B' : '#EF4444';
+            return (
+              <div className="pa-card pa-diversity-card">
+                <div className="pa-card-header">
+                  <Award className="pa-card-icon" size={20} />
+                  <h3 className="pa-card-title">Artist Diversity Score</h3>
+                  <span className="pa-diversity-label" style={{ color }}>{label}</span>
+                </div>
+                <div className="pa-diversity-body">
+                  <div className="pa-diversity-score" style={{ color }}>{score}</div>
+                  <div className="pa-diversity-meter-wrap">
+                    <div className="pa-diversity-meter-track">
+                      <motion.div className="pa-diversity-meter-fill" style={{ background: `linear-gradient(90deg, #6366f1, ${color})` }} initial={{ width: 0 }} animate={{ width: `${score}%` }} transition={{ duration: 1.2, ease: 'easeOut' }} />
+                    </div>
+                    <div className="pa-diversity-desc">
+                      {analysisResult.uniqueArtists} unique artists across {analysisResult.totalTracks} tracks — {(analysisResult.uniqueArtists / analysisResult.totalTracks * 100).toFixed(1)}% diversity ratio
+                    </div>
+                  </div>
+                  <div className="pa-diversity-artists">
+                    {analysisResult.topArtists.slice(0, 8).map((a, i) => (
+                      <div key={a.name} className="pa-diversity-artist-pill" style={{ background: `${a.color}20`, borderColor: `${a.color}50` }}>
+                        <span style={{ background: a.color, width: 8, height: 8, borderRadius: '50%', flexShrink: 0 }} />
+                        <span>{a.name}</span>
+                        <span className="pa-diversity-pill-pct">{a.percent}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Hidden Gems Full List ── */}
+          {analysisResult.hiddenGemList && analysisResult.hiddenGemList.length > 0 && (
+            <div className="pa-card">
+              <div className="pa-card-header">
+                <Star className="pa-card-icon" size={20} style={{ color: '#10B981', background: 'rgba(16,185,129,0.12)' }} />
+                <h3 className="pa-card-title">Hidden Gems</h3>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: 'rgba(245,243,255,0.4)', fontWeight: 600 }}>Lowest popularity — worth exploring</span>
+              </div>
+              <div className="pa-top-tracks-list">
+                {analysisResult.hiddenGemList.map((track, i) => (
+                  <div key={track.id || i} className="pa-top-track-item">
+                    <div className="pa-top-track-rank" style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981' }}>{i + 1}</div>
+                    <div className="pa-top-track-cover">
+                      {track.cover ? (
+                        <img src={track.cover} alt={track.title} />
+                      ) : (
+                        <Music size={14} />
+                      )}
+                    </div>
+                    <div className="pa-top-track-info">
+                      <div className="pa-top-track-title">{track.title}</div>
+                      <div className="pa-top-track-artist">{track.artist}</div>
+                    </div>
+                    <div className="pa-top-track-dur">{formatMs(track.durationMs)}</div>
+                    <div className="pa-gem-badge">💎 Hidden</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* All Artists Modal */}
           <AnimatePresence>
@@ -1396,12 +1575,141 @@ export default function PlaylistAnalyzer() {
                         <div className="pa-modal-artist-info">
                           <div className="pa-modal-artist-name">{artist.name}</div>
                           <div className="pa-modal-artist-tracks">{artist.tracks} tracks</div>
+                          <div className="pa-modal-artist-bar">
+                            <div
+                              className="pa-modal-artist-bar-fill"
+                              style={{ width: `${Math.round((artist.tracks / analysisResult.topArtists[0].tracks) * 100)}%`, backgroundColor: artist.color }}
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 </motion.div>
               </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Appearance Customization Panel ── */}
+          <AnimatePresence>
+            {showCustomize && (
+              <>
+                <motion.div
+                  className="pa-customize-overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowCustomize(false)}
+                />
+                <motion.div
+                  className="pa-customize-panel"
+                  initial={{ x: '100%', opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: '100%', opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                >
+                  <div className="pa-customize-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <SlidersHorizontal size={16} style={{ color: 'var(--pa-accent-1, #8B5CF6)' }} />
+                      <span>Customize Appearance</span>
+                    </div>
+                    <button className="pa-modal-close" onClick={() => setShowCustomize(false)}><X size={18} /></button>
+                  </div>
+
+                  <div className="pa-customize-body">
+                    {/* Accent Color */}
+                    <div className="pa-cust-section">
+                      <div className="pa-cust-label">Accent Color</div>
+                      <div className="pa-cust-accents">
+                        {Object.entries(ACCENT_PRESETS).map(([key, p]) => (
+                          <button
+                            key={key}
+                            className={`pa-cust-accent-dot${accentPreset === key ? ' pa-cust-accent-dot--active' : ''}`}
+                            style={{ background: p.a1, boxShadow: accentPreset === key ? `0 0 0 3px rgba(255,255,255,0.25), 0 0 12px ${p.a1}` : 'none' }}
+                            onClick={() => applyAccent(key)}
+                            title={key}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Card Opacity */}
+                    <div className="pa-cust-section">
+                      <div className="pa-cust-label">Card Transparency <span className="pa-cust-val">{Math.round(cardOpacity * 100)}%</span></div>
+                      <input
+                        type="range" min="0.1" max="0.9" step="0.05"
+                        value={cardOpacity}
+                        onChange={e => setCardOpacity(parseFloat(e.target.value))}
+                        className="pa-cust-slider"
+                        style={{ '--pct': `${((cardOpacity - 0.1) / 0.8) * 100}%` }}
+                      />
+                    </div>
+
+                    {/* BG Zoom */}
+                    <div className="pa-cust-section">
+                      <div className="pa-cust-label">Background Zoom <span className="pa-cust-val">{Math.round(bgZoom * 100)}%</span></div>
+                      <input
+                        type="range" min="0.5" max="2" step="0.05"
+                        value={bgZoom}
+                        onChange={e => setBgZoom(parseFloat(e.target.value))}
+                        className="pa-cust-slider"
+                        style={{ '--pct': `${((bgZoom - 0.5) / 1.5) * 100}%` }}
+                      />
+                    </div>
+
+                    {/* BG Blur */}
+                    <div className="pa-cust-section">
+                      <div className="pa-cust-label">Background Blur <span className="pa-cust-val">{bgBlur}px</span></div>
+                      <input
+                        type="range" min="0" max="40" step="1"
+                        value={bgBlur}
+                        onChange={e => setBgBlur(parseFloat(e.target.value))}
+                        className="pa-cust-slider"
+                        style={{ '--pct': `${(bgBlur / 40) * 100}%` }}
+                      />
+                    </div>
+
+                    {/* Custom BG URL */}
+                    <div className="pa-cust-section">
+                      <div className="pa-cust-label">Custom Background URL</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          className="pa-cust-input"
+                          value={customBgInput}
+                          onChange={e => setCustomBgInput(e.target.value)}
+                          placeholder="https://...image.jpg"
+                        />
+                        <button className="pa-cust-apply-btn" onClick={() => {
+                          storage.setItem('pa_artist_custom_bg_url', customBgInput);
+                          setArtistCustomBgUrl(customBgInput);
+                        }}>Apply</button>
+                      </div>
+                      {artistCustomBgUrl && (
+                        <button className="pa-cust-clear-btn" onClick={() => { storage.setItem('pa_artist_custom_bg_url', ''); setArtistCustomBgUrl(''); setCustomBgInput(''); }}>
+                          Clear Custom BG
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Layout Density */}
+                    <div className="pa-cust-section">
+                      <div className="pa-cust-label">Layout Density</div>
+                      <div className="pa-cust-density">
+                        {['normal', 'compact'].map(d => (
+                          <button
+                            key={d}
+                            className={`pa-cust-density-btn${layoutDensity === d ? ' pa-cust-density-btn--active' : ''}`}
+                            onClick={() => setLayoutDensity(d)}
+                          >
+                            <LayoutGrid size={13} />
+                            {d.charAt(0).toUpperCase() + d.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              </>
             )}
           </AnimatePresence>
         </div>

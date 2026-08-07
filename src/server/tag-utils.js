@@ -52,7 +52,7 @@ export async function writeAndVerifyTags(filePath, tags, coverBuffer, config = {
       isrc: tags.isrc || existingTags.isrc || '',
       copyright: tags.copyright || existingTags.copyright || '',
       publisher: tags.label || existingTags.publisher || '',
-      comment: resolveComment(existingTags.comment, config.clearComments),
+      comment: { language: 'eng', text: 'Downloaded by MediaDL' },
     };
 
     // Keep explicit lyrics synced if available
