@@ -1,0 +1,39 @@
+[
+  {
+    "version": "v1.0.76",
+    "title": "Update 8/8/2026",
+    "date": "2026-08-08T11:12:48.262Z",
+    "changes": [
+      {
+        "message": "feat: implement application auto-updater system with UI-based changelog and version tracking",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      },
+      {
+        "message": "feat: add electron tray support, persistent settings store, and automated application update functionality",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      },
+      {
+        "message": "da",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      },
+      {
+        "message": "da",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      },
+      {
+        "message": "da",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      },
+      {
+        "message": "test",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      }
+    ]
+  }
+]
