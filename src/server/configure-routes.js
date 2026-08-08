@@ -1428,7 +1428,38 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   middlewares.use('/api/download-file', (req, res, next) => { const u = new URL(req.url, 'http://' + req.headers.host); if (u.pathname !== '/') return next(); const file = u.searchParams.get('file'); if (!file || file.includes('..') || file.includes('/') || file.includes('\\')) { res.statusCode = 400; return res.end('Invalid') }; const dl = ensureDownloadsDir(u.searchParams.get('customPath')); let tp = path.join(dl, file); if (!fs.existsSync(tp)) { const cl = file.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); const fm = fs.readdirSync(dl).find(f => f.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cl); if (fm) tp = path.join(dl, fm); else { res.statusCode = 404; return res.end('File not found') } }; const on = u.searchParams.get('outName'); let dfn = path.basename(tp); if (on?.trim()) { const cn = on.trim().replace(/[^a-zA-Z0-9_ .-]/g, ''); const ext = path.extname(file) || '.mp3'; dfn = cn.endsWith(ext) ? cn : `${cn}${ext}` }; const st = fs.statSync(tp); res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': st.size, 'Content-Disposition': `attachment; filename="${dfn}"` }); const rs = fs.createReadStream(tp); rs.pipe(res); rs.on('end', () => scheduleDownloadCleanup(tp, 60 * 60 * 1000)); rs.on('error', () => { if (!res.headersSent) { res.statusCode = 500; res.end('Error') } }) })
 
-  middlewares.use('/api/ytdl/system-status', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); try { const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const st = fs.statfsSync(dl); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ freeSpace: st.bfree * st.bsize, totalMem: os.totalmem(), freeMem: os.freemem(), activeJobs: activeJobs.size, uptime: Date.now() - metrics.uptimeStart, totalHits: metrics.totalHits, successfulDownloads: metrics.successfulDownloads, failedDownloads: metrics.failedDownloads })) } catch { res.statusCode = 500; res.end(JSON.stringify({ error: 'Status error' })) } })
+  let lastCpu = { idle: 0, total: 0 };
+  
+  middlewares.use('/api/ytdl/system-status', (req, res, next) => { 
+      const u = new URL(req.url, `http://${req.headers.host}`); 
+      if (u.pathname !== '/') return next(); 
+      try { 
+          const dl = ensureDownloadsDir(u.searchParams.get('customPath')); 
+          const st = fs.statfsSync(dl); 
+          
+          let user = 0, nice = 0, sys = 0, idle = 0, irq = 0;
+          const cpus = os.cpus();
+          for(let c of cpus) { user += c.times.user; nice += c.times.nice; sys += c.times.sys; idle += c.times.idle; irq += c.times.irq; }
+          const total = user + nice + sys + idle + irq;
+          const cpuUsage = lastCpu.total > 0 ? (1 - (idle - lastCpu.idle) / (total - lastCpu.total)) * 100 : 0;
+          lastCpu = { idle, total };
+
+          res.setHeader('Content-Type', 'application/json'); 
+          res.end(JSON.stringify({ 
+              freeSpace: st.bfree * st.bsize, 
+              totalMem: os.totalmem(), 
+              freeMem: os.freemem(), 
+              activeJobs: activeJobs.size, 
+              uptime: Date.now() - metrics.uptimeStart, 
+              totalHits: metrics.totalHits, 
+              successfulDownloads: metrics.successfulDownloads, 
+              failedDownloads: metrics.failedDownloads,
+              cpuUsage: cpuUsage
+          })) 
+      } catch { 
+          res.statusCode = 500; res.end(JSON.stringify({ error: 'Status error' })) 
+      } 
+  })
 
   middlewares.use('/api/audio-cutter/select-source', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const ps = `Add-Type -AssemblyName System.Windows.Forms\n$d=New-Object System.Windows.Forms.OpenFileDialog\n$d.Title='Select audio file'\n$d.Filter='Audio files|*.mp3;*.m4a;*.aac;*.wav;*.flac;*.ogg;*.opus;*.webm|All files|*.*'\nif($d.ShowDialog()-eq'OK'){Write-Output $d.FileName}`; const c = spawn('powershell', ['-NoProfile', '-Command', ps], { windowsHide: true }); let s = ''; c.stdout.on('data', d => s += d); c.on('close', () => { const sp = s.trim(); if (!sp) return res.end(JSON.stringify({ success: false })); if (!fs.existsSync(sp)) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'File not found.' })) }; const pb = spawn(ffmpegBin, ['-i', sp], { windowsHide: true }); let se = ''; pb.stderr.on('data', d => se += d); pb.on('close', () => { const dm = se.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/); const dur = dm ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]) : 0; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true, path: sp, name: path.basename(sp), extension: path.extname(sp).slice(1), duration: dur })) }) }) })
 

@@ -23,7 +23,7 @@
   --sp-radius-pill: 999px;
 }
 
-.sp-page.mode-album {
+.sp-page.mode-album, .sp-modal-overlay.mode-album {
   --sp-green: #d946ef;
   /* Fuchsia / Pink */
   --sp-green-light: #e879f9;
@@ -32,7 +32,7 @@
   --sp-badge-border: rgba(217, 70, 239, 0.3);
 }
 
-.sp-page.mode-playlist {
+.sp-page.mode-playlist, .sp-modal-overlay.mode-playlist {
   --sp-green: #3b82f6;
   /* Blue */
   --sp-green-light: #60a5fa;
@@ -225,29 +225,31 @@
 .sp-account-pill {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   background: rgba(0, 0, 0, 0.65);
-  /* Sleek dark background matching Spotify */
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  /* Subtle border */
+  border: 1px solid color-mix(in srgb, var(--sp-green) 20%, rgba(255, 255, 255, 0.1));
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-radius: var(--sp-radius-pill);
-  padding: 4px 14px 4px 4px;
-  /* Tighter on the left for the avatar */
+  padding: 6px 16px 6px 6px;
   cursor: pointer;
   color: var(--sp-text);
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  /* Bolder text for the name */
   letter-spacing: 0.01em;
   transition: all 0.25s cubic-bezier(0.3, 0, 0, 1);
+  outline: none;
+}
+
+.sp-account-pill:focus,
+.sp-account-pill:focus-visible {
+  outline: none !important;
 }
 
 .sp-account-pill:hover {
   background: rgba(40, 40, 40, 0.8);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: color-mix(in srgb, var(--sp-green) 40%, rgba(255, 255, 255, 0.2));
   transform: scale(1.02);
 }
 
@@ -256,8 +258,8 @@
 }
 
 .sp-account-avatar {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: #282828;
   display: flex;
@@ -276,7 +278,7 @@
 
 .sp-account-name {
   color: var(--sp-text);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -299,44 +301,64 @@
 
 .sp-profile-dropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   right: 0;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
+  background: color-mix(in srgb, var(--sp-green) 3%, #1a1a1a);
+  border: 1px solid color-mix(in srgb, var(--sp-green) 15%, rgba(255, 255, 255, 0.1));
   border-radius: var(--sp-radius-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   overflow: hidden;
-  min-width: 160px;
+  min-width: 220px;
   z-index: 100;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+  padding: 6px;
+}
+
+.sp-dropdown-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 6px;
+}
+
+.sp-dropdown-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #a7a7a7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .sp-dropdown-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: none;
   border: none;
+  border-radius: 6px;
   color: var(--sp-text);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s;
+  transition: all 0.15s ease;
 }
 
 .sp-dropdown-item:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .sp-logout-item:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
 }
 
 .sp-dropdown-divider {
   height: 1px;
-  background: #2a2a2a;
+  background: rgba(255, 255, 255, 0.05);
+  margin: 6px 0;
 }
 
 .sp-reset-btn {
@@ -364,11 +386,10 @@
 
 /* ── SYSTEM STATUS ──────────────────────────────────────────────────── */
 .sp-system-status {
-  background: linear-gradient(145deg, rgba(20, 27, 42, .84), rgba(10, 14, 23, .82));
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  background: color-mix(in srgb, var(--sp-green) 3%, rgba(255, 255, 255, 0.025));
+  border: 1px solid color-mix(in srgb, var(--sp-green) 12%, rgba(255, 255, 255, 0.07));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-radius: var(--sp-radius-card);
   overflow: hidden;
 }
@@ -1442,33 +1463,65 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 99999;
   padding: 1rem;
 }
 
 .sp-modal {
-  background: #161616;
-  border: 1px solid #2a2a2a;
-  border-radius: var(--sp-radius-card);
-  padding: 1.5rem;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--sp-green) 10%, transparent), transparent 60%),
+    linear-gradient(145deg, rgba(20, 27, 42, .92), rgba(10, 14, 23, .92));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   width: 100%;
   max-width: 480px;
   max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 
 .sp-modal-title {
   font-size: 1rem;
   font-weight: 700;
   color: var(--sp-text);
-  margin: 0 0 1.25rem;
+  margin: 0;
+  padding: 1.5rem 1.5rem 1rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .sp-modal-settings {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+/* Custom scrollbar for modal and track list */
+.sp-modal-settings::-webkit-scrollbar,
+.sp-track-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sp-modal-settings::-webkit-scrollbar-track,
+.sp-track-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sp-modal-settings::-webkit-scrollbar-thumb,
+.sp-track-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.sp-modal-settings::-webkit-scrollbar-thumb:hover,
+.sp-track-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .sp-setting-group {
@@ -1499,25 +1552,27 @@
 .sp-format-card {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.04);
+  gap: 4px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   text-align: left;
-  transition: all 0.15s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
 }
 
 .sp-format-card:hover {
-  border-color: color-mix(in srgb, var(--sp-green) 40%, transparent);
-  background: color-mix(in srgb, var(--sp-green) 5%, transparent);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
 }
 
 .sp-format-card--active {
   border-color: var(--sp-green);
-  background: color-mix(in srgb, var(--sp-green) 10%, transparent);
+  background: color-mix(in srgb, var(--sp-green) 12%, transparent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--sp-green) 15%, transparent);
 }
 
 .sp-format-top-row {
@@ -1588,7 +1643,12 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .sp-track-item {
@@ -1611,15 +1671,17 @@
 }
 
 .sp-track-checkbox {
-  width: 14px;
-  height: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  transition: all 0.15s;
 }
 
 .sp-track-item.selected .sp-track-checkbox {
   background: var(--sp-green);
   border-color: var(--sp-green);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sp-green) 40%, transparent);
 }
 
 .sp-track-index {
@@ -1651,28 +1713,31 @@
 }
 
 .sp-modal-time-input {
-  background: var(--sp-input-bg);
-  border: 1px solid var(--sp-input-border);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   color: var(--sp-text);
-  padding: 6px 10px;
-  font-size: 0.85rem;
+  padding: 8px 12px;
+  font-size: 0.9rem;
   font-family: inherit;
   width: 140px;
   outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .sp-modal-time-input:focus {
   border-color: var(--sp-green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sp-green) 15%, transparent);
 }
 
 .sp-modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid #1e1e1e;
+  padding: 1.25rem 1.5rem 1.5rem;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 23, 0.4);
 }
 
 .sp-modal-cancel {
@@ -1706,7 +1771,7 @@
 }
 
 .sp-modal-confirm:hover:not(:disabled) {
-  background: var(--sp-green-light);
+  background: color-mix(in srgb, var(--sp-green) 110%, #fff 15%);
 }
 
 .sp-modal-confirm:disabled {
@@ -1716,9 +1781,12 @@
 
 /* ── PROGRESS CARD ──────────────────────────────────────────────────── */
 .sp-progress-card {
-  background: var(--sp-card);
-  border: 1px solid var(--sp-card-border);
-  border-radius: var(--sp-radius-card);
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--sp-green) 8%, transparent), transparent 60%),
+    linear-gradient(145deg, rgba(20, 27, 42, .84), rgba(10, 14, 23, .82));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
@@ -2915,13 +2983,23 @@
   max-height: 55vh;
   overflow-y: auto;
   margin-top: 1.5rem;
-  padding: 0 8px 16px 0; /* For scrollbar */
+  padding: 0 8px 16px 0;
+  /* For scrollbar */
 }
 
 /* Custom scrollbar for the modal grid */
-.sp-playlists-grid::-webkit-scrollbar { width: 8px; }
-.sp-playlists-grid::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
-.sp-playlists-grid::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+.sp-playlists-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sp-playlists-grid::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.sp-playlists-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
 
 .sp-playlist-card-modal {
   cursor: pointer;

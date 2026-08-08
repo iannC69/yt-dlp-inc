@@ -1599,6 +1599,26 @@ const YoutubeDownloader = ({ activeJobId, setShowLibrary = () => { } }) => {
                           />
                         </div>
                       </div>
+                      
+                      <div className="ytdl-status-bar-wrapper">
+                        <div className="ytdl-status-bar-labels">
+                          <span>
+                            <Activity size={14} /> CPU Usage
+                          </span>
+                          <strong>
+                            {(systemStatus.cpuUsage || 0).toFixed(1)}%
+                          </strong>
+                        </div>
+                        <div className="ytdl-status-progress-bg">
+                          <div
+                            className="ytdl-status-progress-fill"
+                            style={{
+                              width: `${systemStatus.cpuUsage || 0}%`,
+                              background: (systemStatus.cpuUsage || 0) > 85 ? 'var(--ytdl-red, #f87171)' : 'var(--ytdl-accent, #38bdf8)'
+                            }}
+                          />
+                        </div>
+                      </div>
                       <div className="ytdl-status-bar-wrapper">
                         <div className="ytdl-status-bar-labels">
                           <span>

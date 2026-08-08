@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Music, Download, Loader2, AlertCircle, CheckCircle2,
   Link2, List, Disc, Search, RefreshCw, Clipboard,
   X, ChevronDown, ChevronUp, FolderOpen, Clock,
   Star, Calendar, Hash, Archive, Play, User, LogOut, ListVideo, HardDrive,
-  Zap, Activity, Cpu, Check, LayoutGrid, XCircle, Pause, CalendarClock
+  Zap, Activity, Cpu, Check, LayoutGrid, XCircle, Pause, CalendarClock,
+  Settings, RotateCcw, Heart
 } from 'lucide-react';
 import AuroraBackground from './AuroraBackground';
 import { getAverageColor } from './utils/colorUtils';
@@ -62,6 +64,31 @@ function fmtTotalDuration(ms) {
   const h = Math.floor(totalMin / 60);
   const min = totalMin % 60;
   return `${h}h ${min}m`;
+}
+
+function LazyTrackCover({ track, fallbackIcon }) {
+  const [coverUrl, setCoverUrl] = useState(track.coverUrl);
+
+  useEffect(() => {
+    if (!coverUrl && track.spotifyUrl) {
+      let isMounted = true;
+      fetch(`https://open.spotify.com/oembed?url=${track.spotifyUrl}`)
+        .then(r => r.json())
+        .then(data => {
+          if (isMounted && data.thumbnail_url) {
+            setCoverUrl(data.thumbnail_url);
+          }
+        })
+        .catch(() => {});
+      return () => { isMounted = false; };
+    }
+  }, [track.spotifyUrl, coverUrl]);
+
+  return coverUrl ? (
+    <img src={coverUrl} alt="" className="sp-preview-row-thumb" />
+  ) : (
+    <div className="sp-preview-row-thumb-fallback">{fallbackIcon}</div>
+  );
 }
 
 function estimateSize(totalDurationMs, kbps) {
@@ -555,6 +582,56 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     }
   };
 
+  const fetchMyLikedSongs = async () => {
+    if (!accessToken) return;
+    try {
+      setShowProfileMenu(false);
+      
+      const tracks = [];
+      let nextUrl = 'https://api.spotify.com/v1/me/tracks?limit=50';
+      
+      while (nextUrl && tracks.length < 500) { // Limit to 500 for now to prevent long freezing
+        const res = await fetch(nextUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (!res.ok) break;
+        const data = await res.json();
+        
+        data.items.forEach(item => {
+          if (item.track && !item.track.is_local) {
+            tracks.push({
+              trackNumber: tracks.length + 1,
+              title: item.track.name,
+              artist: item.track.artists.map(a => a.name).join(', '),
+              duration: item.track.duration_ms,
+              spotifyUrl: item.track.external_urls?.spotify
+            });
+          }
+        });
+        
+        nextUrl = data.next;
+      }
+      
+      if (tracks.length > 0) {
+        const likedInfo = {
+          type: 'playlist',
+          title: 'My Liked Songs',
+          artist: userProfile?.display_name || 'Me',
+          coverUrl: null,
+          trackCount: tracks.length,
+          tracks: tracks
+        };
+        setInfo(likedInfo);
+        setUrl('bulk://meta');
+        setBulkMeta(JSON.stringify(likedInfo));
+        setFetchStatus('done');
+      } else {
+        alert('No liked songs found!');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to fetch liked songs');
+    }
+  };
+
   // ─── SSE Download ────────────────────────────────────────────────────────
 
   const retryFailedTracks = () => {
@@ -826,7 +903,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                   const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
                   if (!clientId) return alert('Please set VITE_SPOTIFY_CLIENT_ID in the .env file!');
                   const redirectUri = 'http://127.0.0.1:5174/api/spotify-callback';
-                  const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative');
+                  const scope = encodeURIComponent('playlist-read-private playlist-read-collaborative user-library-read');
                   const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&show_dialog=true`;
                   if (window.electronAPI?.openExternal) {
                     window.electronAPI.openExternal(authUrl);
@@ -867,10 +944,19 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                   <AnimatePresence>
                     {showProfileMenu && (
                       <motion.div className="sp-profile-dropdown" initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.95 }} transition={{ duration: 0.15 }}>
+                        <div className="sp-dropdown-header">
+                          <span className="sp-dropdown-title">Account</span>
+                        </div>
+                        <button className="sp-dropdown-item" onClick={fetchMyLikedSongs}>
+                          <Heart size={16} /> My Liked Songs
+                        </button>
                         <button className="sp-dropdown-item" onClick={() => { setShowProfileMenu(false); fetchMyPlaylists(); }}>
                           <List size={16} /> My Playlists
                         </button>
                         <div className="sp-dropdown-divider" />
+                        <button className="sp-dropdown-item" onClick={() => { setShowProfileMenu(false); fetch(`/api/ytdl/open-folder?customPath=${encodeURIComponent(settings.downloadPath || '')}`); }}>
+                          <FolderOpen size={16} /> Open Downloads
+                        </button>
                         <button className="sp-dropdown-item sp-logout-item" onClick={() => { clearSpotifyAuth(); setAccessToken(''); setShowProfileMenu(false); }}>
                           <LogOut size={16} /> Log Out
                         </button>
@@ -901,7 +987,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
               >
                 <div className="sp-status-header-row" onClick={() => setIsStatusExpanded(!isStatusExpanded)}>
                   <div className="sp-status-quick">
-                    <Zap size={15} />
+                    <Activity size={15} />
                     <span>System Status</span>
                     {systemStatus.activeJobs > 0 && (
                       <span className="sp-status-badge">{systemStatus.activeJobs} Active Jobs</span>
@@ -935,6 +1021,15 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                           </div>
                           <div className="sp-status-progress-bg">
                             <div className="sp-status-progress-fill" style={{ width: `${(1 - systemStatus.freeMem / systemStatus.totalMem) * 100}%` }} />
+                          </div>
+                        </div>
+                        <div className="sp-status-bar-wrapper">
+                          <div className="sp-status-bar-labels">
+                            <span><Activity size={13} /> CPU Usage</span>
+                            <strong>{(systemStatus.cpuUsage || 0).toFixed(1)}%</strong>
+                          </div>
+                          <div className="sp-status-progress-bg">
+                            <div className="sp-status-progress-fill sp-cpu-fill" style={{ width: `${systemStatus.cpuUsage || 0}%`, background: (systemStatus.cpuUsage || 0) > 85 ? 'var(--sp-red)' : 'var(--sp-green)' }} />
                           </div>
                         </div>
                         <div className="sp-status-bar-wrapper">
@@ -1210,7 +1305,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                                     {isSelected && <Check size={11} strokeWidth={2.5} color="#fff" />}
                                   </div>
                                 </div>
-                                {track.coverUrl ? <img src={track.coverUrl} alt="" className="sp-preview-row-thumb" /> : <div className="sp-preview-row-thumb-fallback"><Music size={13} /></div>}
+                                <LazyTrackCover track={track} fallbackIcon={<Music size={13} />} />
                                 <div className="sp-preview-row-title-col">
                                   <strong>{cleanTitle}{isExplicit && <span className="sp-explicit-badge">E</span>}</strong>
                                   {featArtist && <span className="sp-feat-artist">feat. {featArtist}</span>}
@@ -1298,9 +1393,10 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           </AnimatePresence>
 
           {/* ── Download Modal ── */}
-          <AnimatePresence>
+          {createPortal(
+            <AnimatePresence>
             {showDownloadModal && info && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="sp-modal-overlay">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`sp-modal-overlay mode-${info?.type || activeTab}`}>
                 <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="sp-modal">
                   <h3 className="sp-modal-title">Download Settings {info.trackCount > 1 ? `— ${info.type === 'album' ? 'Album' : 'Playlist'}` : ''}</h3>
                   <div className="sp-modal-settings">
@@ -1394,7 +1490,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                 </motion.div>
               </motion.div>
             )}
-          </AnimatePresence>
+            </AnimatePresence>,
+            document.body
+          )}
 
           {/* ── Download Progress ── */}
           <AnimatePresence>

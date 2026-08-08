@@ -98,6 +98,23 @@ function rgbToHsl(r, g, b) {
   return { h, s, l };
 }
 
+export function getVibrantAccent(rgbStr) {
+  if (!rgbStr || !rgbStr.startsWith('rgb')) return rgbStr;
+  const match = rgbStr.match(/\d+/g);
+  if (!match || match.length < 3) return rgbStr;
+  const r = parseInt(match[0], 10);
+  const g = parseInt(match[1], 10);
+  const b = parseInt(match[2], 10);
+  
+  const hsl = rgbToHsl(r, g, b);
+  // Ensure minimum lightness and saturation for UI accents
+  hsl.s = Math.max(0.6, hsl.s);
+  hsl.l = Math.max(0.45, Math.min(0.65, hsl.l)); 
+  
+  const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
+  return `rgb(${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)})`;
+}
+
 function hslToRgb(h, s, l) {
   let r, g, b;
   if (s === 0) { r = g = b = l; }
