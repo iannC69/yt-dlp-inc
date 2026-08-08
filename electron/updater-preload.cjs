@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld('updaterAPI', {
     const handler = (_e, err) => callback(err);
     ipcRenderer.on('updater-error', handler);
     return () => ipcRenderer.removeListener('updater-error', handler);
-  }
+  },
+  getGeminiKey: () => ipcRenderer.invoke('get-gemini-key')
 });

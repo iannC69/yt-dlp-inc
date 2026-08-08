@@ -123,7 +123,7 @@ async function checkForUpdates() {
       version,
       description: release.body || '',
       isLatest: false,
-      commits: releaseCommits.slice(0, 15)
+      commits: releaseCommits
     });
   }
 
@@ -239,9 +239,9 @@ async function getReleaseHistory() {
 
     resultReleases.push({
       version,
-      description: release.body || 'No description provided.',
+      description: release.body || '',
       isLatest: false,
-      commits: releaseCommits.slice(0, 15)
+      commits: releaseCommits
     });
   }
 

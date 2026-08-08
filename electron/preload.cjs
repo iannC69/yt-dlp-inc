@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     testUpdaterUI: () => ipcRenderer.send('test-updater-ui'),
     manualCheckUpdate: () => ipcRenderer.invoke('manual-check-update'),
-    getReleaseHistory: () => ipcRenderer.invoke('get-release-history')
+    getReleaseHistory: () => ipcRenderer.invoke('get-release-history'),
+    getGeminiKey: () => ipcRenderer.invoke('get-gemini-key')
   }
 });

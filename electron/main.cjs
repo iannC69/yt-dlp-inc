@@ -11,6 +11,14 @@ if (!gotTheLock) {
   process.exit(0);
 }
 
+try {
+  const envFile = require('fs').readFileSync(path.join(__dirname, '../.env'), 'utf8');
+  envFile.split('\n').forEach(line => {
+    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+    if (match) process.env[match[1]] = match[2].trim();
+  });
+} catch (e) {}
+
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -268,6 +276,9 @@ ipcMain.handle('get-release-history', async () => {
   const { getReleaseHistory } = require('./updater-main.cjs');
   return await getReleaseHistory();
 });
+
+// IPC: Get Gemini API Key
+ipcMain.handle('get-gemini-key', () => process.env.GEMINI_API_KEY || '');
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('context-menu', event => event.preventDefault());

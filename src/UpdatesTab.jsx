@@ -2,6 +2,121 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, CheckCircle, User } from 'lucide-react';
 
+const IGNORE_PATTERNS = [
+  /^(da|dada|test|wip|temp|asdf|aaa+|bbb+|ok|done|x|\.)$/i,
+  /^chore: release v\d+\.\d+\.\d+$/i,
+  /^fix typo/i,
+  /^update$/i,
+  /^\d+$/,
+];
+
+function isUselessCommit(message) {
+  const trimmed = message.trim();
+  if (trimmed.length < 4) return true;
+  return IGNORE_PATTERNS.some(pattern => pattern.test(trimmed));
+}
+
+async function generateReleaseDescription(version, rawCommits, geminiApiKey) {
+  const cacheKey = `gemini-release-${version}`;
+  const cached = localStorage.getItem(cacheKey);
+  const cachedTs = localStorage.getItem(`${cacheKey}-ts`);
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  
+  if (cached && cachedTs && (Date.now() - parseInt(cachedTs) < SEVEN_DAYS)) {
+    return JSON.parse(cached);
+  }
+
+  const prompt = `
+You are writing professional release notes for a desktop app called MediaDL.
+Given these raw commit messages for version ${version}, generate:
+1. One short release description (max 10 words, professional tone)
+2. A cleaned list of meaningful changes (ignore "da", "test", "chore: release" etc.)
+   Each change should start with "feat:", "fix:", "style:", "refactor:", or "chore:"
+   and be written in clear English.
+
+Raw commits:
+${rawCommits.map(c => `- ${c.message}`).join('\n')}
+
+Respond ONLY with valid JSON, no markdown, no backticks:
+{
+  "description": "short release description here",
+  "changes": [
+    { "message": "feat: description of change" },
+    { "message": "fix: description of fix" }
+  ]
+}
+If there are truly no meaningful changes, return:
+{ "description": "Internal maintenance and improvements", "changes": [] }
+`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 512 }
+        })
+      }
+    );
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const result = JSON.parse(text.replace(/```json|```/g, '').trim());
+    localStorage.setItem(cacheKey, JSON.stringify(result));
+    localStorage.setItem(`${cacheKey}-ts`, Date.now().toString());
+    return result;
+  } catch (e) {
+    console.error("Gemini fetch failed:", e);
+    return { description: 'Internal maintenance', changes: [] };
+  }
+}
+
+async function resolveAvatar(owner, repo, sha) {
+  if (!sha || sha.length < 7) return null;
+  const cacheKey = `avatar-${sha}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`);
+    const data = await res.json();
+    const url = data.author?.avatar_url || null;
+    if (url) localStorage.setItem(cacheKey, url);
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+async function processRelease(release, commits, geminiApiKey) {
+  const filtered = commits.filter(c => !isUselessCommit(c.message));
+  
+  if (filtered.length > 0) {
+    for (const c of filtered) {
+      if (!c.avatarUrl && c.shortSha) {
+        c.avatarUrl = await resolveAvatar('iannC69', 'yt-dlp-inc', c.shortSha);
+      }
+    }
+    return { description: release.description || '', changes: filtered };
+  }
+  
+  if (!geminiApiKey || geminiApiKey === 'your_key_here') {
+    return { description: release.description || '', changes: [] };
+  }
+
+  const generated = await generateReleaseDescription(release.version, commits, geminiApiKey);
+  return {
+    description: generated.description,
+    changes: generated.changes.map(c => ({
+      message: c.message,
+      shortSha: 'gemini',
+      avatarUrl: null
+    }))
+  };
+}
+
 export default function UpdatesTab() {
   const [version, setVersion] = useState('');
   const [status, setStatus] = useState('idle'); // idle, checking, up-to-date
@@ -11,8 +126,18 @@ export default function UpdatesTab() {
   useEffect(() => {
     if (window.electronAPI?.updater) {
       window.electronAPI.updater.getAppVersion().then(v => setVersion(v));
-      window.electronAPI.updater.getReleaseHistory().then(data => {
-        setHistory(data || []);
+      window.electronAPI.updater.getReleaseHistory().then(async data => {
+        const geminiApiKey = await window.electronAPI.updater.getGeminiKey();
+        const processedReleases = [];
+        for (const release of (data || [])) {
+          const processed = await processRelease(release, release.commits, geminiApiKey);
+          processedReleases.push({
+            ...release,
+            description: processed.description || release.description,
+            commits: processed.changes
+          });
+        }
+        setHistory(processedReleases);
         setLoadingHistory(false);
       }).catch(err => {
         console.error('Failed to fetch history', err);
