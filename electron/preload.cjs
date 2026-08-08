@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_event, { name, data }) => callback(name, data);
       ipcRenderer.on('updater-event', handler);
       return () => ipcRenderer.removeListener('updater-event', handler);
-    }
+    },
+    testUpdaterUI: () => ipcRenderer.send('test-updater-ui'),
+    manualCheckUpdate: () => ipcRenderer.invoke('manual-check-update'),
+    getReleaseHistory: () => ipcRenderer.invoke('get-release-history')
   }
 });

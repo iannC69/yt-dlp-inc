@@ -457,10 +457,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
   // yt-dlp Auto-update (weekly background check + manual trigger)
   const performYtdlpUpdate = () => new Promise((resolve) => {
-    const isWin = process.platform === 'win32';
-    const ytDlpPath = path.join(appDir, 'bin', isWin ? 'yt-dlp.exe' : 'yt-dlp');
-    if (!fs.existsSync(ytDlpPath)) return resolve(false);
-    const p = spawn(ytDlpPath, ['-U'], { windowsHide: true });
+    if (!fs.existsSync(binPath)) return resolve(false);
+    const p = spawn(binPath, ['-U'], { windowsHide: true });
     p.on('close', (code) => resolve(code === 0));
     p.on('error', () => resolve(false));
   });
@@ -1555,12 +1553,12 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
     try {
       const { spawn } = await import('child_process');
-      // Resolve path similarly to index.js
-      const binDir = path.resolve(appDir, 'bin');
-      const binName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-      const binPath = getConfig().ytdlpPath || path.resolve(binDir, binName);
-
       const child = spawn(binPath, ['--dump-json', '--no-playlist', `ytsearch1:${name} music channel`]);
+      child.on('error', (err) => {
+        clearTimeout(timeout);
+        res.statusCode = 500;
+        if (!res.writableEnded) res.end(JSON.stringify({ error: err.message }));
+      });
       let ds = '';
       child.stdout.on('data', c => ds += c);
       child.stderr.on('data', () => { }); // Consume stderr to prevent buffer overflow

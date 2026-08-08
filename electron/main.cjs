@@ -185,18 +185,31 @@ app.whenReady().then(async () => {
     log(err.stack || '');
   }
 
-  createWindow();
-  createTray();
+  const { checkForUpdates, createUpdaterWindow } = require('./updater-main.cjs');
+  const updateAvailable = await checkForUpdates();
 
-  if (!serverOk) {
-    const { dialog } = require('electron');
-    const isPortBusy = (serverError && (serverError.code === 'EADDRINUSE' || String(serverError.message).includes('EADDRINUSE')));
-    dialog.showErrorBox(
-      'MediaDL — Server failed to start',
-      isPortBusy
-        ? `Port ${PORT} is already in use.\n\nClose any other MediaDL window and try again.`
-        : `The backend server could not start.\n\nError log: ${logPath}\n\nPlease send this file for support.`
-    );
+  const proceedWithLaunch = () => {
+    createWindow();
+    createTray();
+
+    if (!serverOk) {
+      const { dialog } = require('electron');
+      const isPortBusy = (serverError && (serverError.code === 'EADDRINUSE' || String(serverError.message).includes('EADDRINUSE')));
+      dialog.showErrorBox(
+        'MediaDL — Server failed to start',
+        isPortBusy
+          ? `Port ${PORT} is already in use.\n\nClose any other MediaDL window and try again.`
+          : `The backend server could not start.\n\nError log: ${logPath}\n\nPlease send this file for support.`
+      );
+    }
+  };
+
+  if (updateAvailable) {
+    createUpdaterWindow(() => {
+      proceedWithLaunch();
+    });
+  } else {
+    proceedWithLaunch();
   }
 });
 
@@ -227,6 +240,34 @@ ipcMain.on('window-close', () => { if(mainWindow) mainWindow.close(); });
 
 // IPC: Explicit quit from renderer
 ipcMain.handle('quit-app', () => { app.isQuiting = true; app.quit(); });
+
+// IPC: Test custom updater UI
+ipcMain.on('test-updater-ui', () => {
+  process.env.TEST_UPDATER = '1';
+  const { checkForUpdates, createUpdaterWindow } = require('./updater-main.cjs');
+  checkForUpdates().then((updateAvailable) => {
+    if (updateAvailable) {
+      createUpdaterWindow();
+    }
+  });
+});
+
+// IPC: Manual check for updates from Settings
+ipcMain.handle('manual-check-update', async () => {
+  const { checkForUpdates, createUpdaterWindow } = require('./updater-main.cjs');
+  const updateAvailable = await checkForUpdates();
+  if (updateAvailable) {
+    createUpdaterWindow();
+    return true;
+  }
+  return false;
+});
+
+// IPC: Get full release history for Settings page
+ipcMain.handle('get-release-history', async () => {
+  const { getReleaseHistory } = require('./updater-main.cjs');
+  return await getReleaseHistory();
+});
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('context-menu', event => event.preventDefault());

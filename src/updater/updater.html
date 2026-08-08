@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediaDL Update</title>
+  <link rel="stylesheet" href="./updater.css">
+</head>
+<body>
+  <div class="container">
+    <div class="left-panel">
+      <div class="icon-circle">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+      </div>
+      
+      <div class="update-title">Update available</div>
+      <div id="update-description" class="update-desc">Fetching...</div>
+      
+      <div class="version-row">
+        <span id="current-version" class="version-badge">v0.0.0</span>
+        <span class="arrow">→</span>
+        <span id="latest-version" class="version-badge latest">v0.0.0</span>
+      </div>
+
+      <div class="progress-container" id="progress-container" style="display: none;">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-text" id="progress-text">Downloading... 0%</div>
+      </div>
+
+      <div class="buttons">
+        <button id="btn-download" class="btn-download">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Download
+        </button>
+        <button id="btn-install" class="btn-download" style="display: none;">
+          Install & Restart
+        </button>
+        <button id="btn-later" class="btn-later">Later</button>
+      </div>
+    </div>
+
+    <div class="right-panel" id="changelog-container">
+      <!-- Releases injected here -->
+    </div>
+  </div>
+
+  <script src="./updater.js"></script>
+</body>
+</html>
