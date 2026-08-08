@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.0.80",
+    "title": "Update 8/8/2026",
+    "date": "2026-08-08T18:40:02.136Z",
+    "changes": [
+      {
+        "message": "feat: implement Spotify downloader and playlist analyzer components with custom UI styling",
+        "author": "iannc69",
+        "email": "solwolfs2@gmail.com"
+      },
+      {
+        "message": "feat: implement library and downloader interface components with custom CSS and server routing configuration.",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      }
+    ]
+  },
+  {
     "version": "v1.0.79",
     "title": "Update 8/8/2026",
     "date": "2026-08-08T11:31:10.361Z",
