@@ -1,7 +1,20 @@
 const { BrowserWindow, ipcMain, shell, app } = require('electron');
 const path = require('path');
 const https = require('https');
-const semver = require('semver');
+const semver = {
+  parse(v) { return (v || '').replace(/^[^\d]+/, '').split('.').map(n => parseInt(n, 10) || 0); },
+  compare(v1, v2) {
+    const p1 = this.parse(v1), p2 = this.parse(v2);
+    for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+      if ((p1[i] || 0) > (p2[i] || 0)) return 1;
+      if ((p1[i] || 0) < (p2[i] || 0)) return -1;
+    }
+    return 0;
+  },
+  gt(v1, v2) { return this.compare(v1, v2) > 0; },
+  lt(v1, v2) { return this.compare(v1, v2) < 0; },
+  rcompare(v1, v2) { return this.compare(v2, v1); }
+};
 const { autoUpdater } = require('electron-updater');
 
 const OWNER = 'iannC69';
