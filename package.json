@@ -3,7 +3,7 @@
   "private": true,
   "description": "MediaDL – YouTube & Spotify downloader desktop app",
   "author": "MediaDL",
-  "version": "1.0.80",
+  "version": "1.0.81",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -62,6 +62,7 @@
       "dist-fe/**/*",
       "electron/**/*",
       "src/server/**/*",
+      "src/updater/**/*",
       "package.json"
     ],
     "asar": true,
