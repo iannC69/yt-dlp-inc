@@ -3,7 +3,7 @@
   "private": true,
   "description": "MediaDL – YouTube & Spotify downloader desktop app",
   "author": "MediaDL",
-  "version": "1.0.77",
+  "version": "1.0.79",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -33,6 +33,7 @@
     "puppeteer": "^25.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "semver": "^7.8.5",
     "spotify-url-info": "^3.3.1",
     "vite": "^8.1.1"
   },
