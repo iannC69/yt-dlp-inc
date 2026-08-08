@@ -1,5 +1,17 @@
 [
   {
+    "version": "v1.0.82",
+    "title": "Update 8/8/2026",
+    "date": "2026-08-08T18:45:55.241Z",
+    "changes": [
+      {
+        "message": "chore: bump version to 1.0.81 and include updater directory in build configuration",
+        "author": "iannc69",
+        "email": "solwolfs2@gmail.com"
+      }
+    ]
+  },
+  {
     "version": "v1.0.80",
     "title": "Update 8/8/2026",
     "date": "2026-08-08T18:40:02.136Z",
