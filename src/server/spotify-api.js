@@ -27,7 +27,7 @@ export async function getSpotifyToken(clientId, clientSecret) {
   if (!clientId || !clientSecret) {
     return useAnonymous()
   }
-  
+
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
   const data = 'grant_type=client_credentials'
 
@@ -211,8 +211,7 @@ async function fetchWithRetry(path, clientId, clientSecret, accessToken) {
 }
 
 // ── Pagination Helper ────────────────────────────────────────────────────────
-const PLAYLIST_TRACK_FIELDS = 'next,total,items(track(id,name,duration_ms,type,is_local,artists(id,name),album(id,name,release_date,images,total_tracks),track_number))'
-
+const PLAYLIST_TRACK_FIELDS = 'next,total,items(track(id,name,duration_ms,type,is_local,artists(id,name),album(id,name,release_date,images,total_tracks),track_number,external_ids))'
 async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
   const expectedTotal = firstPage?.total ?? null
   const allItems = [...(firstPage?.items || [])]
@@ -222,41 +221,36 @@ async function fetchAllPages(firstPage, clientId, clientSecret, accessToken) {
   while (nextUrl) {
     pageNum++
     let nextPath = nextUrl.replace('https://api.spotify.com', '')
-    // Ensure album images field is always included (Spotify may strip fields from next URL)
-    if (!nextPath.includes('fields=') && nextPath.includes('/playlists/') && nextPath.includes('/tracks')) {
-      const sep = nextPath.includes('?') ? '&' : '?'
-      nextPath += `${sep}fields=${encodeURIComponent(PLAYLIST_TRACK_FIELDS)}`
+
+    // Spotify's `next` URL often returns broken/double-encoded `fields` parameters for complex queries.
+    // Instead of using their string blindly, we parse out the offset/limit and rebuild the URL cleanly.
+    try {
+      const u = new URL(nextUrl);
+      const limit = u.searchParams.get('limit') || '100';
+      const offset = u.searchParams.get('offset') || String(allItems.length);
+      const marketParams = accessToken ? 'market=from_token' : 'market=US';
+      const base = u.pathname;
+
+      if (base.includes('/playlists/') && base.includes('/tracks')) {
+        nextPath = `${base}?limit=${limit}&offset=${offset}&${marketParams}`;
+      } else if (base.includes('/albums/') && base.includes('/tracks')) {
+        nextPath = `${base}?limit=${limit}&offset=${offset}&${marketParams}`;
+      }
+    } catch (e) {
+      // fallback if URL parsing fails
     }
     console.log(`[spotify-api] Fetching page ${pageNum} (${allItems.length} items so far)...`)
-    const page = await fetchWithRetry(nextPath, clientId, clientSecret, accessToken)
-    if (page?.items?.length) allItems.push(...page.items)
-    nextUrl = page?.next || null
+    try {
+      const page = await fetchWithRetry(nextPath, clientId, clientSecret, accessToken)
+      if (page?.items?.length) allItems.push(...page.items)
+      nextUrl = page?.next || null
+    } catch (e) {
+      console.warn(`[spotify-api] Failed to fetch page ${pageNum}: ${e.message}. Stopping pagination early.`)
+      break;
+    }
   }
 
   console.log(`[spotify-api] Pagination complete: ${allItems.length} items total (expected: ${expectedTotal ?? 'unknown'})`)
-
-  // If we got fewer items than declared, retry once with a fresh token
-  if (expectedTotal !== null && allItems.length < expectedTotal) {
-    console.warn(`[spotify-api] Track count mismatch: got ${allItems.length}, expected ${expectedTotal}. Retrying with fresh token...`)
-    tokenCache = null
-    const retryItems = [...(firstPage?.items || [])]
-    let retryNext = firstPage?.next || null
-    try {
-      while (retryNext) {
-        const retryPath = retryNext.replace('https://api.spotify.com', '')
-        const retryPage = await fetchWithRetry(retryPath, clientId, clientSecret, null)
-        if (retryPage?.items?.length) retryItems.push(...retryPage.items)
-        retryNext = retryPage?.next || null
-      }
-      if (retryItems.length > allItems.length) {
-        console.log(`[spotify-api] Retry recovered ${retryItems.length - allItems.length} extra items (${retryItems.length} total)`)
-        return retryItems
-      }
-      console.warn(`[spotify-api] Retry did not improve count (${retryItems.length}), keeping original ${allItems.length}`)
-    } catch (retryErr) {
-      console.warn(`[spotify-api] Retry failed (${retryErr.message}), keeping original ${allItems.length}`)
-    }
-  }
 
   return allItems
 }
@@ -279,7 +273,7 @@ function saveCache() {
 }
 
 // ── Main Metadata Resolver ───────────────────────────────────────────────────
-export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret, accessToken = null) {
+export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret, accessToken = null, forceRefresh = false) {
   const match = (spotifyUrlString || '').split('?')[0].match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/)
   if (!match) throw new Error('Invalid Spotify URL. Supported: track, album, playlist.')
 
@@ -288,10 +282,10 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
 
   const cacheKey = `${match[1]}_${match[2]}`
   const cache = loadCache()
-  // Cache TTL: 4 hours for playlists (content changes), 24 hours for tracks/albums
-  const CACHE_TTL_PLAYLIST = 4 * 60 * 60 * 1000
-  const CACHE_TTL_STATIC   = 24 * 60 * 60 * 1000
-  if (cache[cacheKey] && cache[cacheKey].timestamp) {
+  // Cache TTL: 5 minutes for playlists (content changes), 24 hours for tracks/albums
+  const CACHE_TTL_PLAYLIST = 5 * 60 * 1000
+  const CACHE_TTL_STATIC = 24 * 60 * 60 * 1000
+  if (!forceRefresh && cache[cacheKey] && cache[cacheKey].timestamp) {
     const cachedData = cache[cacheKey].data;
     const age = Date.now() - cache[cacheKey].timestamp;
     const ttl = (cachedData?.type === 'playlist') ? CACHE_TTL_PLAYLIST : CACHE_TTL_STATIC;
@@ -300,7 +294,7 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
     if (isPartial) {
       console.log(`[spotify-api] Cache BUST for ${cacheKey}: cached ${cachedData.trackCount} tracks but totalTracks=${cachedData.totalTracks} — forcing full re-fetch`);
     } else if (age < ttl) {
-      console.log(`[spotify-api] Cache HIT for ${cacheKey} (age: ${Math.round(age/60000)}min, ttl: ${Math.round(ttl/60000)}min)`);
+      console.log(`[spotify-api] Cache HIT for ${cacheKey} (age: ${Math.round(age / 60000)}min, ttl: ${Math.round(ttl / 60000)}min)`);
       console.log('[spotify-api] Cached data:', JSON.stringify({
         type: cachedData?.type,
         title: cachedData?.title,
@@ -308,7 +302,7 @@ export async function resolveSpotifyMetadata(spotifyUrlString, clientId, clientS
       }))
       return cachedData
     } else {
-      console.log(`[spotify-api] Cache EXPIRED for ${cacheKey} (age: ${Math.round(age/60000)}min) — re-fetching`);
+      console.log(`[spotify-api] Cache EXPIRED for ${cacheKey} (age: ${Math.round(age / 60000)}min) — re-fetching`);
     }
   }
 
@@ -367,14 +361,14 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
 
     try {
       const promises = [];
-      if (artistId) promises.push(fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken).then(d => artistData = d).catch(() => {}));
-      if (albumId) promises.push(fetchWithRetry(`/v1/albums/${albumId}`, clientId, clientSecret, accessToken).then(d => albumData = d).catch(() => {}));
+      if (artistId) promises.push(fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken).then(d => artistData = d).catch(() => { }));
+      if (albumId) promises.push(fetchWithRetry(`/v1/albums/${albumId}`, clientId, clientSecret, accessToken).then(d => albumData = d).catch(() => { }));
       await Promise.all(promises);
-    } catch(e) {}
+    } catch (e) { }
 
     let artistThumbnail = artistData?.images?.[0]?.url || null;
     let genre = artistData?.genres?.join(', ') || '';
-    
+
     if (!artist) throw new Error(`Could not resolve artist for track: ${id}`)
     return {
       type: 'track',
@@ -407,14 +401,14 @@ async function _resolveSpotifyMetadata(spotifyUrlString, clientId, clientSecret,
     const album = await fetchWithRetry(`/v1/albums/${id}${market}`, clientId, clientSecret, accessToken)
     const artist = album.artists?.[0]?.name
     const artistId = album.artists?.[0]?.id
-    
+
     let artistData = null;
     let artistThumbnail = null;
     if (artistId) {
       try {
         artistData = await fetchWithRetry(`/v1/artists/${artistId}`, clientId, clientSecret, accessToken)
         artistThumbnail = artistData.images?.[0]?.url || null
-      } catch(e) {}
+      } catch (e) { }
     }
     if (!artist) throw new Error(`Could not resolve artist for album: ${id}`)
 
@@ -880,7 +874,7 @@ export async function resolveSpotifyFallback(url) {
           // Extract track index from the aria-rowindex or the first column
           const ariaIndex = row.getAttribute('aria-rowindex');
           let trackIndex = parseInt(ariaIndex, 10);
-          
+
           if (!trackIndex || isNaN(trackIndex)) {
             const indexEl = row.querySelector('[aria-colindex="1"]');
             if (indexEl) trackIndex = parseInt(indexEl.innerText.trim(), 10);
@@ -955,7 +949,7 @@ export async function resolveSpotifyFallback(url) {
     // was requested. The fallback is only safe when the browser stayed on the
     // exact resource and did not render the user's library/home view.
     if (data.pagePath !== data.expectedPath || data.type !== expectedType ||
-        /^(your library|spotify audio)$/i.test(data.title.trim())) {
+      /^(your library|spotify audio)$/i.test(data.title.trim())) {
       throw new Error(`Pagina Spotify nu a confirmat ${expectedType}/${expectedId}.`)
     }
 

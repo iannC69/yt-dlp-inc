@@ -81,59 +81,49 @@
 
 .custom-window-controls {
   position: fixed;
-  top: 16px;
-  right: 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  top: 0;
+  right: 0;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
   pointer-events: auto;
   -webkit-app-region: no-drag;
   z-index: 2001;
 }
 
-.mac-btn {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+.win-btn {
+  width: 46px !important;
+  height: 32px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background: transparent;
   cursor: pointer;
-  padding: 0;
-  transition: transform 0.15s ease, filter 0.2s, opacity 0.2s;
-  opacity: 0.9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: rgba(255, 255, 255, 0.7);
+  transition: background-color 0.15s, color 0.15s;
+  outline: none;
 }
 
-.mac-btn svg {
-  width: 10px;
-  height: 10px;
-  opacity: 1;
-  color: rgba(0, 0, 0, 0.65);
+.win-btn svg {
+  width: 11px !important;
+  height: 11px !important;
+  margin: 0 !important;
 }
 
-.custom-window-controls:hover .mac-btn {
-  opacity: 1;
+.win-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
-.mac-btn.mac-close {
-  background: #ff5f56;
-}
-
-.mac-btn.mac-min {
-  background: #ffbd2e;
-}
-
-.mac-btn.mac-max {
-  background: #27c93f;
-}
-
-.custom-window-controls:hover .mac-btn {
-  opacity: 1;
-}
-
-.mac-btn:hover {
-  filter: brightness(1.2);
+.win-btn.win-close:hover {
+  background: #e81123;
+  color: #fff;
 }
 
 .settings-status-dot {

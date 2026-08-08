@@ -522,16 +522,14 @@ export default function App() {
 
       {/* Window Controls — fixed top-right, no parent interference */}
       <div className="custom-window-controls">
-        <button className="mac-btn mac-min" onClick={() => window.electronAPI?.window?.minimize()} title="Minimize">
-          <svg viewBox="0 0 14 14"><path d="M3 7 h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        <button className="win-btn win-min" onClick={() => window.electronAPI?.window?.minimize()} title="Minimize">
+          <svg viewBox="0 0 10 10" shapeRendering="crispEdges"><path d="M 0,5 h 10" stroke="currentColor" strokeWidth="1" /></svg>
         </button>
-        <button className="mac-btn mac-max" onClick={() => window.electronAPI?.window?.maximize()} title="Maximize">
-          <svg viewBox="0 0 14 14">
-            <path d="M4.5 9.5 L2 12 M2 12 V8.5 M2 12 H5.5 M9.5 4.5 L12 2 M12 2 V5.5 M12 2 H8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <button className="win-btn win-max" onClick={() => window.electronAPI?.window?.maximize()} title="Maximize">
+          <svg viewBox="0 0 10 10" shapeRendering="crispEdges"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
         </button>
-        <button className="mac-btn mac-close" onClick={() => window.electronAPI?.window?.close()} title="Close">
-          <svg viewBox="0 0 14 14"><path d="M4 4 L10 10 M10 4 L4 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        <button className="win-btn win-close" onClick={() => window.electronAPI?.window?.close()} title="Close">
+          <svg viewBox="0 0 10 10" shapeRendering="crispEdges"><path d="M 1,1 L 9,9 M 9,1 L 1,9" stroke="currentColor" strokeWidth="1" /></svg>
         </button>
       </div>
 

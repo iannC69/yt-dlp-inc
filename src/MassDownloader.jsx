@@ -645,19 +645,7 @@ export default function MassDownloader() {
               </div>
               <h2 className="md3-zero-title">Ready to Download</h2>
               <p className="md3-zero-sub">Paste a Spotify or YouTube playlist URL in the sidebar to get started.</p>
-              <div className="md3-zero-tips">
-                {[
-                  { icon: <Gauge size={18} />,    t: 'Optimal Parallelism', d: 'Use 3–5 parallel downloads for best stability.' },
-                  { icon: <Shield size={18} />,   t: 'Auto Deduplication',  d: 'Duplicate tracks are flagged and removed in one click.' },
-                  { icon: <Sparkles size={18} />, t: 'Smart Metadata',      d: 'Tags sourced from Spotify, iTunes & YouTube Music.' },
-                ].map((tip, i) => (
-                  <motion.div key={i} className="md3-tip-card" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.1 + i * 0.08 }}>
-                    <div className="md3-tip-icon">{tip.icon}</div>
-                    <div className="md3-tip-title">{tip.t}</div>
-                    <div className="md3-tip-text">{tip.d}</div>
-                  </motion.div>
-                ))}
-              </div>
+
             </motion.div>
           )}
         </AnimatePresence>

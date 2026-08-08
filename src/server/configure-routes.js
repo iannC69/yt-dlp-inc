@@ -1566,7 +1566,29 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
     }
   });
 
-  middlewares.use('/api/mass/start-ytdl', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const did = u.searchParams.get('downloadId'); if (!did) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing downloadId' })) }; const fmtStr = u.searchParams.get('format') || 'mp3'; const rc = Math.min(24, Math.max(1, parseInt(u.searchParams.get('concurrency') || '3', 10))); const sm = u.searchParams.get('speedMode') === 'MAXIMUM' ? 'MAXIMUM' : 'BALANCED'; const profile = getBatchPerformanceProfile(rc, sm); res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`) } catch { } }; const runDownload = async bodyData => { const items = (bodyData?.items || []).map((item, i) => ({ ...item, index: item.index || i + 1 })); if (!items.length) { send({ done: true, error: 'No items' }); return res.end() }; const pn = sanitizeFilename(bodyData?.playlistName || 'mass-download') || 'mass-download'; const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const td = path.join(dl, `mass-ytdl-${pn}-${did}`); fs.mkdirSync(td, { recursive: true }); send({ current: 0, total: items.length, status: `Starting ${items.length} tracks with ${profile.concurrency} workersâ€¦`, performanceProfile: profile }); let cc = 0, fc = 0; const downloadItem = async (entry, ctx) => { const { item, index } = entry; const isSp = item.type === 'spotify' || !!item.spotifyUrl; const qStr = isSp ? `ytsearch5:${item.channel || item.artist || ''} ${item.title}` : (item.url || `https://www.youtube.com/watch?v=${item.id}`); const sTitle = sanitizeFilename(item.title || `track-${index}`); const sArtist = sanitizeFilename(item.channel || item.artist || ''); const outName = sArtist ? `${sArtist} - ${sTitle}` : sTitle; const op = path.join(td, `${outName}.%(ext)s`); let args = []; if (fmtStr === 'mp3') { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] } else if (fmtStr === 'm4a') { args = ['-x', '--audio-format', 'm4a', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] } else { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', qStr] }; const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; return new Promise(resolve => { const p = spawn(binPath, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }); ctx.registerProcess(p); ctx.unregisterProcess && (p.on('close', () => ctx.unregisterProcess(p))); let se = ''; p.stdout.on('data', c => { const t = c.toString(); const m = t.match(/\[download\]\s+([\d.]+)%/); if (m) send({ current: cc, total: items.length, currentTrack: index, trackTitle: item.title, trackProgress: parseFloat(m[1]) }) }); p.stderr.on('data', c => se += c); p.on('close', code => { if (state?.cancelled) return resolve({ ok: false, error: 'cancelled' }); if (code !== 0) return resolve({ ok: false, error: `yt-dlp failed (${code}): ${se.slice(-200)}`, title: item.title }); const pattern = new RegExp(`^${outName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.[a-zA-Z0-9]+$`); const files = fs.existsSync(td) ? fs.readdirSync(td).filter(f => pattern.test(f)) : []; const fn = files[0] || null; if (!fn) return resolve({ ok: false, error: `No output for ${item.title || index}` }); resolve({ ok: true, output: fn }) }); p.on('error', e => resolve({ ok: false, error: e.message })) }) }; const jobsDir = path.join(os.tmpdir(), 'mediadl-jobs'); fs.mkdirSync(jobsDir, { recursive: true }); const batch = createBatchEngine({ jobsDirectory: jobsDir, jobId: did, items, profile, onEvent: evt => { if (evt.trackDone) { cc++; send({ current: cc, total: items.length, status: `Completed ${cc}/${items.length}`, currentTrack: evt.current, trackDone: true, percent: Math.round(cc / items.length * 100) }) } else if (evt.trackError) { fc++; send({ current: cc, total: items.length, trackError: evt.trackError, currentTrack: evt.current, percent: Math.round(cc / items.length * 100) }) } else if (evt.current !== undefined) { send({ current: evt.current, total: items.length, percent: Math.round((evt.completedCount || 0) / items.length * 100) }) } } }); activeMassYtdlDownloads.set(did, batch.controls); try { await batch.run(downloadItem) } finally { activeMassYtdlDownloads.delete(did) }; send({ done: true, progress: 100, completedTracks: cc, failedTracks: fc, outputDir: td }); res.end() }; const consume = async () => { let body = ''; req.on('data', c => body += c); req.on('end', async () => { try { const bd = JSON.parse(body || '{}'); await runDownload(bd) } catch (e) { send({ done: true, error: e.message }); res.end() } }); req.on('close', () => { const b = activeMassYtdlDownloads.get(did); if (b && b.cancel) b.cancel() }) }; consume() })
+  // ── Spotify OEmbed Proxy (Bypass CORS for frontend) ───────────────────
+  middlewares.use('/api/spotify-oembed', async (req, res, next) => {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    if (u.pathname !== '/') return next();
+    const targetUrl = u.searchParams.get('url');
+    if (!targetUrl) {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ error: 'Missing url param' }));
+    }
+    try {
+      const fetch = (await import('node-fetch')).default || globalThis.fetch;
+      const resp = await fetch(`https://open.spotify.com/oembed?url=${targetUrl}`);
+      if (!resp.ok) throw new Error('oembed fetch failed');
+      const data = await resp.json();
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(data));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: e.message }));
+    }
+  });
+
+  middlewares.use('/api/mass/start-ytdl', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const did = u.searchParams.get('downloadId'); if (!did) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Missing downloadId' })) }; const fmtStr = u.searchParams.get('format') || 'mp3'; const rc = Math.min(24, Math.max(1, parseInt(u.searchParams.get('concurrency') || '3', 10))); const sm = u.searchParams.get('speedMode') === 'MAXIMUM' ? 'MAXIMUM' : 'BALANCED'; const profile = getBatchPerformanceProfile(rc, sm); res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`) } catch { } }; const runDownload = async bodyData => { const items = (bodyData?.items || []).map((item, i) => ({ ...item, index: item.index || i + 1 })); if (!items.length) { send({ done: true, error: 'No items' }); return res.end() }; const pn = sanitizeFilename(bodyData?.playlistName || 'mass-download') || 'mass-download'; const dl = ensureDownloadsDir(u.searchParams.get('customPath')); const td = path.join(dl, `mass-ytdl-${pn}-${did}`); fs.mkdirSync(td, { recursive: true }); send({ current: 0, total: items.length, status: `Starting ${items.length} tracks with ${profile.concurrency} workersâ€¦`, performanceProfile: profile }); let cc = 0, fc = 0; const downloadItem = async (entry, ctx) => { const { item, index } = entry; const isSp = item.type === 'spotify' || !!item.spotifyUrl; const qStr = isSp ? `ytsearch5:${item.channel || item.artist || ''} ${item.title}` : (item.url || `https://www.youtube.com/watch?v=${item.id}`); const sTitle = sanitizeFilename(item.title || `track-${index}`); const sArtist = sanitizeFilename(item.channel || item.artist || ''); const outName = sArtist ? `${sArtist} - ${sTitle}` : sTitle; const op = path.join(td, `${outName}.%(ext)s`); let args = []; if (fmtStr === 'mp3') { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', item.isrc ? `direct:${item.isrc}` : qStr] } else if (fmtStr === 'm4a') { args = ['-x', '--audio-format', 'm4a', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', item.isrc ? `direct:${item.isrc}` : qStr] } else { args = ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', op, '--ffmpeg-location', ffmpegDir, '--no-playlist', '--playlist-items', '1', '-N', String(profile.fragments || 4), '--extractor-args', getExtractorArgs(), '--extractor-retries', '5', '--fragment-retries', '10', '--retry-sleep', 'linear=1::2', '--add-header', 'Accept-Language:en-US,en;q=0.9', item.isrc ? `direct:${item.isrc}` : qStr] }; const cp = path.resolve(appDir, 'cookies.txt'); const cfb = getConfig().cookiesFromBrowser || ''; if (cfb) { args.splice(args.length - 1, 0, '--cookies-from-browser', cfb) } else if (fs.existsSync(cp)) { args.splice(args.length - 1, 0, '--cookies', cp) }; return new Promise(resolve => { const p = spawn(binPath, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }); ctx.registerProcess(p); ctx.unregisterProcess && (p.on('close', () => ctx.unregisterProcess(p))); let se = ''; p.stdout.on('data', c => { const t = c.toString(); const m = t.match(/\[download\]\s+([\d.]+)%/); if (m) send({ current: cc, total: items.length, currentTrack: index, trackTitle: item.title, trackProgress: parseFloat(m[1]) }) }); p.stderr.on('data', c => se += c); p.on('close', code => { if (state?.cancelled) return resolve({ ok: false, error: 'cancelled' }); if (code !== 0) return resolve({ ok: false, error: `yt-dlp failed (${code}): ${se.slice(-200)}`, title: item.title }); const pattern = new RegExp(`^${outName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.[a-zA-Z0-9]+$`); const files = fs.existsSync(td) ? fs.readdirSync(td).filter(f => pattern.test(f)) : []; const fn = files[0] || null; if (!fn) return resolve({ ok: false, error: `No output for ${item.title || index}` }); resolve({ ok: true, output: fn }) }); p.on('error', e => resolve({ ok: false, error: e.message })) }) }; const jobsDir = path.join(os.tmpdir(), 'mediadl-jobs'); fs.mkdirSync(jobsDir, { recursive: true }); const batch = createBatchEngine({ jobsDirectory: jobsDir, jobId: did, items, profile, onEvent: evt => { if (evt.trackDone) { cc++; send({ current: cc, total: items.length, status: `Completed ${cc}/${items.length}`, currentTrack: evt.current, trackDone: true, percent: Math.round(cc / items.length * 100) }) } else if (evt.trackError) { fc++; send({ current: cc, total: items.length, trackError: evt.trackError, currentTrack: evt.current, percent: Math.round(cc / items.length * 100) }) } else if (evt.current !== undefined) { send({ current: evt.current, total: items.length, percent: Math.round((evt.completedCount || 0) / items.length * 100) }) } } }); activeMassYtdlDownloads.set(did, batch.controls); try { await batch.run(downloadItem) } finally { activeMassYtdlDownloads.delete(did) }; send({ done: true, progress: 100, completedTracks: cc, failedTracks: fc, outputDir: td }); res.end() }; const consume = async () => { let body = ''; req.on('data', c => body += c); req.on('end', async () => { try { const bd = JSON.parse(body || '{}'); await runDownload(bd) } catch (e) { send({ done: true, error: e.message }); res.end() } }); req.on('close', () => { const b = activeMassYtdlDownloads.get(did); if (b && b.cancel) b.cancel() }) }; consume() })
 
   middlewares.use('/api/mass/cancel', (req, res, next) => { const u = new URL(req.url, `http://${req.headers.host}`); if (u.pathname !== '/') return next(); const did = u.searchParams.get('downloadId'); if (did && activeMassYtdlDownloads.has(did)) activeMassYtdlDownloads.get(did).cancel(); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true })) })
 
@@ -1634,8 +1656,32 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
   });
 
 
-  // â”€â”€ Spotify Download (SSE, Multi-Track) â”€â”€
-    middlewares.use('/api/spotify-download', (req, res, next) => {
+  // ── Spotify Download (SSE, Multi-Track) ──
+  const bulkMetadataCache = new Map();
+
+  middlewares.use('/api/spotify-bulk-prep', (req, res, next) => {
+    const urlObj = new URL(req.url, `http://${req.headers.host}`);
+    if (urlObj.pathname !== '/') return next();
+    if (req.method !== 'POST') return next();
+    
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        const id = Date.now().toString() + Math.random().toString(36).slice(2);
+        bulkMetadataCache.set(id, data);
+        setTimeout(() => bulkMetadataCache.delete(id), 1000 * 60 * 60); // 1 hour
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, bulkId: id }));
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+  });
+
+  middlewares.use('/api/spotify-download', (req, res, next) => {
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
     if (urlObj.pathname !== '/') return next();
     
@@ -1666,7 +1712,14 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       send({ status: 'Fetching metadata...', progress: 2 });
       let metadata;
       try {
-        if (spotUrl.startsWith('{')) {
+        if (spotUrl.startsWith('bulk://')) {
+          const bulkId = spotUrl.replace('bulk://', '');
+          if (bulkMetadataCache.has(bulkId)) {
+            metadata = bulkMetadataCache.get(bulkId);
+          } else {
+            throw new Error('Bulk metadata expired or not found.');
+          }
+        } else if (spotUrl.startsWith('{')) {
           metadata = JSON.parse(spotUrl);
         } else {
           metadata = await resolveSpotifyMetadata(spotUrl, clientId, clientSecret, accessToken);
@@ -1710,11 +1763,48 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
       const outputDir = isCollection ? path.join(downloadsDir, collectionFolderName) : downloadsDir;
       if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-      const downloadedJsonPath = path.join(outputDir, 'downloaded.json');
-      const pendingJsonPath = path.join(outputDir, 'pending_manual.json');
-      const logPath = path.join(process.cwd(), 'logs', 'session_log.txt');
+      // Save folder.jpg for Windows Explorer icon and set custom folder icon
+      if (isCollection && metadata.coverUrl) {
+        const folderJpgPath = path.join(outputDir, 'folder.jpg');
+        try {
+            const res = await fetch(metadata.coverUrl);
+            const buf = await res.arrayBuffer();
+            if (!fs.existsSync(folderJpgPath)) {
+                fs.writeFileSync(folderJpgPath, Buffer.from(buf));
+            }
+            if (process.platform === 'win32') {
+                const metaDir = path.join(outputDir, '.metadata');
+                if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir, { recursive: true });
+                const icoPath = path.join(metaDir, 'album.ico');
+                
+                await new Promise(r => { spawn(ffmpegBin, ['-y', '-i', folderJpgPath, '-vf', 'scale=256:256', icoPath], { windowsHide: true }).on('close', r); });
+                
+                if (fs.existsSync(icoPath)) {
+                    const desktopIniPath = path.join(outputDir, 'desktop.ini');
+                    fs.writeFileSync(desktopIniPath, "[.ShellClassInfo]\r\nIconResource=.metadata\\album.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Music\r\n");
+                    
+                    await new Promise(r => { spawn('attrib', ['+s', `"${outputDir}"`], { shell: true }).on('close', r); });
+                    await new Promise(r => { spawn('attrib', ['+s', '+h', `"${desktopIniPath}"`], { shell: true }).on('close', r); });
+                    await new Promise(r => { spawn('attrib', ['+h', `"${metaDir}"`], { shell: true }).on('close', r); });
+                    
+                    const batPath = path.join(outputDir, 'ApplyFolderIcon.bat');
+                    fs.writeFileSync(batPath, `@echo off\r\nattrib +s "%~dp0."\r\nattrib +s +h "%~dp0desktop.ini"\r\nattrib +h "%~dp0.metadata"\r\nie4uinit.exe -show\r\n`);
+                    await new Promise(r => { spawn('attrib', ['+h', `"${batPath}"`], { shell: true }).on('close', r); });
+                    
+                    await new Promise(r => { spawn('cmd.exe', ['/c', batPath], { windowsHide: true }).on('close', r); });
+                }
+            }
+        } catch(e) { console.error('[spotify] Folder icon error:', e.message); }
+      }
+      const logsDir = path.join(outputDir, 'logs');
+      if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+      // Optionally hide the logs folder
+      if (process.platform === 'win32') { try { spawnSync('attrib', ['+h', logsDir], { windowsHide: true }); } catch { } }
 
-      if (!fs.existsSync(path.dirname(logPath))) fs.mkdirSync(path.dirname(logPath), { recursive: true });
+      const downloadedJsonPath = path.join(logsDir, 'downloaded.json');
+      const pendingJsonPath = path.join(logsDir, 'pending_manual.json');
+      const logPath = path.join(logsDir, 'session_log.txt');
+
       const appendLog = (msg) => {
         try { fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${msg}\n`); } catch(e){}
       };
@@ -1778,9 +1868,10 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
         // Pre-fetch cover art buffer for tag embedding
         let coverBuf = null;
-        if (track.coverUrl) {
+        let coverUrlToFetch = track.coverUrl || metadata.coverUrl;
+        if (coverUrlToFetch) {
           try {
-            const cres = await fetch(track.coverUrl);
+            const cres = await fetch(coverUrlToFetch);
             if (cres.ok) coverBuf = Buffer.from(await cres.arrayBuffer());
           } catch(e) {}
         }
@@ -1803,21 +1894,23 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         // ── Query list: ISRC-first for exact match, then fallbacks ─────────────
         const queries = [];
 
-        // Attempt 1: ISRC-based search (100% exact match guarantee)
-        if (track.isrc) {
-          queries.push({ q: `ytmsearch1:${track.isrc}`, src: 'YouTube Music (ISRC)' });
+        // Attempt 1: spotdl (Highest accuracy, strictly uses YouTube Music based on Spotify metadata)
+        if (fs.existsSync(spotdlBin)) {
+          queries.push({ q: track.spotifyUrl || `${track.artist} ${track.title}`, spotdl: true, src: 'spotdl (Primary)' });
         }
 
-        // Attempt 2: Spotify direct URL via yt-dlp (if spotifyUrl in track)
-        if (track.spotifyUrl) {
-          queries.push({ q: track.spotifyUrl, src: 'Spotify URL', direct: true });
+        // Attempt 2: ISRC-based search (100% exact match guarantee, direct download for maximum speed)
+        if (track.isrc) {
+          queries.push({ q: `ytsearch1:${track.isrc}`, src: 'YouTube Music (ISRC)', direct: true });
         }
+
+        // (Removed Attempt 2: Spotify direct URL via yt-dlp, because yt-dlp searches the URL on YouTube, leading to 29s false songs!)
 
         // Attempt 3: YouTube Music search — "Artist - Title"
-        queries.push({ q: `ytmsearch3:${track.artist} - ${track.title}`, src: 'YouTube Music' });
+        queries.push({ q: `ytsearch3:${track.artist} - ${track.title} topic`, src: 'YouTube Music' });
 
         // Attempt 4: YouTube Music alt — "Title Artist audio"
-        queries.push({ q: `ytmsearch3:${track.title} ${track.artist} audio`, src: 'YouTube Music Alt' });
+        queries.push({ q: `ytsearch3:${track.title} ${track.artist} audio`, src: 'YouTube Music Alt' });
 
         // Attempt 5: YouTube search — official audio
         queries.push({ q: `ytsearch3:${track.artist} ${track.title} official audio`, src: 'YouTube' });
@@ -1828,10 +1921,8 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
         // Attempt 7: SoundCloud
         queries.push({ q: `scsearch3:${track.artist} ${track.title}`, src: 'SoundCloud' });
 
-        // Attempt 8: spotdl fallback
-        if (fs.existsSync(spotdlBin)) {
-          queries.push({ q: `${track.artist} ${track.title}`, spotdl: true, src: 'spotdl' });
-        }
+        // Attempt 9: Ultimate fallback (blindly download first result for unreleased/leaked songs)
+        queries.push({ q: `ytsearch1:${track.artist} - ${track.title}`, src: 'Ultimate Fallback (No Checks)', direct: true });
 
         let success = false;
         let attemptNum = 1;
@@ -1842,14 +1933,18 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
           if (query.spotdl) {
             appendLog(`Attempt ${attemptNum} (spotdl): ${query.q}`);
+            // Append .{output-ext} so spotdl treats the path as a file template rather than a directory!
+            const spotdlOutTemplate = `${finalPath.slice(0, finalPath.lastIndexOf('.'))}.{output-ext}`;
             const spotdlArgs = process.platform === 'win32'
-              ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotdlBin, 'download', query.q, '--output', path.dirname(finalPath), '--format', safeAudioFormat]
-              : ['download', query.q, '--output', path.dirname(finalPath), '--format', safeAudioFormat];
+              ? ['/c', 'chcp', '65001', '>', 'nul', '&', 'call', spotdlBin, 'download', query.q, '--ffmpeg', ffmpegBin, '--output', spotdlOutTemplate, '--format', safeAudioFormat]
+              : ['download', query.q, '--ffmpeg', ffmpegBin, '--output', spotdlOutTemplate, '--format', safeAudioFormat];
             const spotdlP = spawn(process.platform === 'win32' ? 'cmd.exe' : spotdlBin, spotdlArgs, {
               windowsHide: true,
               env: { ...process.env, PYTHONIOENCODING: 'utf-8', PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
             });
             dlState.procs.add(spotdlP);
+            spotdlP.stdout.on('data', () => {}); // Consume stdout
+            spotdlP.stderr.on('data', () => {}); // Consume stderr
             const ok = await new Promise(r => {
               spotdlP.on('close', code => { dlState.procs.delete(spotdlP); r(code === 0 && fs.existsSync(finalPath)); });
             });
@@ -1860,6 +1955,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             appendLog(`Attempt ${attemptNum} (${query.src}): ${query.q}`);
             const dlP = spawn(binPath, [...ytDlpArgsBase, query.q], { windowsHide: true });
             dlState.procs.add(dlP);
+            dlP.stderr.on('data', () => {}); // Consume stderr
             dlP.stdout.on('data', d => {
               const m = d.toString().match(/\[download\]\s+([\d.]+)%/);
               if (m) send({ trackProgress: parseFloat(m[1]) });
@@ -1878,6 +1974,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
             dlState.procs.add(searchP);
             let searchOut = '';
             searchP.stdout.on('data', d => searchOut += d.toString());
+            searchP.stderr.on('data', () => {}); // Consume stderr
             await new Promise(r => searchP.on('close', r));
             dlState.procs.delete(searchP);
 
@@ -1896,11 +1993,24 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
               const aDist = levenshteinDistance(normArtistTarget, normArtistFound);
               const maxT = Math.max(normTitleTarget.length, normTitleFound.length, 1);
               const maxA = Math.max(normArtistTarget.length, normArtistFound.length, 1);
-              const tScore = Math.max(0, 1 - tDist / maxT);
-              const aScore = Math.max(0, 1 - aDist / maxA);
-              const combinedScore = (tScore * 0.65) + (aScore * 0.35);
+              let tScore = Math.max(0, 1 - tDist / maxT);
+              let aScore = Math.max(0, 1 - aDist / maxA);
+              let combinedScore = (tScore * 0.65) + (aScore * 0.35);
 
-              appendLog(`  Scored "${res.title}" by "${res.channel}" -> T:${tScore.toFixed(2)}, A:${aScore.toFixed(2)}, C:${combinedScore.toFixed(2)}`);
+              let dScore = 1;
+              if (track.durationMs && res.duration) {
+                const diffMs = Math.abs((res.duration * 1000) - track.durationMs);
+                if (diffMs > 15000) {
+                  // > 15s difference means it's likely a short, a teaser, or an extended music video. Reject!
+                  dScore = 0;
+                  combinedScore *= 0.1;
+                } else if (diffMs > 5000) {
+                  dScore = 0.5;
+                  combinedScore *= 0.8;
+                }
+              }
+
+              appendLog(`  Scored "${res.title}" by "${res.channel}" -> T:${tScore.toFixed(2)}, A:${aScore.toFixed(2)}, D:${dScore.toFixed(2)}, C:${combinedScore.toFixed(2)}`);
               // ISRC searches are trusted more — lower threshold
               const threshold = query.src.includes('ISRC') ? 0.40 : 0.65;
               if (combinedScore >= threshold && aScore >= 0.25) {
@@ -1916,6 +2026,7 @@ export function configureRoutes(middlewares, { appDir, binDir, ffmpegBin: _ffmpe
 
               const dlP = spawn(binPath, dlArgs, { windowsHide: true });
               dlState.procs.add(dlP);
+              dlP.stderr.on('data', () => {}); // Consume stderr
               dlP.stdout.on('data', d => {
                 const m = d.toString().match(/\[download\]\s+([\d.]+)%/);
                 if (m) send({ trackProgress: parseFloat(m[1]) });

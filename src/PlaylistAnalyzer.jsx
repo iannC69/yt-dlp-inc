@@ -184,24 +184,25 @@ export default function PlaylistAnalyzer({ liveBackground = true }) {
         const res = await fetch(`/api/spotify-info?url=${encodeURIComponent(targetUrl)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to fetch Spotify playlist');
-        if (data && data.items) {
-          tracks = data.items.map(t => ({
-            id: t.id,
-            title: t.name,
-            artist: (t.artists || []).map(a => a.name).join(', '),
-            album: t.album?.name || '',
-            albumCover: t.album?.images?.[0]?.url || '',
-            durationMs: t.duration_ms || 0,
-            explicit: t.explicit || false,
-            popularity: t.popularity || 0,
-            releaseYear: t.album?.release_date ? parseInt(t.album.release_date.substring(0, 4)) : null,
-            cover: t.album?.images?.[0]?.url || ''
+        if (data && data.tracks) {
+          tracks = data.tracks.map(t => ({
+            id: t.spotifyId,
+            title: t.title,
+            artist: t.allArtists || t.artist,
+            album: t.album,
+            albumCover: t.coverUrl,
+            durationMs: t.durationMs,
+            explicit: false, // Spotify API backend currently doesn't map explicit
+            popularity: 0,   // Spotify API backend currently doesn't map popularity
+            releaseYear: t.year ? parseInt(t.year) : null,
+            cover: t.coverUrl
           }));
           playlistMeta = {
-            title: data.name || 'Spotify Playlist',
-            cover: data.images?.[0]?.url || '',
-            author: data.owner?.display_name || 'Spotify'
+            title: data.title || 'Spotify Playlist',
+            cover: data.coverUrl || '',
+            author: data.owner || 'Spotify'
           };
+          setPlaylistData(playlistMeta);
         }
       } else {
         const res = await fetch(`/api/ytdl/collection-info?url=${encodeURIComponent(targetUrl)}`);
@@ -234,6 +235,7 @@ export default function PlaylistAnalyzer({ liveBackground = true }) {
             cover: data.thumbnail || (data.thumbnails && data.thumbnails.length ? data.thumbnails[data.thumbnails.length - 1].url : null) || tracks[0]?.cover || '',
             author: data.uploader || data.channel || 'YouTube'
           };
+          setPlaylistData(playlistMeta);
           setAnalysisStatus('Detecting albums and deep metadata...');
       
       // Auto-detect missing albums using iTunes API for ALL tracks to ensure accurate counts
@@ -844,7 +846,9 @@ export default function PlaylistAnalyzer({ liveBackground = true }) {
   const topArtistName = analysisResult?.topArtists?.length > 0 ? analysisResult.topArtists[0].name : null;
   const backgroundImageUrl = artistCustomBgUrl.trim() !== '' 
     ? artistCustomBgUrl.trim() 
-    : (topArtistName && artistImages[topArtistName] ? artistImages[topArtistName] : null);
+    : (topArtistName && artistImages[topArtistName] 
+        ? artistImages[topArtistName] 
+        : (playlistData?.cover ? playlistData.cover : null));
 
   return (
     <div className={`playlist-analyzer-container${liveBackground && !analysisResult && !isAnalyzing ? ' pa-aurora-on' : ''}`}>
@@ -867,43 +871,45 @@ export default function PlaylistAnalyzer({ liveBackground = true }) {
       <div className="pa-ambient-glow"></div>
       <div className="pa-ambient-glow-2"></div>
 
-      {/* Top Input Bar */}
-      <div className="pa-input-section">
-        <div className="pa-input-wrapper">
-          <Link2 size={18} className="pa-input-icon" />
-          <input
-            type="text"
-            className="pa-input"
-            placeholder="Paste Spotify or YouTube playlist URL..."
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && analyzePlaylist()}
-          />
-          <button
-            className="pa-analyze-btn"
-            onClick={() => analyzePlaylist()}
-            disabled={!url || isAnalyzing}
-          >
-            <Sparkles size={16} /> Analyze
-          </button>
-        </div>
-        <div className="pa-badges-container">
-          {analysisResult && (
-            <div className="pa-auto-update-badge">
-              <Activity size={12} /> Auto-updated
-            </div>
-          )}
-          {analysisResult && (
+      {/* Top Input Bar (Only visible when analyzing or showing results) */}
+      {(isAnalyzing || analysisResult) && (
+        <div className="pa-input-section">
+          <div className="pa-input-wrapper">
+            <Link2 size={18} className="pa-input-icon" />
+            <input
+              type="text"
+              className="pa-input"
+              placeholder="Paste Spotify or YouTube playlist URL..."
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && analyzePlaylist()}
+            />
             <button
-              className="pa-history-action-btn"
-              onClick={() => { setAnalysisResult(null); setPlaylistData(null); setUrl(''); }}
-              title="View History / New Analysis"
+              className="pa-analyze-btn"
+              onClick={() => analyzePlaylist()}
+              disabled={!url || isAnalyzing}
             >
-              <Clock size={14} /> Back to History
+              <Sparkles size={16} /> Analyze
             </button>
-          )}
+          </div>
+          <div className="pa-badges-container">
+            {analysisResult && (
+              <div className="pa-auto-update-badge">
+                <Activity size={12} /> Auto-updated
+              </div>
+            )}
+            {analysisResult && (
+              <button
+                className="pa-history-action-btn"
+                onClick={() => { setAnalysisResult(null); setPlaylistData(null); setUrl(''); }}
+                title="View History / New Analysis"
+              >
+                <Clock size={14} /> Back to History
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content Area */}
       {isAnalyzing ? (
@@ -1014,15 +1020,28 @@ export default function PlaylistAnalyzer({ liveBackground = true }) {
               Deep Playlist <span className="pa-text-gradient">Analytics</span>
             </h2>
             <p className="pa-empty-subtitle">
-              Paste any YouTube or Spotify playlist link above to uncover hidden insights.
+              Paste any YouTube or Spotify playlist link below to uncover hidden insights.
               Discover your top artists, dominant genres, acoustic profiles, and more.
             </p>
-            <button className="pa-empty-cta" onClick={() => {
-              const input = document.querySelector('.pa-input');
-              if (input) input.focus();
-            }}>
-              <Play size={18} /> Get Started Now
-            </button>
+            <div className="pa-hero-input-wrapper">
+              <Link2 size={20} className="pa-hero-input-icon" />
+              <input
+                type="text"
+                className="pa-hero-input"
+                placeholder="Paste Spotify or YouTube playlist URL..."
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && analyzePlaylist()}
+                autoFocus
+              />
+              <button
+                className="pa-hero-analyze-btn"
+                onClick={() => analyzePlaylist()}
+                disabled={!url || isAnalyzing}
+              >
+                <Sparkles size={16} /> Analyze
+              </button>
+            </div>
           </div>
 
           <div className="pa-empty-features">
@@ -1089,39 +1108,6 @@ export default function PlaylistAnalyzer({ liveBackground = true }) {
                   <span>Paste a link above to build your history!</span>
                 </div>
               )}
-            </div>
-
-            <div className="pa-samples-section">
-              <h3 className="pa-history-title"><PlayCircle size={16} /> Try a Sample</h3>
-              <div className="pa-samples-list">
-                <div className="pa-sample-card" onClick={() => { setUrl('https://music.youtube.com/playlist?list=PLZS9va6NjCDA&si=JIsGEKAjLbtadv6z'); analyzePlaylist('https://music.youtube.com/playlist?list=PLZS9va6NjCDA&si=JIsGEKAjLbtadv6z'); }}>
-                  <div className="pa-sample-cover" style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}>
-                    <Music size={24} color="#FFF" />
-                  </div>
-                  <div className="pa-history-info">
-                    <h4>iannC's Playlist</h4>
-                    <span>Curated vibes</span>
-                  </div>
-                </div>
-                <div className="pa-sample-card" onClick={() => { setUrl('https://music.youtube.com/playlist?list=PLcYmh2nqwzcPX4cnj1gvpQY0LcSrXF-ly&si=t7cBKfXnRkP_RWq6'); analyzePlaylist('https://music.youtube.com/playlist?list=PLcYmh2nqwzcPX4cnj1gvpQY0LcSrXF-ly&si=t7cBKfXnRkP_RWq6'); }}>
-                  <div className="pa-sample-cover" style={{ background: 'linear-gradient(135deg, #EC4899, #f43f5e)' }}>
-                    <Star size={24} color="#FFF" />
-                  </div>
-                  <div className="pa-history-info">
-                    <h4>V1ccX's Playlist</h4>
-                    <span>Top selections</span>
-                  </div>
-                </div>
-                <div className="pa-sample-card" onClick={() => { setUrl('https://music.youtube.com/playlist?list=PLT0CWl9ZGu0w&si=M5W0FlC8qkFKlHPh'); analyzePlaylist('https://music.youtube.com/playlist?list=PLT0CWl9ZGu0w&si=M5W0FlC8qkFKlHPh'); }}>
-                  <div className="pa-sample-cover" style={{ background: 'linear-gradient(135deg, #10B981, #14b8a6)' }}>
-                    <Activity size={24} color="#FFF" />
-                  </div>
-                  <div className="pa-history-info">
-                    <h4>Streaming</h4>
-                    <span>Daily rotation</span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
