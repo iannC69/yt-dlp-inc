@@ -140,6 +140,8 @@ export default function App() {
   const [activeYoutubeJob, setActiveYoutubeJob] = useState(null);
   const [activeSpotifyJob, setActiveSpotifyJob] = useState(null);
   const [liveBackground, setLiveBackground] = useState(() => storage.getItem('live_background') !== 'false');
+  const [auroraIntensity, setAuroraIntensity] = useState(() => parseInt(storage.getItem('aurora_intensity') || '100', 10));
+  const [auroraStyle, setAuroraStyle] = useState(() => storage.getItem('aurora_style') || 'normal');
 
   // Backend Config State
   const [audioFormat, setAudioFormat] = useState(() => storage.getItem('audioFormat') || 'mp3');
@@ -299,6 +301,18 @@ export default function App() {
     };
   }, []);
 
+  // Sync aurora intensity as CSS custom property
+  useEffect(() => {
+    document.documentElement.style.setProperty('--aurora-intensity', String(auroraIntensity / 100));
+  }, [auroraIntensity]);
+
+  // Sync aurora style class on <html> root
+  useEffect(() => {
+    const html = document.documentElement;
+    ['aurora-subtle', 'aurora-normal', 'aurora-intense', 'aurora-cosmic'].forEach(c => html.classList.remove(c));
+    html.classList.add(`aurora-${auroraStyle}`);
+  }, [auroraStyle]);
+
   useEffect(() => {
     const root = document.documentElement;
     const hexToRgb = (hex) => {
@@ -341,12 +355,21 @@ export default function App() {
     root.style.setProperty('--sp-green-dim', (customTheme.spAccent || '#1DB954') + '26');
     root.style.setProperty('--sp-text', customTheme.spText || '#f8fafc');
     // Mass DL
-    root.style.setProperty('--md-bg', applyBg(customTheme.mdBg === '#07060f' ? '#0f0505' : (customTheme.mdBg || '#0f0505')));
-    root.style.setProperty('--md-purple', customTheme.mdAccent === '#a855f7' ? '#f43f5e' : (customTheme.mdAccent || '#f43f5e'));
-    root.style.setProperty('--md-purple-rgb', hexToRgb(customTheme.mdAccent === '#a855f7' ? '#f43f5e' : (customTheme.mdAccent || '#f43f5e')));
-    root.style.setProperty('--md-magenta', customTheme.mdSecondary === '#d946ef' ? '#be123c' : (customTheme.mdSecondary || '#be123c'));
-    root.style.setProperty('--md-magenta-rgb', hexToRgb(customTheme.mdSecondary === '#d946ef' ? '#be123c' : (customTheme.mdSecondary || '#be123c')));
-    root.style.setProperty('--md-text', customTheme.mdText === '#e2d9f3' ? '#fce7f3' : (customTheme.mdText || '#fce7f3'));
+    const mdBgResolved = applyBg(customTheme.mdBg || '#0D0814');
+    const mdAccentResolved = customTheme.mdAccent || '#A855F7';
+    const mdSecondaryResolved = customTheme.mdSecondary || '#C084FC';
+    const mdTextResolved = customTheme.mdText || '#F3E8FF';
+    root.style.setProperty('--md-bg', mdBgResolved);
+    root.style.setProperty('--md-purple', mdAccentResolved);
+    root.style.setProperty('--md-purple-rgb', hexToRgb(mdAccentResolved));
+    root.style.setProperty('--md-magenta', mdSecondaryResolved);
+    root.style.setProperty('--md-magenta-rgb', hexToRgb(mdSecondaryResolved));
+    root.style.setProperty('--md-text', mdTextResolved);
+    // MassDownloader.css uses --md3-* variables — alias them to the same values
+    root.style.setProperty('--md3-bg', mdBgResolved);
+    root.style.setProperty('--md3-accent', mdAccentResolved);
+    root.style.setProperty('--md3-spotify', mdSecondaryResolved);
+    root.style.setProperty('--md3-text', mdTextResolved);
     // Audio Cutter
     root.style.setProperty('--ac-bg', applyBg(customTheme.acBg || '#060910'));
     root.style.setProperty('--ac-accent', customTheme.acAccent || '#22d3ee');
@@ -450,7 +473,12 @@ export default function App() {
 
   return (
     <div
-      className={`app-root${dragOver ? ' app-root--drag' : ''}`}
+      className={[
+        'app-root',
+        dragOver ? 'app-root--drag' : '',
+        customTheme.customWallpaper ? 'has-wallpaper' : '',
+        !liveBackground ? 'no-aurora' : '',
+      ].filter(Boolean).join(' ')}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -489,21 +517,22 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Dedicated Title Bar */}
-      <div className="title-bar">
-        <div className="custom-window-controls">
-          <button className="mac-btn mac-min" onClick={() => window.electronAPI?.window?.minimize()} title="Minimize">
-            <svg viewBox="0 0 14 14"><path d="M3 7 h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-          </button>
-          <button className="mac-btn mac-max" onClick={() => window.electronAPI?.window?.maximize()} title="Maximize">
-            <svg viewBox="0 0 14 14">
-              <path d="M4.5 9.5 L2 12 M2 12 V8.5 M2 12 H5.5 M9.5 4.5 L12 2 M12 2 V5.5 M12 2 H8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button className="mac-btn mac-close" onClick={() => window.electronAPI?.window?.close()} title="Close">
-            <svg viewBox="0 0 14 14"><path d="M4 4 L10 10 M10 4 L4 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-          </button>
-        </div>
+      {/* Dedicated drag region: covers navbar except right 160px where window controls live */}
+      <div className="app-drag-zone" />
+
+      {/* Window Controls — fixed top-right, no parent interference */}
+      <div className="custom-window-controls">
+        <button className="mac-btn mac-min" onClick={() => window.electronAPI?.window?.minimize()} title="Minimize">
+          <svg viewBox="0 0 14 14"><path d="M3 7 h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        </button>
+        <button className="mac-btn mac-max" onClick={() => window.electronAPI?.window?.maximize()} title="Maximize">
+          <svg viewBox="0 0 14 14">
+            <path d="M4.5 9.5 L2 12 M2 12 V8.5 M2 12 H5.5 M9.5 4.5 L12 2 M12 2 V5.5 M12 2 H8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <button className="mac-btn mac-close" onClick={() => window.electronAPI?.window?.close()} title="Close">
+          <svg viewBox="0 0 14 14"><path d="M4 4 L10 10 M10 4 L4 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        </button>
       </div>
 
       {/* Platform Switcher Bar */}
@@ -596,7 +625,7 @@ export default function App() {
             {activeIdx === 1 && <SpotifyDownloader activeDownloadId={activeSpotifyJob} />}
             {activeIdx === 2 && <AudioCutter initialPayload={cutterPayload} />}
             {activeIdx === 3 && <MassDownloader />}
-            {activeIdx === 4 && <PlaylistAnalyzer />}
+            {activeIdx === 4 && <PlaylistAnalyzer liveBackground={liveBackground} />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -636,6 +665,10 @@ export default function App() {
             setCustomTheme={setCustomTheme}
             liveBackground={liveBackground}
             setLiveBackground={setLiveBackground}
+            auroraIntensity={auroraIntensity}
+            setAuroraIntensity={setAuroraIntensity}
+            auroraStyle={auroraStyle}
+            setAuroraStyle={setAuroraStyle}
             colorPickerActiveRef={colorPickerActiveRef}
             colorPickerTimerRef={colorPickerTimerRef}
             /* System */
@@ -765,7 +798,22 @@ export default function App() {
         <AuroraBackground activeColor={PLATFORMS[activeIdx]?.color} />
       )}
       {customTheme.customWallpaper && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: `url(${customTheme.customWallpaper}) center/cover no-repeat` }} />
+        <>
+          {/* Wallpaper image — always full brightness */}
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: -2,
+            backgroundImage: `url(${customTheme.customWallpaper})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat'
+          }} />
+          {/* Dark overlay — controlled by Overlay Intensity slider */}
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: -1,
+            background: 'rgb(4, 6, 10)',
+            opacity: (customTheme.wallpaperOpacity ?? 75) / 100
+          }} />
+        </>
       )}
     </div>
   );

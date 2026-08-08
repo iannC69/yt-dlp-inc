@@ -42,7 +42,7 @@ const getInitials = (name) => {
   return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
 };
 
-export default function PlaylistAnalyzer() {
+export default function PlaylistAnalyzer({ liveBackground = true }) {
   const [url, setUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState('');
@@ -847,7 +847,7 @@ export default function PlaylistAnalyzer() {
     : (topArtistName && artistImages[topArtistName] ? artistImages[topArtistName] : null);
 
   return (
-    <div className="playlist-analyzer-container">
+    <div className={`playlist-analyzer-container${liveBackground && !analysisResult && !isAnalyzing ? ' pa-aurora-on' : ''}`}>
       {backgroundImageUrl && (
         <>
           <div

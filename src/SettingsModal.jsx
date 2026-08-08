@@ -87,6 +87,8 @@ export default function SettingsModal({
   /* Theme */
   customTheme, setCustomTheme,
   liveBackground, setLiveBackground,
+  auroraIntensity, setAuroraIntensity,
+  auroraStyle, setAuroraStyle,
   colorPickerActiveRef, colorPickerTimerRef,
   /* System */
   downloadPreset, setDownloadPreset,
@@ -456,6 +458,57 @@ export default function SettingsModal({
                           checked={liveBackground}
                           onChange={v => { setLiveBackground(v); storage.setItem('live_background', String(v)); }}
                         />
+
+                        {/* Aurora Appearance Controls */}
+                        {liveBackground && (
+                          <div className="sm-field" style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                            {/* Intensity Slider */}
+                            <div>
+                              <label className="sm-label">
+                                Aurora Intensity — <strong style={{ color: '#f4f4f5' }}>{auroraIntensity}%</strong>
+                              </label>
+                              <div className="sm-slider-row">
+                                <input type="range" className="sm-slider" min="10" max="200"
+                                  value={auroraIntensity}
+                                  onChange={e => {
+                                    const v = +e.target.value;
+                                    setAuroraIntensity(v);
+                                    storage.setItem('aurora_intensity', String(v));
+                                  }}
+                                />
+                                <span className="sm-slider-val">{auroraIntensity}%</span>
+                              </div>
+                            </div>
+
+                            {/* Style Presets */}
+                            <div>
+                              <label className="sm-label">Aurora Style</label>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                                {[
+                                  { id: 'subtle',  label: '✨ Subtle',  desc: 'Soft, barely-there glow' },
+                                  { id: 'normal',  label: '🌌 Normal',  desc: 'Balanced, cinematic' },
+                                  { id: 'intense', label: '🔥 Intense', desc: 'Bold, vivid colors' },
+                                  { id: 'cosmic',  label: '🚀 Cosmic',  desc: 'Maximum drama, slow-pulse' },
+                                ].map(s => (
+                                  <button key={s.id}
+                                    title={s.desc}
+                                    className={`sm-btn ${auroraStyle === s.id ? 'sm-btn-primary' : 'sm-btn-ghost'}`}
+                                    style={{ flex: 1, minWidth: 70, fontSize: 11, padding: '6px 8px' }}
+                                    onClick={() => {
+                                      setAuroraStyle(s.id);
+                                      storage.setItem('aurora_style', s.id);
+                                    }}
+                                  >
+                                    {s.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Custom PC Wallpaper */}
                         <div className="sm-toggle-row">
                           <div className="sm-toggle-info">
                             <span className="sm-toggle-label">Custom PC Wallpaper</span>

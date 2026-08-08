@@ -17,28 +17,35 @@
 
 /* ---- Title Bar ---- */
 .title-bar {
-  position: relative;
-  width: 100%;
-  height: 38px;
-  background: #080a0f;
-  display: flex;
-  align-items: center;
-  padding: 0 1rem;
-  -webkit-app-region: drag;
-  z-index: 200;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: transparent;
+  border: none;
+  z-index: 2000;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
 }
 
 /* ---- Platform Bar ---- */
 .platform-bar {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 100;
+  left: 0;
+  right: 0;
+  z-index: 1000;
   width: 100%;
-  background: rgba(8, 10, 15, 0.85);
-  backdrop-filter: blur(20px) saturate(1.5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  flex-shrink: 0;
+  background: rgba(4, 6, 10, 0.25);
+  backdrop-filter: blur(45px) saturate(250%) contrast(110%) brightness(1.1);
+  -webkit-backdrop-filter: blur(45px) saturate(250%) contrast(110%) brightness(1.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.02);
+  transition: color 0.4s ease;
 }
 
 .platform-bar-inner {
@@ -73,11 +80,15 @@
 }
 
 .custom-window-controls {
+  position: fixed;
+  top: 16px;
+  right: 20px;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
+  pointer-events: auto;
   -webkit-app-region: no-drag;
+  z-index: 2001;
 }
 
 .mac-btn {
@@ -1739,4 +1750,268 @@ body.glass-ui-active .settings-hw-btn {
 body.glass-ui-active .settings-modal-content {
   backdrop-filter: blur(30px) saturate(200%);
   background: color-mix(in srgb, #080a0f 85%, transparent);
+}
+
+/* ==========================================================================
+   ULTIMATE CINEMATIC AURORA NAVBAR CONTINUITY + BRAND REWORK
+   ========================================================================== */
+
+/* 1. Global Aurora Top-Edge Boost (Pushes light directly behind the navbar) */
+.global-aurora-layer::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 180px;
+  background: radial-gradient(ellipse at 50% -50%, var(--aurora-glow-2, rgba(255,255,255,0.1)) 0%, transparent 80%);
+  opacity: 0.6;
+  pointer-events: none;
+  filter: blur(40px);
+}
+
+/* 2. Navbar Glass Layer (VisionOS / Arc Browser style) */
+.platform-bar {
+  background: rgba(4, 6, 10, 0.25) !important;
+  backdrop-filter: blur(45px) saturate(250%) contrast(110%) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(45px) saturate(250%) contrast(110%) brightness(1.1) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.02) !important;
+  padding-top: 30px !important;
+  /* NO -webkit-app-region here — drag handled by .app-drag-zone */
+}
+
+/* 2.1 Dedicated drag zone: transparent, covers navbar left side, stops 160px from right */
+.app-drag-zone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 160px;  /* leaves room for window controls (3 buttons ≈ 100px + padding) */
+  height: 75px;  /* full navbar height */
+  -webkit-app-region: drag;
+  pointer-events: none;  /* clicks still pass through to navbar elements below */
+  z-index: 999;  /* below custom-window-controls (2001) but above content */
+}
+
+.platform-bar-inner button, .platform-tab, .platform-brand-text {
+  -webkit-app-region: no-drag !important;
+}
+
+/* 2.5 Window Controls — defined at source, no overrides needed */
+
+/* ── WALLPAPER MODE: make all page backgrounds transparent so wallpaper shows ── */
+.has-wallpaper .ytdl-page {
+  background: transparent !important;
+}
+.has-wallpaper .ytdl-page::before,
+.has-wallpaper .ytdl-page::after {
+  opacity: 0 !important;
+}
+
+.has-wallpaper .sp-page {
+  background: transparent !important;
+}
+.has-wallpaper .sp-page::before,
+.has-wallpaper .sp-page::after {
+  opacity: 0 !important;
+}
+
+.has-wallpaper .ac-page {
+  background: rgba(9, 11, 16, 0.55) !important;
+}
+.has-wallpaper .ac-page::before,
+.has-wallpaper .ac-page::after {
+  opacity: 0 !important;
+}
+
+.has-wallpaper .md3-root {
+  background: rgba(9, 9, 11, 0.55) !important;
+}
+.has-wallpaper .md3-root::before,
+.has-wallpaper .md3-root::after {
+  opacity: 0 !important;
+}
+
+.has-wallpaper .playlist-analyzer-container {
+  background: rgba(9, 9, 15, 0.55) !important;
+}
+.has-wallpaper .playlist-analyzer-container::before,
+.has-wallpaper .playlist-analyzer-container::after {
+  opacity: 0 !important;
+}
+
+/* ── NO AURORA MODE: hide page CSS auroras when toggle is off ── */
+
+/* Reset element-level aurora backgrounds to use the user's custom CSS vars */
+.no-aurora .ytdl-page {
+  background: var(--theme-bg, #080a0f) !important;
+  background-attachment: fixed !important;
+}
+.no-aurora .sp-page {
+  background: var(--sp-bg, #000000) !important;
+}
+.no-aurora .md3-root {
+  background: var(--md3-bg, #0D0814) !important;
+}
+.no-aurora .ac-page {
+  background: var(--ac-bg, #090b10) !important;
+}
+.no-aurora .playlist-analyzer-container {
+  background: var(--pa-bg, #09090F) !important;
+}
+
+/* Hide pseudo-element aurora layers */
+.no-aurora .ytdl-page::before,
+.no-aurora .sp-page::before,
+.no-aurora .ac-page::before,
+.no-aurora .md3-root::before,
+.no-aurora .playlist-analyzer-container::before {
+  display: none !important;
+}
+.no-aurora .ytdl-page::after,
+.no-aurora .sp-page::after,
+.no-aurora .ac-page::after,
+.no-aurora .md3-root::after,
+.no-aurora .playlist-analyzer-container::after {
+  display: none !important;
+}
+
+/* ── AURORA INTENSITY: scale opacity of all aurora layers ── */
+:root { --aurora-intensity: 1; }
+
+.ytdl-page::before,
+.sp-page::before,
+.ac-page::before,
+.md3-root::before,
+.playlist-analyzer-container.pa-aurora-on::before {
+  opacity: var(--aurora-intensity, 1);
+  transition: opacity 0.5s ease;
+}
+
+/* ── AURORA STYLE PRESETS ── */
+
+/* Subtle: slower, smaller scale */
+html.aurora-subtle .ytdl-page::before,
+html.aurora-subtle .sp-page::before,
+html.aurora-subtle .ac-page::before,
+html.aurora-subtle .md3-root::before,
+html.aurora-subtle .playlist-analyzer-container::before {
+  animation-duration: 36s !important;
+  filter: blur(90px) !important;
+}
+
+/* Normal: default */
+html.aurora-normal .ytdl-page::before,
+html.aurora-normal .sp-page::before,
+html.aurora-normal .ac-page::before,
+html.aurora-normal .md3-root::before,
+html.aurora-normal .playlist-analyzer-container::before {
+  animation-duration: 22s !important;
+  filter: blur(70px) !important;
+}
+
+/* Intense: faster, tighter */
+html.aurora-intense .ytdl-page::before,
+html.aurora-intense .sp-page::before,
+html.aurora-intense .ac-page::before,
+html.aurora-intense .md3-root::before,
+html.aurora-intense .playlist-analyzer-container::before {
+  animation-duration: 12s !important;
+  filter: blur(50px) !important;
+}
+/* Intense also boosts element-level bg radial gradients */
+html.aurora-intense .ytdl-page {
+  background-blend-mode: screen !important;
+}
+
+/* Cosmic: very slow pulse, maximum scale, slow drift */
+html.aurora-cosmic .ytdl-page::before,
+html.aurora-cosmic .sp-page::before,
+html.aurora-cosmic .ac-page::before,
+html.aurora-cosmic .md3-root::before,
+html.aurora-cosmic .playlist-analyzer-container::before {
+  animation-duration: 48s !important;
+  filter: blur(100px) !important;
+  transform: scale(1.15) !important;
+}
+
+/* 3. Premium Brand Typography & Logo */
+.platform-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.platform-brand-name {
+  font-family: 'Outfit', 'Montserrat', -apple-system, sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 1.25rem !important;
+  letter-spacing: -0.04em !important;
+  background: linear-gradient(135deg, #ffffff 0%, #a0a6b5 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  filter: drop-shadow(0 2px 12px rgba(255, 255, 255, 0.15)) !important;
+  line-height: 1.1 !important;
+}
+.platform-brand-sub {
+  font-size: 0.6rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.18em !important;
+  text-transform: uppercase !important;
+  color: rgba(255, 255, 255, 0.35) !important;
+  line-height: 1 !important;
+}
+.platform-brand-logo {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  color: #fff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* 4. Elegant Glass Buttons & Tabs */
+.platform-tab,
+.settings-button,
+.global-top-actions .settings-button,
+.user-profile-button {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.03) !important;
+  border-radius: 10px !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  color: rgba(255, 255, 255, 0.65) !important;
+  font-weight: 600 !important;
+}
+
+/* 5. Hover & Active States (Organic Neon Reflections) */
+.platform-tab:hover,
+.settings-button:hover,
+.global-top-actions .settings-button:hover,
+.user-profile-button:hover {
+  background: rgba(255, 255, 255, 0.09) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.2),
+    0 0 20px var(--aurora-glow-1, rgba(255, 255, 255, 0.05)),
+    inset 0 1px 1px rgba(255, 255, 255, 0.15) !important;
+}
+
+.platform-tab--active {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.25),
+    0 0 28px var(--aurora-glow-2, rgba(255, 255, 255, 0.08)),
+    inset 0 1px 1px rgba(255, 255, 255, 0.25) !important;
 }

@@ -278,6 +278,8 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     const artists = [];
     const sorted = [...history].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     for (const h of sorted) {
+      if (getSpotifyType(h.url) === 'playlist') continue;
+
       const name = h.artist;
       if (name && name !== 'Unknown' && name !== 'Spotify' && name !== '' && !seen.has(name)) {
         seen.add(name);
@@ -448,10 +450,12 @@ export default function SpotifyDownloader({ activeDownloadId }) {
     const clientSecret = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || '';
 
     try {
+      const userAccessToken = await getValidAccessToken(clientId, clientSecret) || '';
       const res = await fetch(`/api/spotify-info?url=${encodeURIComponent(targetUrl)}`, {
         headers: {
           'x-spotify-client-id': clientId,
           'x-spotify-client-secret': clientSecret,
+          'x-spotify-access-token': userAccessToken,
         }
       });
       const data = await res.json();
@@ -1212,7 +1216,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                                   {featArtist && <span className="sp-feat-artist">feat. {featArtist}</span>}
                                 </div>
                                 <div className="sp-preview-row-text-col" style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {track.artist && track.artist !== info.artist ? track.artist : ''}
+                                  {track.artist || info.artist || ''}
                                 </div>
                                 <span className="sp-preview-row-duration">{fmtDuration(track.durationMs)}</span>
                                 <button className="sp-preview-quick-dl" title="Download only this track" onClick={e => { e.stopPropagation(); handleQuickDownload(track.trackNumber); }}>
@@ -1579,76 +1583,117 @@ export default function SpotifyDownloader({ activeDownloadId }) {
           </AnimatePresence>
 
 
-        {/* ── RECENTLY PLAYED ARTISTS (gallery card, floating bubbles — mirrors YouTube) ── */}
-        {history?.length > 0 && (
-          <>
-            <section className="sp-artist-gallery">
-              <div className="sp-history-panel-title">
-                <Music size={14} /> Recently played artists
-              </div>
-              <div className="sp-artist-bubbles">
-                {historyArtists.slice(0, 6).map((artist, index) => (
-                  <button
-                    key={artist.name}
-                    className="sp-artist-bubble"
-                    style={{ '--bubble-index': index }}
-                    onClick={() => {
-                      setUrl(`https://open.spotify.com/search/${encodeURIComponent(artist.name)}`);
-                      fetchInfo(`https://open.spotify.com/search/${encodeURIComponent(artist.name)}`);
-                    }}
-                    title={artist.name}
-                  >
-                    {artist.thumbnail ? (
-                      <img src={artist.thumbnail} alt="" />
-                    ) : (
-                      <span>{artist.name.slice(0, 1).toUpperCase()}</span>
-                    )}
-                    <strong>{artist.name}</strong>
-                    <span
-                      className="sp-history-remove"
-                      role="button"
-                      tabIndex={0}
-                      onClick={e => { e.stopPropagation(); removeArtistFromHistory(artist.name); }}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); removeArtistFromHistory(artist.name); }}}
-                      title="Remove artist from history"
-                    >
-                      <X size={12} strokeWidth={2.5} />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {/* ── BOTTOM 2-COLUMN GRID ── */}
-            <section className="sp-history-panels">
-              {/* Left — Recent Artists */}
-              <div className="sp-history-panel">
+          {/* ── RECENTLY PLAYED ARTISTS (gallery card, floating bubbles — mirrors YouTube) ── */}
+          {history?.length > 0 && (
+            <>
+              <section className="sp-artist-gallery">
                 <div className="sp-history-panel-title">
-                  <Music size={14} /> Recent artists
+                  <Music size={14} /> Recently played artists
                 </div>
-                <div className="sp-channel-chips">
-                  {historyArtists.slice(0, 6).map((artist) => (
+                <div className="sp-artist-bubbles">
+                  {historyArtists.slice(0, 6).map((artist, index) => (
                     <button
                       key={artist.name}
-                      className="sp-channel-chip"
+                      className="sp-artist-bubble"
+                      style={{ '--bubble-index': index }}
                       onClick={() => {
                         setUrl(`https://open.spotify.com/search/${encodeURIComponent(artist.name)}`);
                         fetchInfo(`https://open.spotify.com/search/${encodeURIComponent(artist.name)}`);
                       }}
-                      title={`Open ${artist.name}`}
+                      title={artist.name}
                     >
                       {artist.thumbnail ? (
-                        <img src={artist.thumbnail} alt="" className="sp-channel-avatar" />
+                        <img src={artist.thumbnail} alt="" />
                       ) : (
-                        <span className="sp-channel-avatar">{artist.name.slice(0, 1).toUpperCase()}</span>
+                        <span>{artist.name.slice(0, 1).toUpperCase()}</span>
                       )}
-                      <span className="sp-channel-name">{artist.name}</span>
+                      <strong>{artist.name}</strong>
+                      <span
+                        className="sp-history-remove"
+                        role="button"
+                        tabIndex={0}
+                        onClick={e => { e.stopPropagation(); removeArtistFromHistory(artist.name); }}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); removeArtistFromHistory(artist.name); } }}
+                        title="Remove artist from history"
+                      >
+                        <X size={12} strokeWidth={2.5} />
+                      </span>
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              {/* Right — Recent Downloads */}
+              {/* ── BOTTOM 2-COLUMN GRID ── */}
+              <section className="sp-history-panels">
+                {/* Left — Recent Artists */}
+                <div className="sp-history-panel">
+                  <div className="sp-history-panel-title">
+                    <Music size={14} /> Recent artists
+                  </div>
+                  <div className="sp-channel-chips">
+                    {historyArtists.slice(0, 6).map((artist) => (
+                      <button
+                        key={artist.name}
+                        className="sp-channel-chip"
+                        onClick={() => {
+                          setUrl(`https://open.spotify.com/search/${encodeURIComponent(artist.name)}`);
+                          fetchInfo(`https://open.spotify.com/search/${encodeURIComponent(artist.name)}`);
+                        }}
+                        title={`Open ${artist.name}`}
+                      >
+                        {artist.thumbnail ? (
+                          <img src={artist.thumbnail} alt="" className="sp-channel-avatar" />
+                        ) : (
+                          <span className="sp-channel-avatar">{artist.name.slice(0, 1).toUpperCase()}</span>
+                        )}
+                        <span className="sp-channel-name">{artist.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right — Recent Downloads */}
+                <div className="sp-history-panel">
+                  <div className="sp-history-panel-title">
+                    <Clock size={14} /> Recent downloads
+                  </div>
+                  <div className="sp-recent-list">
+                    {history.slice(0, 4).map((item) => (
+                      <button
+                        key={item.url}
+                        className="sp-recent-item"
+                        onClick={() => { setUrl(item.url); fetchInfo(item.url); }}
+                      >
+                        {item.thumbnail ? (
+                          <img src={item.thumbnail} alt="" className="sp-recent-thumb" />
+                        ) : (
+                          <span className="sp-recent-thumb" />
+                        )}
+                        <span className="sp-recent-name">{item.title}</span>
+                        <span className="sp-recent-date">
+                          {new Date(item.date || Date.now()).toLocaleDateString()}
+                        </span>
+                        <span
+                          className="sp-recent-remove"
+                          role="button"
+                          tabIndex={0}
+                          onClick={e => { e.stopPropagation(); removeFromHistory(item.url); }}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); removeFromHistory(item.url); } }}
+                          title="Remove from history"
+                        >
+                          <X size={13} strokeWidth={2.5} />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
+
+          {/* Fallback: only recent downloads, no artist history */}
+          {(!historyArtists?.length && history?.length > 0) && (
+            <section className="sp-history-panels sp-history-panels--single">
               <div className="sp-history-panel">
                 <div className="sp-history-panel-title">
                   <Clock size={14} /> Recent downloads
@@ -1674,7 +1719,7 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                         role="button"
                         tabIndex={0}
                         onClick={e => { e.stopPropagation(); removeFromHistory(item.url); }}
-                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); removeFromHistory(item.url); }}}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); removeFromHistory(item.url); } }}
                         title="Remove from history"
                       >
                         <X size={13} strokeWidth={2.5} />
@@ -1684,73 +1729,32 @@ export default function SpotifyDownloader({ activeDownloadId }) {
                 </div>
               </div>
             </section>
-          </>
-        )}
+          )}
 
-        {/* Fallback: only recent downloads, no artist history */}
-        {(!historyArtists?.length && history?.length > 0) && (
-          <section className="sp-history-panels sp-history-panels--single">
-            <div className="sp-history-panel">
-              <div className="sp-history-panel-title">
-                <Clock size={14} /> Recent downloads
+          {/* ── FOOTER ── */}
+          <footer className="sp-footer">
+            <div className="sp-footer-inner">
+              <div className="sp-footer-top">
+                <div className="sp-footer-brand">
+                  <span className="sp-footer-dot" />
+                  <span className="sp-footer-brand-name">MediaDL</span>
+                  <span className="sp-footer-brand-sep">&middot;</span>
+                  <span className="sp-footer-brand-sub">SPOTIFY</span>
+                </div>
+                <div className="sp-footer-badges">
+                  <span className="sp-footer-badge sp-badge--spotdl">SPOTDL</span>
+                  <span className="sp-footer-badge sp-badge--api">SPOTIFY API</span>
+                  <span className="sp-footer-badge sp-badge--quality">LOSSLESS QUALITY</span>
+                  <span className="sp-footer-badge sp-badge--id3">ID3 TAGS</span>
+                </div>
               </div>
-              <div className="sp-recent-list">
-                {history.slice(0, 4).map((item) => (
-                  <button
-                    key={item.url}
-                    className="sp-recent-item"
-                    onClick={() => { setUrl(item.url); fetchInfo(item.url); }}
-                  >
-                    {item.thumbnail ? (
-                      <img src={item.thumbnail} alt="" className="sp-recent-thumb" />
-                    ) : (
-                      <span className="sp-recent-thumb" />
-                    )}
-                    <span className="sp-recent-name">{item.title}</span>
-                    <span className="sp-recent-date">
-                      {new Date(item.date || Date.now()).toLocaleDateString()}
-                    </span>
-                    <span
-                      className="sp-recent-remove"
-                      role="button"
-                      tabIndex={0}
-                      onClick={e => { e.stopPropagation(); removeFromHistory(item.url); }}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); removeFromHistory(item.url); }}}
-                      title="Remove from history"
-                    >
-                      <X size={13} strokeWidth={2.5} />
-                    </span>
-                  </button>
-                ))}
+              <div className="sp-footer-divider" />
+              <div className="sp-footer-bottom">
+                <span className="sp-footer-copy">&copy; 2026 MediaDL &nbsp;&middot;&nbsp; v1.0.69</span>
+                <span className="sp-footer-tagline">For personal use only &middot; Respect artists &amp; their work</span>
               </div>
             </div>
-          </section>
-        )}
-
-        {/* ── FOOTER ── */}
-        <footer className="sp-footer">
-          <div className="sp-footer-inner">
-            <div className="sp-footer-top">
-              <div className="sp-footer-brand">
-                <span className="sp-footer-dot" />
-                <span className="sp-footer-brand-name">MediaDL</span>
-                <span className="sp-footer-brand-sep">&middot;</span>
-                <span className="sp-footer-brand-sub">SPOTIFY</span>
-              </div>
-              <div className="sp-footer-badges">
-                <span className="sp-footer-badge sp-badge--spotdl">SPOTDL</span>
-                <span className="sp-footer-badge sp-badge--api">SPOTIFY API</span>
-                <span className="sp-footer-badge sp-badge--quality">LOSSLESS QUALITY</span>
-                <span className="sp-footer-badge sp-badge--id3">ID3 TAGS</span>
-              </div>
-            </div>
-            <div className="sp-footer-divider" />
-            <div className="sp-footer-bottom">
-              <span className="sp-footer-copy">&copy; 2026 MediaDL &nbsp;&middot;&nbsp; v1.0.69</span>
-              <span className="sp-footer-tagline">For personal use only &middot; Respect artists &amp; their work</span>
-            </div>
-          </div>
-        </footer>
+          </footer>
 
         </div>{/* end sp-main */}
 
@@ -1760,9 +1764,9 @@ export default function SpotifyDownloader({ activeDownloadId }) {
       <AnimatePresence>
         {showPlaylists && (
           <motion.div className="sp-modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={e => e.target === e.currentTarget && setShowPlaylists(false)}>
-            <motion.div className="sp-modal" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}>
+            <motion.div className="sp-modal sp-playlists-modal-container" initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }}>
               <div className="sp-modal-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>My Playlists</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800 }}>My Playlists</span>
                 <button className="sp-modal-cancel" onClick={() => setShowPlaylists(false)}><X size={16} /> Close</button>
               </div>
               {myPlaylistsStatus === 'loading' && <div className="sp-pl-loading"><Loader2 className="sp-spin" size={32} /><span>Fetching your playlists...</span></div>}

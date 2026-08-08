@@ -766,12 +766,14 @@ export async function parseSpotifyEmbed(urlStr, clientId = null, clientSecret = 
 
     // If embed returned 100 tracks, attempt to fetch tracks 101..N via Spotify API if token is available
     if (tracks.length === 100) {
+      let apiSucceeded = false;
       try {
         const token = await getSpotifyToken(clientId, clientSecret)
         let offset = 100
         let hasMore = true
         while (hasMore && offset < 5000) {
           const pageRes = await spotifyApiRequest(`/v1/${type}s/${id}/tracks?offset=${offset}&limit=100`, token)
+          apiSucceeded = true;
           if (pageRes?.items?.length) {
             const extra = pageRes.items.filter(item => item?.track && item.track.type === 'track').map((item, idx) => {
               const track = item.track
@@ -798,7 +800,20 @@ export async function parseSpotifyEmbed(urlStr, clientId = null, clientSecret = 
           }
         }
       } catch (pagErr) {
-        console.warn('[parseSpotifyEmbed] Additional page fetch skipped:', pagErr.message || pagErr)
+        console.warn('[parseSpotifyEmbed] Additional page fetch skipped or failed:', pagErr.message || pagErr)
+      }
+
+      // If API failed (e.g. 404 for user playlists with client_credentials), use Puppeteer to scroll and get all tracks
+      if (!apiSucceeded && type === 'playlist') {
+        console.log('[parseSpotifyEmbed] API pagination failed, using Puppeteer to scroll and scrape all tracks...');
+        try {
+          const puppeteerData = await resolveSpotifyFallback(urlStr);
+          if (puppeteerData?.tracks?.length > 100) {
+            return puppeteerData;
+          }
+        } catch (pupErr) {
+          console.warn('[parseSpotifyEmbed] Puppeteer pagination fallback failed:', pupErr.message);
+        }
       }
     }
 
@@ -848,46 +863,80 @@ export async function resolveSpotifyFallback(url) {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 })
 
-    const data = await page.evaluate((url) => {
-      const pagePath = window.location.pathname
-      const expectedPath = new URL(url).pathname
-      const titleEl = document.querySelector('h1')
-      const title = titleEl ? titleEl.innerText : 'Spotify Audio'
+    const data = await page.evaluate(async (url) => {
+      const pagePath = window.location.pathname;
+      const expectedPath = new URL(url).pathname;
+      const titleEl = document.querySelector('h1');
+      const title = titleEl ? titleEl.innerText : 'Spotify Audio';
 
-      const tracks = []
-      const rows = document.querySelectorAll('[data-testid="tracklist-row"]')
+      const tracksMap = new Map();
+      let previousTrackCount = 0;
+      let unchangedScrolls = 0;
 
-      rows.forEach((row, index) => {
-        const nameEl = row.querySelector('.t_yrXoUO3qGsJS4Y6iXX, .standalone-ellipsis-one-line') || row.querySelector('div[dir="auto"]')
-        const name = nameEl ? nameEl.innerText : 'Track ' + (index + 1)
-
-        const artistEls = row.querySelectorAll('a[href^="/artist/"]')
-        const artists = Array.from(artistEls).map(a => a.innerText)
-        const artist = artists.length > 0 ? artists[0] : 'Unknown Artist'
-        const allArtists = artists.join(', ')
-
-        const durationEl = row.querySelector('[data-testid="tracklist-duration"], .Btg2qCGi3mQ8gQ0FOUbQ, div[aria-colindex="last()"]')
-        let durationMs = 0
-        if (durationEl && durationEl.innerText) {
-          const text = durationEl.innerText.trim()
-          const parts = text.split(':')
-          if (parts.length === 2) {
-            durationMs = (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10)) * 1000
-          } else if (parts.length === 3) {
-            durationMs = (parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10)) * 1000
+      // Scroll and collect tracks for up to ~1500 tracks or until no new tracks appear
+      while (unchangedScrolls < 4) {
+        const rows = document.querySelectorAll('[data-testid="tracklist-row"]');
+        rows.forEach((row) => {
+          // Extract track index from the aria-rowindex or the first column
+          const ariaIndex = row.getAttribute('aria-rowindex');
+          let trackIndex = parseInt(ariaIndex, 10);
+          
+          if (!trackIndex || isNaN(trackIndex)) {
+            const indexEl = row.querySelector('[aria-colindex="1"]');
+            if (indexEl) trackIndex = parseInt(indexEl.innerText.trim(), 10);
           }
+
+          if (!trackIndex || isNaN(trackIndex)) return;
+
+          if (!tracksMap.has(trackIndex)) {
+            const nameEl = row.querySelector('.t_yrXoUO3qGsJS4Y6iXX, .standalone-ellipsis-one-line') || row.querySelector('div[dir="auto"]');
+            const name = nameEl ? nameEl.innerText : 'Track ' + trackIndex;
+
+            const artistEls = row.querySelectorAll('a[href^="/artist/"]');
+            const artists = Array.from(artistEls).map(a => a.innerText);
+            const artist = artists.length > 0 ? artists[0] : 'Unknown Artist';
+            const allArtists = artists.join(', ');
+
+            const durationEl = row.querySelector('[data-testid="tracklist-duration"], .Btg2qCGi3mQ8gQ0FOUbQ, div[aria-colindex="last()"]');
+            let durationMs = 0;
+            if (durationEl && durationEl.innerText) {
+              const text = durationEl.innerText.trim();
+              const parts = text.split(':');
+              if (parts.length === 2) {
+                durationMs = (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10)) * 1000;
+              } else if (parts.length === 3) {
+                durationMs = (parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10)) * 1000;
+              }
+            } else {
+              const timeMatch = row.innerText.match(/\b(\d{1,2}):(\d{2})\b/);
+              if (timeMatch) {
+                durationMs = (parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10)) * 1000;
+              }
+            }
+
+            tracksMap.set(trackIndex, { trackNumber: trackIndex, title: name, artist, allArtists, durationMs, coverUrl: null });
+          }
+        });
+
+        if (tracksMap.size === previousTrackCount) {
+          unchangedScrolls++;
         } else {
-          const timeMatch = row.innerText.match(/\b(\d{1,2}):(\d{2})\b/)
-          if (timeMatch) {
-            durationMs = (parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10)) * 1000
-          }
+          unchangedScrolls = 0;
+          previousTrackCount = tracksMap.size;
         }
 
-        tracks.push({ trackNumber: index + 1, title: name, artist, allArtists, durationMs, coverUrl: null })
-      })
+        // Scroll down by 800px
+        window.scrollBy(0, 800);
+        await new Promise(r => setTimeout(r, 600));
+      }
 
-      const coverEl = document.querySelector('meta[property="og:image"], img[data-testid="entity-image"], img[data-testid="cover-art-image"]')
-      const coverUrl = coverEl ? (coverEl.content || coverEl.src) : null
+      // Sort tracks by index
+      const tracks = Array.from(tracksMap.values()).sort((a, b) => a.trackNumber - b.trackNumber);
+      // Re-number tracks to ensure sequential (in case Spotify aria-rowindex starts at 2 or has gaps)
+      tracks.forEach((t, i) => { t.trackNumber = i + 1; });
+
+      const coverEl = document.querySelector('meta[property="og:image"], img[data-testid="entity-image"], img[data-testid="cover-art-image"]');
+      const coverUrl = coverEl ? (coverEl.content || coverEl.src) : null;
 
       return {
         pagePath,

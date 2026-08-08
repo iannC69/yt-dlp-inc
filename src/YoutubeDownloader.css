@@ -34,6 +34,7 @@
   width: 100%;
   transition: filter 0.8s ease;
   filter: hue-rotate(var(--theme-hue));
+  padding-top: 130px;
 
   background:
     radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--theme-primary) 18%, transparent), transparent 28%),

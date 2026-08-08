@@ -49,6 +49,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  padding-top: 130px;
   background:
     radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--sp-green) 18%, transparent), transparent 28%),
     radial-gradient(circle at 85% 25%, color-mix(in srgb, var(--sp-green) 14%, transparent), transparent 30%),
@@ -224,37 +225,48 @@
 .sp-account-pill {
   display: flex;
   align-items: center;
-  gap: 7px;
-  background: linear-gradient(145deg, rgba(20, 27, 42, .84), rgba(10, 14, 23, .82));
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  /* Sleek dark background matching Spotify */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  /* Subtle border */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-radius: var(--sp-radius-pill);
-  padding: 5px 10px 5px 6px;
+  padding: 4px 14px 4px 4px;
+  /* Tighter on the left for the avatar */
   cursor: pointer;
   color: var(--sp-text);
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition: border-color 0.2s, background 0.2s;
+  font-size: 0.82rem;
+  font-weight: 700;
+  /* Bolder text for the name */
+  letter-spacing: 0.01em;
+  transition: all 0.25s cubic-bezier(0.3, 0, 0, 1);
 }
 
 .sp-account-pill:hover {
-  border-color: color-mix(in srgb, var(--sp-green) 40%, transparent);
-  background: #161616;
+  background: rgba(40, 40, 40, 0.8);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: scale(1.02);
+}
+
+.sp-account-pill:active {
+  transform: scale(0.98);
 }
 
 .sp-account-avatar {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--sp-green) 15%, transparent);
+  background: #282828;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--sp-green);
   flex-shrink: 0;
   overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .sp-account-avatar--img {
@@ -264,13 +276,16 @@
 
 .sp-account-name {
   color: var(--sp-text);
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .sp-account-chevron {
-  color: var(--sp-muted);
-  transition: transform 0.2s;
+  color: #a7a7a7;
+  /* Spotify muted grey */
+  transition: transform 0.25s cubic-bezier(0.3, 0, 0, 1);
 }
 
 .sp-account-chevron.open {
@@ -2340,36 +2355,36 @@
 
 .sp-artist-bubble:nth-child(1) {
   left: 12%;
-  top: 64px;
+  top: 34px;
 }
 
 .sp-artist-bubble:nth-child(2) {
   left: 27%;
-  top: 34px;
+  top: 14px;
   animation-delay: -1.4s;
 }
 
 .sp-artist-bubble:nth-child(3) {
   left: 42%;
-  top: 106px;
+  top: 66px;
   animation-delay: -3.1s;
 }
 
 .sp-artist-bubble:nth-child(4) {
   left: 57%;
-  top: 38px;
+  top: 18px;
   animation-delay: -.7s;
 }
 
 .sp-artist-bubble:nth-child(5) {
   left: 72%;
-  top: 92px;
+  top: 60px;
   animation-delay: -2.3s;
 }
 
 .sp-artist-bubble:nth-child(6) {
   left: 87%;
-  top: 48px;
+  top: 28px;
   animation-delay: -4s;
 }
 
@@ -2881,52 +2896,84 @@
   font-size: 0.85rem;
 }
 
+.sp-playlists-modal-container {
+  max-width: 720px;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--sp-green) 10%, transparent), transparent 60%),
+    linear-gradient(145deg, rgba(20, 27, 42, .92), rgba(10, 14, 23, .92));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  padding: 24px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
 .sp-playlists-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 0.75rem;
-  max-height: 400px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 24px;
+  max-height: 55vh;
   overflow-y: auto;
-  margin-top: 1rem;
+  margin-top: 1.5rem;
+  padding: 0 8px 16px 0; /* For scrollbar */
 }
+
+/* Custom scrollbar for the modal grid */
+.sp-playlists-grid::-webkit-scrollbar { width: 8px; }
+.sp-playlists-grid::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+.sp-playlists-grid::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
 
 .sp-playlist-card-modal {
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 14px;
   overflow: hidden;
-  background: #161616;
-  border: 1px solid transparent;
-  transition: all 0.2s;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.3s cubic-bezier(0.3, 0, 0, 1);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
 }
 
 .sp-playlist-card-modal:hover {
-  border-color: color-mix(in srgb, var(--sp-green) 30%, transparent);
-  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
 }
 
 .sp-playlist-card-modal img {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  margin-bottom: 16px;
+  transition: box-shadow 0.3s ease;
 }
 
 .sp-playlist-meta {
-  padding: 6px 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sp-playlist-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--sp-text);
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: normal;
+  padding-bottom: 4px;
 }
 
 .sp-playlist-owner {
-  font-size: 0.7rem;
-  color: var(--sp-muted);
-  margin-top: 2px;
+  font-size: 0.75rem;
+  color: #a7a7a7;
+  margin-top: 4px;
+  font-weight: 500;
 }
 
 /* ── SPIN animation ─────────────────────────────────────────────────── */
