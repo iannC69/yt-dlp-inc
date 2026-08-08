@@ -1,5 +1,17 @@
 [
   {
+    "version": "v1.0.77",
+    "title": "Update 8/8/2026",
+    "date": "2026-08-08T11:17:50.352Z",
+    "changes": [
+      {
+        "message": "feat: implement application auto-updater system with UI-based changelog and version history tracking",
+        "author": "iannc69",
+        "email": "iannc69@github.com"
+      }
+    ]
+  },
+  {
     "version": "v1.0.76",
     "title": "Update 8/8/2026",
     "date": "2026-08-08T11:12:48.262Z",
